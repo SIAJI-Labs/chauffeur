@@ -1,59 +1,97 @@
-# step-1 — Bootstrap `chauf` installation (instructions only)
+# step-1 — Installer Script Spec (`install.sh`)
+
+> **Audience**: Chauffeur developers (we are building the tool). This is a **specification** for the installer script we will ship as `install.sh`. No code here—only requirements and behavior.
 
 ## Context
-Chauffeur is a host-based CLI that installs and manages its own binaries under `~/.chauffeur/` without touching system prefixes. Users need a simple, **idempotent** way to set up the workspace and expose `~/.chauffeur/bin` on their shell `PATH`.
+We ship a single-file installer (`install.sh`) that, when executed by end users, installs the Chauffeur CLI and prepares the workspace in user space only. It must be safe, verifiable, and idempotent.
 
-## Goals
-- Create the initial workspace structure in the user’s home directory.
-- Ensure `~/.chauffeur/bin` is on `PATH` for new shells (bash & zsh) **exactly once**.
-- Place (or fetch) the `chauf` binary into `~/.chauffeur/bin/chauf`.
-- Keep everything **user-space only**; do not modify `/usr` or system service units.
+## Objectives
+- Provide a frictionless install experience for Linux users.
+- Keep all files under `~/.chauffeur/`; never touch `/usr`, `/usr/local`, or system service units by default.
+- Verify downloaded artifacts (checksums/signatures) before install.
+- Be **idempotent** (re-running causes no harm) and **transparent** (clear logs & prompts).
 
-## Constraints / Policies
-- Install prefix is **`~/.chauffeur/`**. Never write to `/usr`, `/usr/local`, or `/etc`.
-- No external environment managers (no Devbox, nix, etc.).
-- Re-running bootstrap must be safe (no duplicate PATH lines, no errors if dirs exist).
-- Telemetry defaults to **off** unless explicitly enabled later.
-- Support Linux (Arch/Wayland friendly); other OS targets are out of scope for this step.
+## Deliverable
+- A POSIX-compatible shell script named **`install.sh`** (bash preferred, dash-compatible where possible).
+- Hosted alongside releases (e.g., GitHub Releases) and downloadable via curl/wget piping.
 
-## What this step must create
-- Directories:
-  - `~/.chauffeur/bin/` (for `chauf` and shims)
-  - `~/.chauffeur/bin/shims/` (wrappers like `php-8.3`, `nginx`, `caddy` — created empty here)
-  - `~/.chauffeur/config/`
-  - `~/.chauffeur/projects/`
-  - `~/.chauffeur/php/`
-  - `~/.chauffeur/nginx/{bin,etc,sites-available,sites-enabled,conf.d}`
-  - `~/.chauffeur/caddy/{bin}`
-- File(s):
-  - `~/.chauffeur/bin/chauf` (binary placed or downloaded by URL, executable bit set)
-  - `~/.chauffeur/config/chauffeur.yaml` (created later by `chauf init`; not required in this step)
+## Invocation & UX
+- Common usage: `curl -fsSL https://…/install.sh | bash`
+- Flags (script-level):
+  - `--prefix <dir>`: default `$HOME/.chauffeur`
+  - `--channel <stable|canary>`: default `stable`
+  - `--version <x.y.z|latest>`: default `latest` within channel
+  - `--no-path`: do not modify shell rc files
+  - `--dry-run`: print planned actions, no changes
+  - `--verbose`: extra logging
+- Non-interactive by default; print next steps on success.
 
-## Required UX messages (examples)
-- Success: "Workspace created at `~/.chauffeur`. Add `~/.chauffeur/bin` to PATH (bash/zsh)"
-- If PATH already configured: "PATH already contains `~/.chauffeur/bin` — skipping"
-- If `chauf` binary missing and no URL provided: "Place your built `chauf` binary at `~/.chauffeur/bin/chauf` or set `CHAUF_RELEASE_URL` to download"
+## Environment Assumptions
+- Linux x86_64 primary; plan for arm64 later (detect via `uname -m`).
+- Requires: `curl` or `wget`, `tar`, `sha256sum` (or `shasum -a 256`), `install`.
+- Shell: `bash` (gracefully degrade for `sh` where possible).
 
-## PATH handling policy
-- Add `export PATH="$HOME/.chauffeur/bin:$PATH"` to `~/.bashrc` (on bash) or `~/.zshrc` (on zsh) **only if** the exact line is not already present.
-- Do not modify other shells; print a notice for manual action if the shell is unknown.
+## Install Prefix & Layout (contract)
+- **Prefix**: `$HOME/.chauffeur`
+- Directories created:
+  - `bin/` — `chauf` binary and shims
+  - `bin/shims/` — wrappers (empty initially)
+  - `config/` — created empty (init fills later)
+  - `projects/`, `php/`
+  - `nginx/{bin,etc,sites-available,sites-enabled,conf.d}`
+  - `caddy/{bin}`
 
-## Error handling guidelines
-- Missing `curl` (when downloading) → clear error with remediation.
-- Permission issues writing to home → actionable message and exit non‑zero.
-- Partial setups (e.g., dirs exist) are fine; continue idempotently.
+## Artifact Acquisition & Verification
+- Source of truth: release manifest JSON per version & arch:
+  - Contains: artifact URL, SHA256, optional minisig/ed25519 signature URL.
+- Script flow:
+  1. Resolve version/channel → choose artifact for `linux-<arch>`.
+  2. Download to temp file.
+  3. Verify checksum (and signature when available). **Fail closed** on mismatch.
+  4. Place to `${PREFIX}/bin/chauf` with mode `0755`.
 
-## Acceptance criteria
-1. Running bootstrap twice is a no‑op (no duplicate lines, no failures).
-2. `~/.chauffeur/bin` exists and is on PATH for new interactive shells.
-3. `~/.chauffeur/bin/chauf` exists or the user receives a clear message how to provide it.
-4. No writes occurred outside `~/.chauffeur/`.
+## PATH Management Policy
+- Add `export PATH="$HOME/.chauffeur/bin:$PATH"` to `~/.bashrc` or `~/.zshrc` **only if missing** (exact string check).
+- Respect `--no-path` to skip.
+- For other shells, print a manual instruction line.
 
-## Out of scope (deferred)
-- Generating `chauffeur.yaml` or per‑project configs.
-- Installing Nginx/Caddy/PHP (covered in step-2).
-- Creating service shims (will be created as installers land).
+## Idempotency & Rollback
+- If `${PREFIX}` exists, do not clobber files unless updating `chauf` atomically via rename.
+- If verification fails, **do not** modify the existing install.
+- Temporary files cleaned on exit (trap `INT`, `TERM`, `EXIT`).
+
+## Logging & Telemetry
+- Human-friendly logs to stdout; errors to stderr.
+- **No telemetry** during install.
+
+## Error Handling (must-have cases)
+- Missing tools (`curl`/`wget`, `tar`, checksum tool) → actionable error with package names to install.
+- Permission denied writing under `$HOME` → clear message and exit non-zero.
+- Unsupported arch/OS → print matrix and stop.
+- Network failure → retry suggestion (no partial state left behind).
+
+## Security Considerations
+- HTTPS-only downloads; optional signature verification when release provides `.sig` + public key embedded in script.
+- Avoid executing remote content beyond the verified binary.
+- Do not `sudo` automatically. If user chooses system-wide install later, provide explicit commands separately.
+
+## Acceptance Criteria
+1. Running `install.sh` twice leaves a valid, single copy of `chauf` and no duplicate PATH lines.
+2. Checksum verification prevents tampered or incomplete downloads.
+3. Fresh shell has `~/.chauffeur/bin` on `PATH` unless `--no-path` is used.
+4. No writes outside `${HOME}/.chauffeur`.
+
+## Test Matrix (minimum)
+- Distros: Arch, Ubuntu LTS, Fedora
+- Shells: bash, zsh
+- Arches: x86_64 (arm64 later)
+- Scenarios: fresh install, re-install, offline (failure), missing curl (with wget fallback), checksum mismatch.
+
+## Open Questions
+- Signature scheme: minisign vs ed25519 with `age-keygen`? (decide in ADR)
+- Where to host release manifest? (GitHub Releases vs CDN)
+- Self-update command (`chauf self-update`) vs re-running installer?
 
 ## Next step
-Proceed to **step-2 — Initialize services** to install user‑space copies of Nginx, Caddy, and PHP under `~/.chauffeur/` and prepare minimal configs and shims.
+Implement **step-2 — Initialize services** specs (nginx, caddy, php installers) with similar rigor: sources, checksums, shims, and minimal configs.
 
