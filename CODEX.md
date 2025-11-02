@@ -133,6 +133,7 @@ created_at: 2025-10-30T12:00:00+07:00
 - **Logging**: Human‑readable logs to STDOUT; structured logs to `~/.chauffeur/<area>/logs`.
 - **Errors**: Clear actionable messages with suggested fix.
 - **Permissions**: Do not require root; if privileged steps are unavoidable, print the exact `sudo` command for the user to run.
+- **CLI Modularity**: Keep `main.go` limited to dispatch; implement each command in its own Go file/package (e.g. `cli/commands/<command>.go`) with focused helpers.
 
 ---
 
