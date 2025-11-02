@@ -1,0 +1,47 @@
+package main
+
+import (
+	"fmt"
+	"os"
+
+	"github.com/siaji/chauffeur/cli/commands"
+)
+
+const version = "0.1.0"
+
+func usage() {
+	fmt.Println(`Chauffeur CLI
+
+Usage:
+  chauf --version        Print the current Chauffeur version.
+  chauf version          Same as --version.
+  chauf --help           Show this message.
+  chauf uninstall        Remove the Chauffeur workspace (keeps runtimes by default).
+  chauf uninstall --purge
+                         Remove the workspace and delete runtimes/caches.
+`)
+}
+
+func main() {
+	args := os.Args[1:]
+	if len(args) == 0 {
+		usage()
+		return
+	}
+
+	switch args[0] {
+	case "--version", "-V", "version":
+		fmt.Printf("chauf %s\n", version)
+	case "--help", "-h":
+		usage()
+	case "uninstall":
+		if err := commands.RunUninstall(args[1:]); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+	default:
+		fmt.Fprintf(os.Stderr, "Unsupported command: %s\n", args[0])
+		fmt.Fprintln(os.Stderr, "Run 'chauf --help' for available commands.")
+		os.Exit(1)
+	}
+}
