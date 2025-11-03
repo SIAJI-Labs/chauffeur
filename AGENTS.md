@@ -2,6 +2,10 @@
 
 > Purpose: Give Codex/AI coding tools the context they need to generate correct CLI code, configs, and docs for the **Chauffeur** project.
 
+## Codex Usage Note
+
+This document is the authoritative reference for autonomous agents working on Chauffeur. **Always consult and comply with the rules, command contracts, and filesystem layouts defined here before generating or modifying code.** Keep this file up to date when behavior changes, and avoid duplicating guidance elsewhere.
+
 ---
 
 ## 1) Project Snapshot

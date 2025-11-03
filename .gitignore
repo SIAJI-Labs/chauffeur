@@ -11,6 +11,8 @@ bin/
 dist/
 *.test
 *.out
+.gocache/
+.gomodcache/
 
 # Temporary files
 .DS_Store
