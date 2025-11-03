@@ -39,7 +39,7 @@ var phpSigningKeys = []phpSigningKey{
 	},
 	{
 		Name:        "Peter Kokot (PHP 7.4)",
-		URL:         "", // Will use keyring  
+		URL:         "", // Will use keyring
 		Fingerprint: "42670A7FE4D0441C8E4632349E4FDC074A4EF02D",
 		UIDs:        []string{"Peter Kokot <petk@php.net>"},
 		Optional:    false,
@@ -133,7 +133,7 @@ func GetSupportedVersionsList() string {
  * @param opts    Installer configuration containing prefix, force flag, and client.
  * @return error when installation cannot complete successfully.
  */
-func InstallPHPSource(version string, opts InstallOptions) error {
+func InstallPHPSource(version string, opts InstallOptions) (err error) {
 	if opts.Prefix == "" {
 		return errors.New("install prefix is required")
 	}
@@ -146,6 +146,16 @@ func InstallPHPSource(version string, opts InstallOptions) error {
 	if !IsPHPVersionSupported(version) {
 		return fmt.Errorf("PHP version %s is not supported. Supported versions: %s", version, GetSupportedVersionsList())
 	}
+
+	defer func() {
+		if err != nil && opts.Prefix != "" {
+			if logPath, logErr := logToolFailure(opts.Prefix, "php", "install", version, err); logErr != nil {
+				logPHPWarn("failed to write php installer log: %v", logErr)
+			} else {
+				logPHPError("Installation failed. See %s for full log.", logPath)
+			}
+		}
+	}()
 
 	startPHPLogSection("Preparing")
 	logPHPInfo("Target PHP version: %s", version)
@@ -175,7 +185,7 @@ func InstallPHPSource(version string, opts InstallOptions) error {
 	logPHPInfo("Latest patch version: %s", patchVersion)
 
 	tarballName := fmt.Sprintf("php-%s.tar.gz", patchVersion)
-	
+
 	// Try official mirrors first, then build servers
 	tarballURLs := []string{
 		fmt.Sprintf("https://www.php.net/distributions/%s", tarballName),
@@ -185,12 +195,12 @@ func InstallPHPSource(version string, opts InstallOptions) error {
 
 	var tarballURL string
 	var downloadErr error
-	
+
 	for _, url := range tarballURLs {
 		tarballPath := filepath.Join(tmpDir, tarballName)
 		startPHPLogSection("Download")
 		logPHPInfo("Attempting download from: %s", url)
-		
+
 		size, err := downloadToFile(opts.Client, url, tarballPath, fmt.Sprintf("Download %s", tarballName))
 		if err == nil {
 			tarballURL = url
@@ -222,6 +232,10 @@ func InstallPHPSource(version string, opts InstallOptions) error {
 	}
 	logPHPSuccess("Sources extracted")
 
+	if err := applyLegacyPHPSourcePatches(version, sourceDir); err != nil {
+		return fmt.Errorf("apply compatibility patches: %w", err)
+	}
+
 	logPHPInfo("Configuring and compiling PHP")
 	if err := buildAndInstallPHP(opts.Prefix, version, sourceDir); err != nil {
 		return err
@@ -251,8 +265,6 @@ func InstallPHPSource(version string, opts InstallOptions) error {
 	return nil
 }
 
-
-
 /**
  * getLatestPHPPatchVersion discovers the latest patch version for a given major.minor.
  *
@@ -277,7 +289,7 @@ func getLatestPHPPatchVersion(client *http.Client, version string) (string, erro
 	// In production, this would parse the HTML response
 	knownVersions := map[string]string{
 		"8.3": "8.3.14",
-		"8.2": "8.2.26", 
+		"8.2": "8.2.26",
 		"8.1": "8.1.31",
 		"8.0": "8.0.30",
 		"7.4": "7.4.33",
@@ -352,8 +364,6 @@ func verifyPHPSignature(client *http.Client, tarballPath, tarballName, workDir s
 	return nil
 }
 
-
-
 /**
  * verifyPHPSignatureWithGPG validates the PHP tarball signature using the imported keyring.
  *
@@ -379,8 +389,6 @@ func verifyPHPSignatureWithGPG(gpgHome, tarballPath, sigPath string) error {
 	return nil
 }
 
-
-
 /**
  * buildAndInstallPHP configures, builds, and installs PHP into the workspace.
  *
@@ -391,7 +399,7 @@ func verifyPHPSignatureWithGPG(gpgHome, tarballPath, sigPath string) error {
  */
 func buildAndInstallPHP(prefix, version, sourceDir string) error {
 	installDir := filepath.Join(prefix, "php", version)
-	
+
 	// Basic configure arguments for development (minimal, essential extensions only)
 	confArgs := []string{
 		fmt.Sprintf("--prefix=%s", installDir),
@@ -432,11 +440,16 @@ func buildAndInstallPHP(prefix, version, sourceDir string) error {
 		confArgs = append(confArgs, "--enable-mbstring")
 	}
 
-	if err := runCommandForPHP(sourceDir, "./buildconf", "--force"); err != nil {
+	if err := runCommandForPHP(sourceDir, nil, "./buildconf", "--force"); err != nil {
 		return fmt.Errorf("buildconf failed: %w", err)
 	}
 
-	if err := runCommandForPHP(sourceDir, "./configure", confArgs...); err != nil {
+	var buildEnv []string
+	if version == "7.4" || version == "8.0" {
+		buildEnv = []string{"CFLAGS=-Wno-deprecated-declarations -Wno-discarded-qualifiers"}
+	}
+
+	if err := runCommandForPHP(sourceDir, buildEnv, "./configure", confArgs...); err != nil {
 		return fmt.Errorf("configure php: %w", err)
 	}
 
@@ -444,11 +457,11 @@ func buildAndInstallPHP(prefix, version, sourceDir string) error {
 	if n := runtime.NumCPU(); n > 0 {
 		makeArgs = append(makeArgs, fmt.Sprintf("%d", n))
 	}
-	if err := runCommandForPHP(sourceDir, "make", makeArgs...); err != nil {
+	if err := runCommandForPHP(sourceDir, buildEnv, "make", makeArgs...); err != nil {
 		return fmt.Errorf("make php: %w", err)
 	}
 
-	if err := runCommandForPHP(sourceDir, "make", "install"); err != nil {
+	if err := runCommandForPHP(sourceDir, buildEnv, "make", "install"); err != nil {
 		return fmt.Errorf("make install php: %w", err)
 	}
 
@@ -490,7 +503,7 @@ func ensurePHPlayout(prefix, version string) error {
  */
 func writeDefaultPHPFPMConf(prefix, version string) error {
 	phpDir := filepath.Join(prefix, "php", version)
-	
+
 	// Main php-fpm.conf
 	fpmConf := fmt.Sprintf(`[global]
 pid = %s
@@ -518,7 +531,7 @@ include=%s/etc/php-fpm.d/*.conf
 	user := getPHPUser()
 	poolConfPath := filepath.Join(poolDir, "default.conf")
 	socketPath := filepath.Join(phpDir, "var", "run", "php-fpm.sock")
-	
+
 	poolConf := fmt.Sprintf(`[default]
 user = %s
 group = %s
@@ -643,20 +656,30 @@ func untarPHP(tarball, dest string) error {
  * runCommandForPHP executes a command inside dir and returns stderr/stdout on failure.
  *
  * @param dir  Working directory for execution.
+ * @param env  Additional environment variables for the command.
  * @param name Command binary to run.
  * @param args Additional command arguments.
  * @return error when the command exits non-zero.
  */
-func runCommandForPHP(dir, name string, args ...string) error {
+func runCommandForPHP(dir string, env []string, name string, args ...string) error {
 	cmd := exec.Command(name, args...)
 	cmd.Dir = dir
+	if len(env) > 0 {
+		cmd.Env = append(os.Environ(), env...)
+	}
 
 	var stdout, stderr strings.Builder
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("%s %s failed: %w\nstdout:\n%s\nstderr:\n%s", name, strings.Join(args, " "), err, stdout.String(), stderr.String())
+		return commandError{
+			Name:   name,
+			Args:   args,
+			Err:    err,
+			Stdout: stdout.String(),
+			Stderr: stderr.String(),
+		}
 	}
 	return nil
 }
