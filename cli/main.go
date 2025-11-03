@@ -16,8 +16,8 @@ Usage:
   chauf --version        Print the current Chauffeur version.
   chauf version          Same as --version.
   chauf --help           Show this message.
-  chauf install <service>
-                         Install Chauffeur-managed services (caddy, nginx).
+  chauf install <service> [version]
+                         Install Chauffeur-managed services (caddy, nginx, php).
   chauf nginx [args...]  Run the managed nginx binary with passthrough args.
   chauf caddy [args...]  Run the managed caddy binary with passthrough args.
   chauf start            Check service prerequisites before starting Chauffeur.
