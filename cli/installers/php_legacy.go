@@ -15,12 +15,15 @@ func applyLegacyPHPSourcePatches(version, sourceDir string) error {
 		return nil
 	}
 
-	logPHPInfo("Applying compatibility patches for legacy PHP %s", version)
+	logPHPInfo("Applying compatibility patches for legacy PHP %s in directory %s", version, sourceDir)
 
 	if err := patchLegacyLibxml(sourceDir); err != nil {
 		return err
 	}
 	if err := patchLegacyOpenSSL(sourceDir); err != nil {
+		return err
+	}
+	if err := patchLegacyScanf(sourceDir); err != nil {
 		return err
 	}
 
@@ -83,6 +86,13 @@ func patchLegacyLibxml(sourceDir string) error {
 
 func patchLegacyOpenSSL(sourceDir string) error {
 	target := filepath.Join(sourceDir, "ext", "openssl", "openssl.c")
+	logPHPInfo("Patching OpenSSL file: %s", target)
+
+	// Check if file exists before trying to read
+	if _, err := os.Stat(target); os.IsNotExist(err) {
+		return fmt.Errorf("openssl source file not found: %s", target)
+	}
+
 	data, err := os.ReadFile(target)
 	if err != nil {
 		return fmt.Errorf("read openssl source: %w", err)
@@ -98,27 +108,50 @@ func patchLegacyOpenSSL(sourceDir string) error {
 		modified = true
 	}
 
-	if !bytes.Contains(data, []byte("#define RSA_SSLV23_PADDING")) {
-		snippet := []byte("#ifndef RSA_SSLV23_PADDING\n" +
+	const compatMarker = "/* OpenSSL 3.x compatibility shims for legacy PHP */"
+	if !bytes.Contains(data, []byte(compatMarker)) {
+		compatSnippet := []byte(compatMarker + "\n" +
+			"#include <openssl/opensslv.h>\n" +
+			"#include <openssl/evp.h>\n" +
+			"#include <openssl/rsa.h>\n" +
+			"\n" +
+			"#ifndef RSA_SSLV23_PADDING\n" +
 			"#define RSA_SSLV23_PADDING 2\n" +
-			"#endif\n\n")
-		logPHPInfo("Injecting RSA_SSLV23_PADDING shim for OpenSSL 3.x")
-		data = insertAfterOpenSSLInclude(data, snippet)
+			"#endif\n" +
+			"\n" +
+			"#ifndef EVP_PKEY_get0_RSA_NONCONST\n" +
+			"#define EVP_PKEY_get0_RSA_NONCONST(pkey) ((RSA*)EVP_PKEY_get0_RSA((pkey)))\n" +
+			"#endif\n" +
+			"/* ==== end OpenSSL 3.x shims ==== */\n\n",
+		)
+		logPHPInfo("Injecting OpenSSL 3.x compatibility shims")
+		insertPos := findOpenSSLShimInsertPos(data)
+		if insertPos < 0 {
+			logPHPWarn("could not locate config.h block; prepending shim")
+			insertPos = 0
+		}
+		data = insertSnippet(data, compatSnippet, insertPos)
+		if !bytes.Contains(data, []byte("EVP_PKEY_get0_RSA_NONCONST")) ||
+			!bytes.Contains(data, []byte("RSA_SSLV23_PADDING")) {
+			return fmt.Errorf("legacy OpenSSL shim missing after patch in %s", target)
+		}
+		logPHPInfo("Patching OpenSSL shims in: %s", target)
 		modified = true
 	}
 
-	if !bytes.Contains(data, []byte("#define EVP_PKEY_get0_RSA_NONCONST")) {
-		snippet := []byte("#ifndef EVP_PKEY_get0_RSA_NONCONST\n" +
-			"#include <stdint.h>\n" +
-			"#include <openssl/evp.h>\n" +
-			"#include <openssl/rsa.h>\n" +
-			"#define EVP_PKEY_get0_RSA_NONCONST(k) \\\n" +
-			"    ((RSA *)(uintptr_t)(const void *)EVP_PKEY_get0_RSA((k)))\n" +
-			"#endif\n\n")
+	head := 80
+	lines := 0
+	var out bytes.Buffer
+	for i := 0; i < len(data) && lines < head; i++ {
+		out.WriteByte(data[i])
+		if data[i] == '\n' {
+			lines++
+		}
+	}
+	logPHPInfo("openssl.c head:\n%s", out.String())
 
-		logPHPInfo("Injecting EVP_PKEY_get0_RSA_NONCONST helper for legacy build")
-		data = insertAfterOpenSSLInclude(data, snippet)
-		modified = true
+	if !bytes.Contains(data, []byte(compatMarker)) || !bytes.Contains(data, []byte("EVP_PKEY_get0_RSA_NONCONST")) {
+		return fmt.Errorf("failed to inject OpenSSL compatibility shim into %s", target)
 	}
 
 	if !modified {
@@ -203,4 +236,91 @@ func insertAfterIncludeBlock(data []byte, snippet []byte) []byte {
 	}
 
 	return builder.Bytes()
+}
+
+func findOpenSSLShimInsertPos(data []byte) int {
+	if idx := bytes.Index(data, []byte("#include \"config.h\"")); idx >= 0 {
+		rest := data[idx:]
+		if endifIdx := bytes.Index(rest, []byte("#endif")); endifIdx >= 0 {
+			pos := idx + endifIdx + len("#endif")
+			for pos < len(data) && (data[pos] == '\n' || data[pos] == '\r') {
+				pos++
+			}
+			return pos
+		}
+	}
+	return insertAfterIncludeBlockPos(data)
+}
+
+func insertAfterIncludeBlockPos(data []byte) int {
+	lines := bytes.Split(data, []byte("\n"))
+	pos := 0
+	for _, line := range lines {
+		trim := bytes.TrimSpace(line)
+		if bytes.HasPrefix(trim, []byte("#include")) {
+			pos += len(line) + 1
+			continue
+		}
+		break
+	}
+	return pos
+}
+
+func insertSnippet(data []byte, snippet []byte, pos int) []byte {
+	if pos < 0 || pos > len(data) {
+		pos = len(data)
+	}
+	var builder bytes.Buffer
+	builder.Write(data[:pos])
+	if pos > 0 && data[pos-1] != '\n' {
+		builder.WriteByte('\n')
+	}
+	builder.Write(snippet)
+	if pos < len(data) && data[pos] != '\n' {
+		builder.WriteByte('\n')
+	}
+	builder.Write(data[pos:])
+	return builder.Bytes()
+}
+
+func patchLegacyScanf(sourceDir string) error {
+	target := filepath.Join(sourceDir, "ext", "standard", "scanf.c")
+	data, err := os.ReadFile(target)
+	if err != nil {
+		return fmt.Errorf("read scanf source: %w", err)
+	}
+
+	modified := false
+
+	oldDecl := []byte("zend_long (*fn)() = NULL;")
+	newDecl := []byte("zend_long (*fn)(const char *, char **, int) = NULL;")
+	if bytes.Contains(data, oldDecl) && !bytes.Contains(data, newDecl) {
+		logPHPInfo("Updating sscanf function pointer prototype for modern compilers")
+		data = bytes.ReplaceAll(data, oldDecl, newDecl)
+		modified = true
+	}
+
+	oldStrtol := []byte("fn = (zend_long (*)())ZEND_STRTOL_PTR;")
+	newStrtol := []byte("fn = (zend_long (*)(const char *, char **, int))ZEND_STRTOL_PTR;")
+	if bytes.Contains(data, oldStrtol) && !bytes.Contains(data, newStrtol) {
+		data = bytes.ReplaceAll(data, oldStrtol, newStrtol)
+		modified = true
+	}
+
+	oldStrtoul := []byte("fn = (zend_long (*)())ZEND_STRTOUL_PTR;")
+	newStrtoul := []byte("fn = (zend_long (*)(const char *, char **, int))ZEND_STRTOUL_PTR;")
+	if bytes.Contains(data, oldStrtoul) && !bytes.Contains(data, newStrtoul) {
+		data = bytes.ReplaceAll(data, oldStrtoul, newStrtoul)
+		modified = true
+	}
+
+	if !modified {
+		return nil
+	}
+
+	if err := os.WriteFile(target, data, 0o644); err != nil {
+		return fmt.Errorf("write scanf shim: %w", err)
+	}
+
+	return nil
 }

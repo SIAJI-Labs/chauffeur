@@ -16,6 +16,13 @@ import (
 )
 
 const phpBinaryName = "php"
+const (
+	openssl111wVersion        = "1.1.1w"
+	openssl111wTarball        = "openssl-" + openssl111wVersion + ".tar.gz"
+	openssl111wPrimaryURL     = "https://www.openssl.org/source/" + openssl111wTarball
+	openssl111wFallbackURL    = "https://www.openssl.org/source/old/1.1.1/" + openssl111wTarball
+	openssl111wExpectedSHA256 = "cf3098950cb4d853ad95c0841f1f9c6d3dc102dccfcacd521d93925208b76ac8"
+)
 
 /**
  * PHPSigningKey represents a trusted PHP signing key and its metadata.
@@ -237,7 +244,7 @@ func InstallPHPSource(version string, opts InstallOptions) (err error) {
 	}
 
 	logPHPInfo("Configuring and compiling PHP")
-	if err := buildAndInstallPHP(opts.Prefix, version, sourceDir); err != nil {
+	if err := buildAndInstallPHP(opts, version, sourceDir); err != nil {
 		return err
 	}
 	logPHPSuccess("PHP %s built and installed to %s", version, filepath.Join(opts.Prefix, "php", version))
@@ -397,10 +404,10 @@ func verifyPHPSignatureWithGPG(gpgHome, tarballPath, sigPath string) error {
  * @param sourceDir Directory containing the extracted PHP sources.
  * @return error when configure/build/install steps fail.
  */
-func buildAndInstallPHP(prefix, version, sourceDir string) error {
+func buildAndInstallPHP(opts InstallOptions, version, sourceDir string) error {
+	prefix := opts.Prefix
 	installDir := filepath.Join(prefix, "php", version)
 
-	// Basic configure arguments for development (minimal, essential extensions only)
 	confArgs := []string{
 		fmt.Sprintf("--prefix=%s", installDir),
 		"--enable-debug",
@@ -427,29 +434,58 @@ func buildAndInstallPHP(prefix, version, sourceDir string) error {
 		"--with-pear",
 	}
 
-	// Add version-specific configurations
 	switch version {
 	case "7.4":
-		// PHP 7.4 specific options
-		break
+		// placeholder for future 7.4-specific options
 	case "8.0":
-		// PHP 8.0 specific options
-		break
+		// placeholder for future 8.0-specific options
 	default:
-		// PHP 8.1+ options
 		confArgs = append(confArgs, "--enable-mbstring")
 	}
 
 	if err := runCommandForPHP(sourceDir, nil, "./buildconf", "--force"); err != nil {
+		logCommandFailure(err)
 		return fmt.Errorf("buildconf failed: %w", err)
 	}
 
-	var buildEnv []string
-	if version == "7.4" || version == "8.0" {
-		buildEnv = []string{"CFLAGS=-Wno-deprecated-declarations -Wno-discarded-qualifiers"}
+	legacy := version == "7.4" || version == "8.0"
+	var (
+		buildEnv       []string
+		pkgConfigValue string
+		ldLibraryValue string
+	)
+
+	if legacy {
+		buildEnv = append(buildEnv,
+			"CFLAGS=-Wno-deprecated-declarations -Wno-discarded-qualifiers",
+			"CPPFLAGS=-DOPENSSL_API_COMPAT=0x10100000L",
+		)
+
+		vendorPrefix := filepath.Join(prefix, "vendors", "openssl-1.1.1w")
+		if err := ensureOpenSSL111(prefix, vendorPrefix, opts.Client, logPHPInfo); err != nil {
+			return fmt.Errorf("vendor OpenSSL 1.1.1w: %w", err)
+		}
+		logPHPInfo("Using vendored OpenSSL 1.1.1w at %s", vendorPrefix)
+
+		confArgs = rewriteWithOpenSSL(confArgs, vendorPrefix)
+		pkgConfigValue = prependEnvPath(filepath.Join(vendorPrefix, "lib", "pkgconfig"), os.Getenv("PKG_CONFIG_PATH"))
+		ldLibraryValue = prependEnvPath(filepath.Join(vendorPrefix, "lib"), os.Getenv("LD_LIBRARY_PATH"))
+
+		buildEnv = append(buildEnv,
+			"PKG_CONFIG_PATH="+pkgConfigValue,
+			"LD_LIBRARY_PATH="+ldLibraryValue,
+		)
 	}
 
+	logPHPInfo("Source directory: %s", sourceDir)
+	if legacy {
+		logPHPInfo("PKG_CONFIG_PATH=%s", pkgConfigValue)
+		logPHPInfo("LD_LIBRARY_PATH=%s", ldLibraryValue)
+	}
+	logPHPInfo("Configure args: ./configure %s", strings.Join(confArgs, " "))
+
 	if err := runCommandForPHP(sourceDir, buildEnv, "./configure", confArgs...); err != nil {
+		logCommandFailure(err)
 		return fmt.Errorf("configure php: %w", err)
 	}
 
@@ -458,14 +494,231 @@ func buildAndInstallPHP(prefix, version, sourceDir string) error {
 		makeArgs = append(makeArgs, fmt.Sprintf("%d", n))
 	}
 	if err := runCommandForPHP(sourceDir, buildEnv, "make", makeArgs...); err != nil {
+		logCommandFailure(err)
 		return fmt.Errorf("make php: %w", err)
 	}
 
 	if err := runCommandForPHP(sourceDir, buildEnv, "make", "install"); err != nil {
+		logCommandFailure(err)
 		return fmt.Errorf("make install php: %w", err)
 	}
 
 	return nil
+}
+
+func ensureOpenSSL111(workspacePrefix, vendorPrefix string, client *http.Client, logf func(string, ...interface{})) error {
+	if logf == nil {
+		logf = logPHPInfo
+	}
+	expected := strings.ToLower(openssl111wExpectedSHA256)
+	if len(expected) != 64 {
+		return fmt.Errorf("invalid expected SHA256 length: %d", len(expected))
+	}
+
+	cryptoLib := filepath.Join(vendorPrefix, "lib", "libcrypto.so.1.1")
+	sslLib := filepath.Join(vendorPrefix, "lib", "libssl.so.1.1")
+	if fileExists(cryptoLib) && fileExists(sslLib) {
+		logf("Using vendored OpenSSL %s at %s", openssl111wVersion, vendorPrefix)
+		return nil
+	}
+
+	if client == nil {
+		client = &http.Client{Timeout: 60 * time.Second}
+	}
+
+	cacheDir := filepath.Join(workspacePrefix, "cache", "openssl")
+	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
+		return fmt.Errorf("ensure openssl cache dir: %w", err)
+	}
+	cachePath := filepath.Join(cacheDir, openssl111wTarball)
+
+	var (
+		tarballPath string
+		computed    string
+		usedURL     string
+	)
+
+	if fileExists(cachePath) {
+		sum, err := fileSHA256(cachePath)
+		if err == nil && strings.EqualFold(sum, expected) {
+			logf("Reusing cached %s (computed=%s expected=%s)", cachePath, strings.ToLower(sum), expected)
+			tarballPath = cachePath
+			computed = strings.ToLower(sum)
+			usedURL = "cache"
+		} else {
+			if err != nil {
+				logPHPWarn("failed to hash cached OpenSSL tarball %s: %v", cachePath, err)
+			} else {
+				logPHPWarn("Cached OpenSSL tarball checksum mismatch (computed=%s expected=%s); re-downloading", strings.ToLower(sum), expected)
+			}
+			_ = os.Remove(cachePath)
+		}
+	}
+
+	logf("Vendoring OpenSSL %s into %s", openssl111wVersion, vendorPrefix)
+	if err := os.MkdirAll(vendorPrefix, 0o755); err != nil {
+		return fmt.Errorf("ensure openssl prefix: %w", err)
+	}
+
+	tmpDir, err := os.MkdirTemp("", "chauffeur-openssl-*")
+	if err != nil {
+		return fmt.Errorf("create temp dir for openssl: %w", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	var lastErr error
+	if tarballPath == "" {
+		urls := []string{openssl111wPrimaryURL, openssl111wFallbackURL}
+		for _, url := range urls {
+			downloadDest := filepath.Join(tmpDir, openssl111wTarball)
+			logf("Downloading %s", url)
+			if _, err := downloadToFile(client, url, downloadDest, "OpenSSL 1.1.1w"); err != nil {
+				logPHPWarn("Download from %s failed: %v", url, err)
+				lastErr = err
+				continue
+			}
+
+			sum, err := fileSHA256(downloadDest)
+			if err != nil {
+				lastErr = fmt.Errorf("hash openssl tarball: %w", err)
+				logPHPWarn("Failed to compute checksum for %s: %v", url, err)
+				continue
+			}
+			lower := strings.ToLower(sum)
+			logf("Downloaded %s (computed=%s expected=%s)", url, lower, expected)
+			if !strings.EqualFold(sum, expected) {
+				logPHPWarn("OpenSSL %s: checksum mismatch (expected %s, got %s) from %s", openssl111wVersion, expected, lower, url)
+				logPHPWarn("If mirrors moved, try the fallback URL %s (already auto-handled).", openssl111wFallbackURL)
+				_ = os.Remove(downloadDest)
+				lastErr = fmt.Errorf("OpenSSL %s: checksum mismatch (expected %s, got %s) from %s", openssl111wVersion, expected, lower, url)
+				continue
+			}
+
+			if err := copyFile(downloadDest, cachePath); err != nil {
+				lastErr = fmt.Errorf("cache openssl tarball: %w", err)
+				logPHPWarn("Failed to cache OpenSSL tarball: %v", err)
+				_ = os.Remove(downloadDest)
+				continue
+			}
+			tarballPath = cachePath
+			computed = lower
+			usedURL = url
+			logf("Cached OpenSSL tarball at %s", cachePath)
+			_ = os.Remove(downloadDest)
+			break
+		}
+		if tarballPath == "" {
+			if lastErr != nil {
+				return lastErr
+			}
+			return fmt.Errorf("failed to download OpenSSL %s tarball", openssl111wVersion)
+		}
+	}
+
+	if usedURL == "" {
+		usedURL = tarballPath
+	}
+	if computed == "" {
+		sum, err := fileSHA256(tarballPath)
+		if err == nil {
+			computed = strings.ToLower(sum)
+		}
+	}
+	logf("Using OpenSSL archive from %s (computed=%s expected=%s)", usedURL, computed, expected)
+
+	sourceRoot := filepath.Join(tmpDir, "src")
+	if err := untarPHP(tarballPath, sourceRoot); err != nil {
+		return fmt.Errorf("extract openssl %s: %w", openssl111wVersion, err)
+	}
+	opensslSource := filepath.Join(sourceRoot, "openssl-"+openssl111wVersion)
+
+	configArgs := []string{
+		fmt.Sprintf("--prefix=%s", vendorPrefix),
+		fmt.Sprintf("--openssldir=%s", filepath.Join(vendorPrefix, "ssl")),
+		"shared",
+	}
+	logf("Running: ./config %s", strings.Join(configArgs, " "))
+	if err := runCommandForPHP(opensslSource, nil, "./config", configArgs...); err != nil {
+		logCommandFailure(err)
+		return fmt.Errorf("openssl config: %w", err)
+	}
+
+	makeArgs := []string{"-j"}
+	if n := runtime.NumCPU(); n > 0 {
+		makeArgs = append(makeArgs, fmt.Sprintf("%d", n))
+	}
+	logf("Running: make %s", strings.Join(makeArgs, " "))
+	if err := runCommandForPHP(opensslSource, nil, "make", makeArgs...); err != nil {
+		logCommandFailure(err)
+		return fmt.Errorf("openssl make: %w", err)
+	}
+
+	logf("Running: make install_sw")
+	if err := runCommandForPHP(opensslSource, nil, "make", "install_sw"); err != nil {
+		logCommandFailure(err)
+		return fmt.Errorf("openssl make install_sw: %w", err)
+	}
+
+	if !fileExists(cryptoLib) || !fileExists(sslLib) {
+		return fmt.Errorf("vendored OpenSSL seems incomplete (missing libcrypto.so.1.1/libssl.so.1.1)")
+	}
+
+	logPHPSuccess("OpenSSL %s installed at %s", openssl111wVersion, vendorPrefix)
+	return nil
+}
+
+func copyFile(src, dst string) error {
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return err
+	}
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = out.Close()
+	}()
+
+	if _, err := io.Copy(out, in); err != nil {
+		return err
+	}
+
+	return out.Sync()
+}
+
+func rewriteWithOpenSSL(args []string, prefix string) []string {
+	filtered := make([]string, 0, len(args))
+	for _, arg := range args {
+		if strings.HasPrefix(arg, "--with-openssl") {
+			continue
+		}
+		filtered = append(filtered, arg)
+	}
+	return append(filtered, fmt.Sprintf("--with-openssl=%s", prefix))
+}
+
+func prependEnvPath(newValue, existing string) string {
+	if newValue == "" {
+		return existing
+	}
+	if existing == "" {
+		return newValue
+	}
+	return newValue + ":" + existing
+}
+
+func fileExists(path string) bool {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return !info.IsDir()
 }
 
 /**
@@ -589,6 +842,13 @@ func logPHPWarn(format string, args ...interface{}) {
 
 func logPHPError(format string, args ...interface{}) {
 	fmt.Printf("    [ERR] %s\n", fmt.Sprintf(format, args...))
+}
+
+func logCommandFailure(err error) {
+	var detail detailedError
+	if errors.As(err, &detail) {
+		logPHPError(detail.Detail())
+	}
 }
 
 /**
