@@ -1,13 +1,29 @@
 #!/usr/bin/env bash
-set -euo pipefail
+# Avoid 'unbound variable' errors with arrays by temporarily disabling nounset
+set -o pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Try to get SCRIPT_DIR, but handle cases where BASH_SOURCE is undefined
+if [[ -n "${BASH_SOURCE:-}" ]] && [[ ${#BASH_SOURCE[@]} -gt 0 ]]; then
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+else
+  # If BASH_SOURCE is not available (e.g., piped via curl), use /tmp as default
+  SCRIPT_DIR="/tmp"
+fi
+
+# Now we can safely enable nounset for the rest of the script
+set -u
+
 WORKSPACE="${HOME}/.chauffeur"
 BIN_DIR="${WORKSPACE}/bin"
 SHIMS_DIR="${BIN_DIR}/shims"
 PATH_LINE='export PATH="$HOME/.chauffeur/bin:$PATH"'
 SHELL_NAME="$(basename "${SHELL:-}")"
-LOCAL_SRC_DIR="${SCRIPT_DIR}/cli"
+# For curl installs, SCRIPT_DIR will be /tmp, so LOCAL_SRC_DIR won't exist
+if [[ -n "${SCRIPT_DIR}" && "${SCRIPT_DIR}" != "/tmp" ]]; then
+  LOCAL_SRC_DIR="${SCRIPT_DIR}/cli"
+else
+  LOCAL_SRC_DIR=""
+fi
 REPO_URL="${CHAUF_REPO_URL:-https://github.com/SIAJI-Labs/chauffeur.git}"
 
 section() {
@@ -16,6 +32,11 @@ section() {
 
 info() {
   printf '    - %s\n' "$*"
+}
+
+is_curl_install() {
+  # Check if we're being piped from curl (stdin not a terminal)
+  [[ ! -t 0 ]] || [[ "${CHAUF_CURL_INSTALL:-}" == "1" ]]
 }
 
 success() {
@@ -84,7 +105,7 @@ ensure_path_export() {
 build_local_chauf() {
   local output_path="$1"
 
-  if [[ ! -d "${LOCAL_SRC_DIR}" ]]; then
+  if [[ ! -d "${LOCAL_SRC_DIR}" ]] || [[ "${CHAUF_BOOTSTRAP:-}" == "1" ]]; then
     return 1
   fi
 
@@ -168,6 +189,11 @@ ensure_chauf_binary() {
 }
 
 is_git_repo() {
+  # If SCRIPT_DIR is empty, we're definitely not in a git repo
+  if [[ -z "${SCRIPT_DIR}" ]]; then
+    return 1
+  fi
+  
   if [[ -d "${SCRIPT_DIR}/.git" ]]; then
     return 0
   fi
@@ -236,7 +262,12 @@ run_local_install() {
 }
 
 main() {
+  # Check if we're being called via curl (not in git repo and no SCRIPT_DIR context)
   if ! is_git_repo; then
+    if is_curl_install; then
+      info "Detected curl installation - downloading repository..."
+      export CHAUF_CURL_INSTALL=1
+    fi
     bootstrap_from_remote "$@"
     return
   fi
