@@ -10,11 +10,27 @@ Chauffeur is a host-based CLI for managing per-project PHP development services 
 
 ## Getting Started
 
+### Method 1: Clone Repository (Recommended for Development)
+
 ```bash
+git clone https://github.com/SIAJI-Labs/chauffeur.git
+cd chauffeur
 ./install.sh
 # Reload your shell or run: source ~/.zshrc
 chauf --version
 ```
+
+### Method 2: Direct Install (Public Repository)
+
+For quick installation without cloning the repository:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/SIAJI-Labs/chauffeur/refs/heads/main/install.sh | bash
+# Reload your shell or run: source ~/.zshrc
+chauf --version
+```
+
+### Uninstallation
 
 If you need to remove the workspace:
 
