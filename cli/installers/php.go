@@ -13,6 +13,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/siaji/chauffeur/cli/internal/config"
 )
 
 const phpBinaryName = "php"
@@ -262,6 +264,29 @@ func InstallPHPSource(version string, opts InstallOptions) (err error) {
 		return err
 	}
 	logPHPSuccess("Shim written to %s", filepath.Join(opts.Prefix, "bin", shimName))
+
+	defaultShim := filepath.Join(opts.Prefix, "bin", "php")
+	if _, err := os.Stat(defaultShim); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			logPHPInfo("Setting default PHP shim to version %s", version)
+			if err := UpdateDefaultPHPShim(opts.Prefix, version); err != nil {
+				return err
+			}
+			logPHPSuccess("Default PHP shim now targets %s", version)
+		} else {
+			return fmt.Errorf("stat default php shim: %w", err)
+		}
+	}
+
+	if cfg, err := config.Load(); err != nil {
+		logPHPWarn("unable to load config: %v", err)
+	} else if cfg.PHP.Default == "" {
+		if err := config.SetDefaultPHPVersion(version); err != nil {
+			logPHPWarn("failed to set default PHP version: %v", err)
+		} else {
+			logPHPSuccess("Default PHP version set to %s", version)
+		}
+	}
 
 	logPHPInfo("Writing PHP-FPM configuration")
 	if err := writeDefaultPHPFPMConf(opts.Prefix, version); err != nil {
@@ -744,6 +769,18 @@ func ensurePHPlayout(prefix, version string) error {
 		}
 	}
 
+	return nil
+}
+
+// UpdateDefaultPHPShim repoints the global php shim to the specified version.
+func UpdateDefaultPHPShim(prefix, version string) error {
+	binary := filepath.Join(prefix, "php", version, "bin", phpBinaryName)
+	if _, err := os.Stat(binary); err != nil {
+		return fmt.Errorf("php binary for %s: %w", version, err)
+	}
+	if err := writeShim(prefix, phpBinaryName, binary); err != nil {
+		return fmt.Errorf("write default php shim: %w", err)
+	}
 	return nil
 }
 
