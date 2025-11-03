@@ -8,11 +8,20 @@ Chauffeur is a host-based CLI for managing per-project PHP development services 
 - Linux-focused workflow (Arch/Wayland friendly); other OS targets are not yet supported.
 - CLI structure uses modular Go packages (`cli/commands/*`). Additional commands will land incrementally.
 
+## Requirements
+
+- **Go 1.22 or newer** - Chauffeur CLI is built with Go and requires a compatible Go installation
+- **Git** - Required for cloning the repository during curl installation
+- **Linux** - Currently Linux-focused (Arch/Ubuntu/Debian friendly)
+
 ## Getting Started
 
 ### Method 1: Clone Repository (Recommended for Development)
 
 ```bash
+# First, ensure you have Go 1.22+ installed
+go version
+
 git clone https://github.com/SIAJI-Labs/chauffeur.git
 cd chauffeur
 ./install.sh
@@ -25,10 +34,16 @@ chauf --version
 For quick installation without cloning the repository:
 
 ```bash
+# First, ensure you have Go 1.22+ and Git installed
+go version
+git --version
+
 curl -fsSL https://raw.githubusercontent.com/SIAJI-Labs/chauffeur/refs/heads/main/install.sh | bash
 # Reload your shell or run: source ~/.zshrc
 chauf --version
 ```
+
+Both installation methods will check for Go requirements and guide you through installation if needed.
 
 ### Uninstallation
 
@@ -56,6 +71,6 @@ chauf uninstall --purge  # removes workspace and runtimes/caches
 
 ## Development Notes
 
-- Requires Go 1.22+ to build the CLI.
+- Requires Go 1.22+ to build the CLI (enforced by installer).
 - Scripts are idempotent; rerun `./install.sh` safely.
 - Changes should respect the contracts outlined in `CODEX.md`.

@@ -13,6 +13,8 @@ fi
 # Now we can safely enable nounset for the rest of the script
 set -u
 
+
+
 WORKSPACE="${HOME}/.chauffeur"
 BIN_DIR="${WORKSPACE}/bin"
 SHIMS_DIR="${BIN_DIR}/shims"
@@ -37,6 +39,84 @@ info() {
 is_curl_install() {
   # Check if we're being piped from curl (stdin not a terminal)
   [[ ! -t 0 ]] || [[ "${CHAUF_CURL_INSTALL:-}" == "1" ]]
+}
+
+check_existing_chauf() {
+  # First check the workspace binary location (preferred for current workspace)
+  local workspace_chauf="${BIN_DIR}/chauf"
+  local existing_chauf=""
+  local existing_version=""
+  
+  if [[ -x "${workspace_chauf}" ]]; then
+    existing_chauf="${workspace_chauf}"
+    existing_version="$("${workspace_chauf}" --version 2>/dev/null || echo "unknown")"
+  # Then check PATH for other installation
+  elif command -v chauf >/dev/null 2>&1; then
+    existing_chauf="$(which chauf)"
+    existing_version="$(chauf --version 2>/dev/null || echo "unknown")"
+  fi
+  
+  if [[ -n "${existing_chauf}" ]]; then
+    echo "Chauffeur is already installed:"
+    echo "  - Binary location: ${existing_chauf}"
+    echo "  - Version: ${existing_version}"
+    echo ""
+    
+    # Check if existing binary matches current workspace
+    if [[ "${existing_chauf}" == "${workspace_chauf}" ]]; then
+      echo "Workspace is already set up and binary is current."
+      echo "To reinstall/rebuild:"
+      echo "  - Recompile manually: go build -o ${workspace_chauf} ./cli"
+      echo "  - Or remove existing: rm ${workspace_chauf} && ./install.sh"
+      echo ""
+      echo "To completely remove Chauffeur:"
+      echo "  chauf uninstall --purge"
+      return 2  # Special return code for "already installed"
+    else
+      echo "Chauffeur is installed but not from this workspace."
+      echo "Workspace binary will be placed at: ${workspace_chauf}"
+      echo "This will coexist with your existing installation."
+      echo ""
+      return 0  # Continue with installation
+    fi
+  fi
+  
+  return 0  # No existing installation, continue
+}
+
+check_go_requirements() {
+  if ! command -v go >/dev/null 2>&1; then
+    warn "Go is required to build Chauffeur CLI."
+    warn "Please install Go 1.22 or newer:"
+    warn "  - On Arch Linux: sudo pacman -S go"
+    warn "  - On Ubuntu/Debian: sudo apt install golang-go"
+    warn "  - On macOS (with Homebrew): brew install go"
+    warn "  - Visit: https://golang.org/dl/"
+    return 1
+  fi
+
+  local go_version
+  go_version=$(go version 2>/dev/null | sed -E 's/go version go([0-9]+\.[0-9]+).*/\1/')
+  
+  # Check if Go version is 1.22 or higher (comparing major.minor versions)
+  if [[ -n "${go_version}" ]]; then
+    local major="${go_version%%.*}"  # Get major version (1)
+    local minor="${go_version#*.}"  # Get minor version (22 or higher)
+    local min_major=1
+    local min_minor=22
+    
+    if [[ "${major}" -lt "${min_major}" ]] || [[ "${major}" -eq "${min_major}" && "${minor}" -lt "${min_minor}" ]]; then
+      warn "Found Go ${go_version}. Chauffeur requires Go 1.22 or newer."
+      warn "Please upgrade your Go installation."
+      return 1
+    else
+      success "Found Go ${go_version} ✓"
+      return 0
+    fi
+  else
+    warn "Unable to determine Go version."
+    return 1
+  fi
 }
 
 success() {
@@ -71,6 +151,33 @@ ensure_directories() {
   done
 }
 
+trim_trailing_whitespace_and_empty_lines() {
+  local rc_file="$1"
+  
+  # Remove trailing whitespace and clean up trailing empty lines
+  if [[ -f "${rc_file}" ]]; then
+    local temp_file
+    temp_file="$(mktemp)"
+    
+    # Remove trailing whitespace from each line
+    sed 's/[[:space:]]*$//' "${rc_file}" > "${temp_file}"
+    
+    # Remove trailing empty lines using a simple approach
+    # Keep removing empty lines from the end as long as they exist
+    while [[ -s "${temp_file}" ]]; do
+      last_line=$(tail -n 1 "${temp_file}")
+      if [[ -n "${last_line}" ]]; then
+        break  # Last line is not empty, we're done
+      fi
+      # Remove the last empty line
+      head -n -1 "${temp_file}" > "${temp_file}.tmp"
+      mv "${temp_file}.tmp" "${temp_file}"
+    done
+    
+    mv "${temp_file}" "${rc_file}"
+  fi
+}
+
 ensure_path_export() {
   local rc_file=""
 
@@ -97,7 +204,25 @@ ensure_path_export() {
   if grep -qxF "${PATH_LINE}" "${rc_file}"; then
     info "PATH already contains ${BIN_DIR}; skipping ${rc_file} update"
   else
-    printf '\n%s\n' "${PATH_LINE}" >>"${rc_file}"
+    # Clean up trailing whitespace to prevent accumulation
+    trim_trailing_whitespace_and_empty_lines "${rc_file}"
+    
+    # Check if the file ends with a newline and if the last line is empty
+    local last_line_nl last_line_content
+    if [[ -f "${rc_file}" && -s "${rc_file}" ]]; then
+      last_line_nl=$(tail -n 1 "${rc_file}")
+      # Check if last line is empty (contains only whitespace or nothing)
+      if [[ "${last_line_nl//[[:space:]]/}" == "" ]]; then
+        # Last line is empty/whitespace, just add PATH without extra newline
+        printf '%s\n' "${PATH_LINE}" >>"${rc_file}"
+      else
+        # Last line has content, add PATH with preceding newline
+        printf '\n%s\n' "${PATH_LINE}" >>"${rc_file}"
+      fi
+    else
+      # File is empty or doesn't exist, just add PATH line
+      printf '%s\n' "${PATH_LINE}" >>"${rc_file}"
+    fi
     info "Added ${BIN_DIR} to PATH via ${rc_file}"
   fi
 }
@@ -105,7 +230,7 @@ ensure_path_export() {
 build_local_chauf() {
   local output_path="$1"
 
-  if [[ ! -d "${LOCAL_SRC_DIR}" ]] || [[ "${CHAUF_BOOTSTRAP:-}" == "1" ]]; then
+  if [[ ! -d "${LOCAL_SRC_DIR}" ]]; then
     return 1
   fi
 
@@ -205,6 +330,15 @@ is_git_repo() {
 
 bootstrap_from_remote() {
   section "Bootstrap"
+  
+  # Check Go requirements before cloning
+  if ! check_go_requirements; then
+    section "Failed"
+    error "Go is required to build Chauffeur CLI from source."
+    error "Please install Go 1.22 or newer and try again."
+    exit 1
+  fi
+  
   if ! command -v git >/dev/null 2>&1; then
     error "git is required to clone ${REPO_URL}."
     exit 1
@@ -231,6 +365,38 @@ bootstrap_from_remote() {
 }
 
 run_local_install() {
+  # Check if chauf is already installed (skip for bootstrap since we checked before cloning)
+  if [[ "${CHAUF_BOOTSTRAP:-}" != "1" ]]; then
+    section "Installation Check"
+    check_existing_chauf
+    local check_result=$?
+    if [[ ${check_result} -eq 2 ]]; then
+      # Function returned 2 - chauf already installed in this workspace
+      exit 0
+    fi
+  fi
+
+  # For local installation, check Go requirements first
+  if [[ "${CHAUF_BOOTSTRAP:-}" != "1" ]]; then
+    section "Requirements"
+    if ! check_go_requirements; then
+      section "Failed"
+      error "Go is required to build Chauffeur CLI from source."
+      error "Please install Go 1.22 or newer and try again."
+      exit 1
+    fi
+  fi
+
+  # If we're in bootstrap mode, re-evaluate SCRIPT_DIR since we're now in the cloned repo
+  if [[ "${CHAUF_BOOTSTRAP:-}" == "1" ]]; then
+    if [[ -n "${BASH_SOURCE:-}" ]] && [[ ${#BASH_SOURCE[@]} -gt 0 ]]; then
+      SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+      # Update LOCAL_SRC_DIR to point to the cloned repo's cli directory
+      LOCAL_SRC_DIR="${SCRIPT_DIR}/cli"
+      info "Updated SCRIPT_DIR to cloned repo: ${SCRIPT_DIR}"
+    fi
+  fi
+
   section "Workspace"
   info "Creating workspace directories"
   ensure_directories
