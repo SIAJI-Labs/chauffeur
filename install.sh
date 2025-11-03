@@ -8,21 +8,26 @@ SHIMS_DIR="${BIN_DIR}/shims"
 PATH_LINE='export PATH="$HOME/.chauffeur/bin:$PATH"'
 SHELL_NAME="$(basename "${SHELL:-}")"
 LOCAL_SRC_DIR="${SCRIPT_DIR}/cli"
+REPO_URL="${CHAUF_REPO_URL:-https://github.com/SIAJI-Labs/chauffeur.git}"
 
-timestamp() {
-  date '+%Y-%m-%d %H:%M:%S'
+section() {
+  printf '\n[ INSTALL ] %s\n' "$(echo "$1" | tr '[:lower:]' '[:upper:]')"
 }
 
-log() {
-  printf '[%s] [INFO] %s\n' "$(timestamp)" "$*"
-}
-
-warn() {
-  printf '[%s] [WARN] %s\n' "$(timestamp)" "$*" >&2
+info() {
+  printf '    - %s\n' "$*"
 }
 
 success() {
-  printf '[%s] [ OK ] %s\n' "$(timestamp)" "$*"
+  printf '    [OK] %s\n' "$*"
+}
+
+warn() {
+  printf '    [WARN] %s\n' "$*" >&2
+}
+
+error() {
+  printf '    [ERR] %s\n' "$*" >&2
 }
 
 ensure_directories() {
@@ -69,10 +74,10 @@ ensure_path_export() {
 
   touch "${rc_file}"
   if grep -qxF "${PATH_LINE}" "${rc_file}"; then
-    log "PATH already contains ${BIN_DIR}; skipping ${rc_file} update"
+    info "PATH already contains ${BIN_DIR}; skipping ${rc_file} update"
   else
     printf '\n%s\n' "${PATH_LINE}" >>"${rc_file}"
-    log "Added ${BIN_DIR} to PATH via ${rc_file}"
+    info "Added ${BIN_DIR} to PATH via ${rc_file}"
   fi
 }
 
@@ -93,7 +98,7 @@ build_local_chauf() {
   if (cd "${SCRIPT_DIR}" && GO111MODULE=on go build -o "${tmp_binary}" ./cli); then
     install -m 0755 "${tmp_binary}" "${output_path}"
     rm -f "${tmp_binary}"
-    log "Built chauf binary from Go sources at ${output_path}"
+    success "Built chauf binary from Go sources"
     return 0
   else
     rm -f "${tmp_binary}"
@@ -109,7 +114,7 @@ ensure_chauf_binary() {
   local build_status=0
 
   if [[ -x "${binary_path}" ]]; then
-    log "Found existing chauf binary at ${binary_path}"
+    info "Found existing chauf binary at ${binary_path}"
     return 0
   fi
 
@@ -124,7 +129,7 @@ ensure_chauf_binary() {
       if curl -fL "${CHAUF_RELEASE_URL}" -o "${tmp_file}"; then
         mv "${tmp_file}" "${binary_path}"
         chmod +x "${binary_path}"
-        log "Downloaded chauf to ${binary_path}"
+        success "Downloaded chauf binary"
         downloaded=1
         return 0
       else
@@ -143,9 +148,9 @@ ensure_chauf_binary() {
 
   if [[ -x "${binary_path}" ]]; then
     if [[ "${downloaded}" -eq 1 ]]; then
-      log "chauf binary is ready."
+      info "chauf binary downloaded"
     else
-      log "Make sure ${binary_path} remains executable."
+      info "Make sure ${binary_path} remains executable."
     fi
     return 0
   fi
@@ -162,10 +167,51 @@ ensure_chauf_binary() {
   return 2
 }
 
-main() {
+is_git_repo() {
+  if [[ -d "${SCRIPT_DIR}/.git" ]]; then
+    return 0
+  fi
+  if command -v git >/dev/null 2>&1 && git -C "${SCRIPT_DIR}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    return 0
+  fi
+  return 1
+}
+
+bootstrap_from_remote() {
+  section "Bootstrap"
+  if ! command -v git >/dev/null 2>&1; then
+    error "git is required to clone ${REPO_URL}."
+    exit 1
+  fi
+
+  local tmp_dir
+  tmp_dir="$(mktemp -d)"
+  info "Cloning Chauffeur repository"
+  if ! git clone --depth 1 --quiet "${REPO_URL}" "${tmp_dir}/chauffeur"; then
+    rm -rf "${tmp_dir}"
+    error "Failed to clone ${REPO_URL}."
+    exit 1
+  fi
+
+  info "Running installer from cloned repository"
+  if CHAUF_BOOTSTRAP=1 "${tmp_dir}/chauffeur/install.sh" "$@"; then
+    rm -rf "${tmp_dir}"
+    exit 0
+  else
+    local status=$?
+    rm -rf "${tmp_dir}"
+    exit "${status}"
+  fi
+}
+
+run_local_install() {
+  section "Workspace"
+  info "Creating workspace directories"
   ensure_directories
+  info "Ensuring PATH exports"
   ensure_path_export
 
+  section "Binary"
   local binary_ready=0
   if ensure_chauf_binary; then
     binary_ready=1
@@ -180,14 +226,22 @@ main() {
     esac
   fi
 
+  section "Complete"
   success "Workspace ready at ${WORKSPACE}"
-  log "Bin directory: ${BIN_DIR}"
-
+  info "Bin directory: ${BIN_DIR}"
   if [[ "${binary_ready}" -eq 0 ]]; then
     warn "chauf binary is not installed; see guidance above."
   fi
+  info "Reload your shell (e.g. 'source ~/.zshrc' or open a new terminal) so 'chauf' is available."
+}
 
-  log "Reload your shell (e.g. 'source ~/.zshrc' or open a new terminal) so 'chauf' is available."
+main() {
+  if ! is_git_repo; then
+    bootstrap_from_remote "$@"
+    return
+  fi
+
+  run_local_install "$@"
 }
 
 main "$@"
