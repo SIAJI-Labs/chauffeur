@@ -10,12 +10,17 @@ import (
 const version = "0.1.0"
 
 func usage() {
-	fmt.Println(`Chauffeur CLI
+	fmt.Print(`Chauffeur CLI
 
 Usage:
   chauf --version        Print the current Chauffeur version.
   chauf version          Same as --version.
   chauf --help           Show this message.
+  chauf install <service>
+                         Install Chauffeur-managed services (caddy, nginx).
+  chauf nginx [args...]  Run the managed nginx binary with passthrough args.
+  chauf caddy [args...]  Run the managed caddy binary with passthrough args.
+  chauf start            Check service prerequisites before starting Chauffeur.
   chauf uninstall        Remove the Chauffeur workspace (keeps runtimes by default).
   chauf uninstall --purge
                          Remove the workspace and delete runtimes/caches.
@@ -34,12 +39,29 @@ func main() {
 		fmt.Printf("chauf %s\n", version)
 	case "--help", "-h":
 		usage()
+	case "install":
+		if err := commands.RunInstall(args[1:]); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+	case "start":
+		if err := commands.RunStart(args[1:]); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
 	case "uninstall":
 		if err := commands.RunUninstall(args[1:]); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
 	default:
+		if commands.IsKnownService(args[0]) {
+			if err := commands.RunServiceCommand(args[0], args[1:]); err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				os.Exit(1)
+			}
+			return
+		}
 		fmt.Fprintf(os.Stderr, "Unsupported command: %s\n", args[0])
 		fmt.Fprintln(os.Stderr, "Run 'chauf --help' for available commands.")
 		os.Exit(1)

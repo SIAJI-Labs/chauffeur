@@ -1,0 +1,837 @@
+package installers
+
+import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"time"
+
+	"github.com/siaji/chauffeur/cli/internal/releases"
+)
+
+const nginxBinaryName = "nginx"
+
+/**
+ * nginxSigningKey represents a trusted nginx signing key and its metadata.
+ */
+type nginxSigningKey struct {
+	Name        string
+	URL         string
+	Fingerprint string
+	UIDs        []string
+	Optional    bool
+}
+
+var nginxSigningKeys = []nginxSigningKey{
+	{
+		Name:        "nginx signing key <signing-key@nginx.com>",
+		URL:         "https://nginx.org/keys/nginx_signing.key",
+		Fingerprint: "ABF5BD826BD0E86F09B160A25EAB6AB0133E7F96",
+		UIDs:        []string{"nginx signing key <signing-key@nginx.com>", "nginx signing key"},
+		Optional:    true,
+	},
+	{
+		Name:        "Roman Arutyunyan <r.arutyunyan@f5.com>",
+		URL:         "https://nginx.org/keys/arut.key",
+		Fingerprint: "8540A6F18833A80E9C1653A42FD21310B49F6B46",
+		UIDs:        []string{"Roman Arutyunyan <r.arutyunyan@f5.com>", "Roman Arutyunyan", "r.arutyunyan@f5.com"},
+		Optional:    false,
+	},
+	{
+		Name:        "Sergey Kandaurov <pluknet@nginx.com>",
+		URL:         "https://nginx.org/keys/pluknet.key",
+		Fingerprint: "8540A6F18833A80E9C1653A42FD21310B49F6B46",
+		UIDs:        []string{"Sergey Kandaurov <pluknet@nginx.com>", "Sergey Kandaurov", "pluknet@nginx.com"},
+		Optional:    false,
+	},
+	{
+		Name:        "Serguei Beloussov <sb@openmailbox.org>",
+		URL:         "https://nginx.org/keys/sb.key",
+		Fingerprint: "8540A6F18833A80E9C1653A42FD21310B49F6B46",
+		UIDs:        []string{"Serguei Beloussov", "sb@openmailbox.org"},
+		Optional:    false,
+	},
+	{
+		Name:        "Denys Fedoryshchenko <thresh@nginx.com>",
+		URL:         "https://nginx.org/keys/thresh.key",
+		Fingerprint: "8540A6F18833A80E9C1653A42FD21310B49F6B46",
+		UIDs:        []string{"Denys Fedoryshchenko <thresh@nginx.com>", "Denys Fedoryshchenko", "thresh@nginx.com"},
+		Optional:    false,
+	},
+}
+
+/**
+ * InstallNginxSource compiles Nginx from source into the Chauffeur workspace.
+ *
+ * @param opts Installer configuration containing prefix, force flag, and client.
+ * @return error when installation cannot complete successfully.
+ */
+func InstallNginxSource(opts InstallOptions) error {
+	if opts.Prefix == "" {
+		return errors.New("install prefix is required")
+	}
+
+	if opts.Client == nil {
+		opts.Client = &http.Client{Timeout: 60 * time.Second}
+	}
+
+	release, err := releases.LatestGitHubRelease(opts.Client, "nginx", "nginx")
+	if err != nil {
+		return fmt.Errorf("resolve latest Nginx release: %w", err)
+	}
+
+	tag := release.TagName
+	if tag == "" {
+		return errors.New("latest Nginx release has empty tag name")
+	}
+
+	version := strings.TrimPrefix(tag, "release-")
+	if version == tag {
+		version = strings.TrimPrefix(tag, "v")
+	}
+	if version == "" {
+		return fmt.Errorf("cannot derive version from tag %s", tag)
+	}
+
+	startNginxLogSection("Preparing")
+	logNginxInfo("Release tag: %s (version %s)", tag, version)
+	logNginxInfo("Install prefix: %s", filepath.Join(opts.Prefix, "nginx"))
+
+	binaryPath := filepath.Join(opts.Prefix, "nginx", "sbin", nginxBinaryName)
+	if !opts.Force {
+		if info, err := os.Stat(binaryPath); err == nil && info.Mode().IsRegular() {
+			return nil
+		}
+	}
+
+	tmpDir, err := os.MkdirTemp("", "chauffeur-nginx-*")
+	if err != nil {
+		return fmt.Errorf("create temp dir: %w", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	tarballName := fmt.Sprintf("nginx-%s.tar.gz", version)
+	tarballURL, ok := release.AssetURL(tarballName)
+	if !ok {
+		tarballURL = fmt.Sprintf("https://github.com/nginx/nginx/releases/download/%s/%s", tag, tarballName)
+	}
+
+	tarballPath := filepath.Join(tmpDir, tarballName)
+	startNginxLogSection("Download")
+	logNginxInfo("Source URL: %s", tarballURL)
+	logNginxInfo("Staging directory: %s", tmpDir)
+	logNginxInfo("Downloading tarball...")
+	size, err := downloadToFile(opts.Client, tarballURL, tarballPath, fmt.Sprintf("Download %s", tarballName))
+	if err != nil {
+		return fmt.Errorf("download nginx source: %w", err)
+	}
+	logNginxSuccess("Downloaded %s (%s)", tarballName, humanBytes(size))
+
+	startNginxLogSection("Verification")
+	logNginxInfo("Validating PGP signature")
+	if err := verifyNginxSignature(opts.Client, tarballPath, tarballName, tmpDir); err != nil {
+		return fmt.Errorf("verify PGP signature: %w", err)
+	}
+
+	startNginxLogSection("Checksum")
+	sum, algo, err := fetchNginxChecksum(opts.Client, release, tag, version, tarballName)
+	if err != nil {
+		return fmt.Errorf("resolve nginx checksum: %w", err)
+	}
+
+	if err := handleChecksum(tarballPath, sum, algo); err != nil {
+		return err
+	}
+
+	startNginxLogSection("Build")
+	extractRoot := filepath.Join(tmpDir, "src")
+	sourceDir := filepath.Join(extractRoot, fmt.Sprintf("nginx-%s", version))
+	logNginxInfo("Extracting sources to %s", extractRoot)
+	if err := untar(tarballPath, extractRoot); err != nil {
+		return fmt.Errorf("extract nginx source: %w", err)
+	}
+	logNginxSuccess("Sources extracted")
+
+	logNginxInfo("Configuring and compiling nginx")
+	if err := buildAndInstallNginx(opts.Prefix, sourceDir); err != nil {
+		return err
+	}
+	logNginxSuccess("nginx built and installed to %s", filepath.Join(opts.Prefix, "nginx"))
+
+	startNginxLogSection("Finalize")
+	logNginxInfo("Ensuring workspace layout")
+	if err := ensureNginxLayout(opts.Prefix); err != nil {
+		return err
+	}
+	logNginxSuccess("Runtime layout ready")
+
+	logNginxInfo("Writing nginx shim")
+	if err := writeShim(opts.Prefix, nginxBinaryName, binaryPath); err != nil {
+		return err
+	}
+	logNginxSuccess("Shim written to %s", filepath.Join(opts.Prefix, "bin", nginxBinaryName))
+
+	logNginxInfo("Writing default configuration")
+	if err := writeDefaultNginxConf(opts.Prefix); err != nil {
+		return err
+	}
+	logNginxSuccess("Default nginx.conf ready")
+
+	return nil
+}
+
+/**
+ * fetchNginxChecksum discovers an appropriate checksum for the requested tarball.
+ *
+ * @param client      HTTP client used for downloading assets.
+ * @param release     GitHub release metadata for nginx.
+ * @param tag         Original release tag string.
+ * @param version     Normalized version string.
+ * @param tarballName Target tarball file name.
+ * @return Matching checksum string, algorithm name, or empty string when none found.
+ */
+func fetchNginxChecksum(client *http.Client, release releases.GitHubRelease, tag, version, tarballName string) (string, string, error) {
+	// Prefer release-specific checksum assets.
+	if url, ok := release.AssetURL(tarballName + ".sha512"); ok {
+		content, err := downloadText(client, url)
+		if err == nil {
+			if sum, err := checksumFromContent(content, tarballName); err == nil {
+				sum = strings.ToLower(sum)
+				return sum, "sha512", nil
+			}
+			if sum, err := checksumFromContent(content, ""); err == nil {
+				sum = strings.ToLower(sum)
+				return sum, "sha512", nil
+			}
+		}
+	}
+	if url, ok := release.AssetURL(tarballName + ".sha256"); ok {
+		content, err := downloadText(client, url)
+		if err == nil {
+			if sum, err := checksumFromContent(content, tarballName); err == nil {
+				sum = strings.ToLower(sum)
+				return sum, "sha256", nil
+			}
+			if sum, err := checksumFromContent(content, ""); err == nil {
+				sum = strings.ToLower(sum)
+				return sum, "sha256", nil
+			}
+		}
+	}
+
+	listCandidates := []string{
+		"sha512sums.txt",
+		"SHA512SUMS",
+		"checksums.txt",
+	}
+	for _, candidate := range listCandidates {
+		if url, ok := release.AssetURL(candidate); ok {
+			sum, err := checksumFromList(client, url, tarballName)
+			if err == nil {
+				sum = strings.ToLower(sum)
+				return sum, algorithmFromChecksum(sum, "sha512"), nil
+			}
+		}
+	}
+
+	// Fall back to upstream official checksum.
+	fallbackURL := fmt.Sprintf("https://nginx.org/download/%s.sha512", tarballName)
+	content, err := downloadText(client, fallbackURL)
+	if err == nil {
+		if sum, err := checksumFromContent(content, tarballName); err == nil {
+			sum = strings.ToLower(sum)
+			return sum, "sha512", nil
+		}
+		if sum, err := checksumFromContent(content, ""); err == nil {
+			sum = strings.ToLower(sum)
+			return sum, "sha512", nil
+		}
+	}
+
+	fallbackURL = fmt.Sprintf("https://nginx.org/download/%s.sha256", tarballName)
+	content, err = downloadText(client, fallbackURL)
+	if err == nil {
+		if sum, err := checksumFromContent(content, tarballName); err == nil {
+			sum = strings.ToLower(sum)
+			return sum, "sha256", nil
+		}
+		if sum, err := checksumFromContent(content, ""); err == nil {
+			sum = strings.ToLower(sum)
+			return sum, "sha256", nil
+		}
+	}
+
+	return "", "", nil
+}
+
+/**
+ * verifyNginxSignature validates the tarball using upstream detached signatures and pinned keys.
+ *
+ * @param client      HTTP client used for downloads.
+ * @param tarballPath Local path to the downloaded tarball.
+ * @param tarballName Tarball file name (used for forming URLs).
+ * @param workDir     Workspace directory for temporary signature/key storage.
+ * @return error when signature verification fails.
+ */
+func verifyNginxSignature(client *http.Client, tarballPath, tarballName, workDir string) error {
+	if _, err := exec.LookPath("gpg"); err != nil {
+		return fmt.Errorf("gpg not found in PATH: %w", err)
+	}
+
+	sigURL := fmt.Sprintf("https://nginx.org/download/%s.asc", tarballName)
+	sigPath := tarballPath + ".asc"
+	logNginxInfo("Downloading signature into %s", sigPath)
+	if _, err := downloadToFile(client, sigURL, sigPath, fmt.Sprintf("Signature %s", tarballName)); err != nil {
+		return fmt.Errorf("download signature: %w", err)
+	}
+
+	gpgHome, err := os.MkdirTemp(workDir, "gpg-")
+	if err != nil {
+		return fmt.Errorf("create gpg homedir: %w", err)
+	}
+	if err := os.Chmod(gpgHome, 0o700); err != nil {
+		return fmt.Errorf("chmod gpg homedir: %w", err)
+	}
+	defer os.RemoveAll(gpgHome)
+
+	keysDir := filepath.Join(workDir, "keys")
+	if err := os.MkdirAll(keysDir, 0o755); err != nil {
+		return fmt.Errorf("create keys dir: %w", err)
+	}
+
+	for idx, key := range nginxSigningKeys {
+		keyFile := filepath.Join(keysDir, fmt.Sprintf("nginx-key-%d.asc", idx))
+		logNginxInfo("Fetching signing key: %s", key.Name)
+		if _, err := downloadToFile(client, key.URL, keyFile, fmt.Sprintf("Key %s", key.Name)); err != nil {
+			return fmt.Errorf("download signing key %s: %w", key.Name, err)
+		}
+		if err := importNginxKey(gpgHome, keyFile, key.Fingerprint, key.Optional, key.Name); err != nil {
+			return err
+		}
+	}
+
+	if err := verifySignatureWithGPG(gpgHome, tarballPath, sigPath); err != nil {
+		return err
+	}
+	logNginxSuccess("PGP signature verified successfully")
+	return nil
+}
+
+/**
+ * importNginxKey imports a signing key after ensuring its fingerprint matches the pinned value.
+ *
+ * @param gpgHome     Isolated gpg home directory.
+ * @param keyPath     Path to the downloaded key file.
+ * @param fingerprint Expected fingerprint (no spaces).
+ * @param optional    Whether the key is optional (mismatch produces warning instead of error).
+ * @param name        Human-readable key label for logging.
+ * @return error when fingerprint mismatches for mandatory keys or import fails.
+ */
+func importNginxKey(gpgHome, keyPath, fingerprint string, optional bool, name string) error {
+	fp, err := readKeyFingerprint(gpgHome, keyPath)
+	if err != nil {
+		if optional {
+			fmt.Printf("[nginx] Warning: signing key %s could not be inspected (%v); skipping optional key\n", name, err)
+			return nil
+		}
+		return err
+	}
+
+	shouldImport, err := evaluateFingerprint(fp, fingerprint, name, optional)
+	if err != nil {
+		if optional {
+			fmt.Printf("[nginx] Warning: signing key %s skipped (%v)\n", name, err)
+			return nil
+		}
+		return err
+	}
+	if !shouldImport {
+		return nil
+	}
+
+	cmd := exec.Command("gpg",
+		"--homedir", gpgHome,
+		"--no-default-keyring",
+		"--batch",
+		"--import", keyPath,
+	)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("gpg import failed: %w\n%s", err, out)
+	}
+	return nil
+}
+
+/**
+ * readKeyFingerprint extracts the fingerprint from a key file without importing it.
+ *
+ * @param gpgHome Isolated gpg home directory.
+ * @param keyPath Path to the downloaded key file.
+ * @return Fingerprint string with uppercase hex characters.
+ */
+func readKeyFingerprint(gpgHome, keyPath string) (string, error) {
+	cmd := exec.Command("gpg",
+		"--homedir", gpgHome,
+		"--no-default-keyring",
+		"--import-options", "show-only",
+		"--dry-run",
+		"--with-colons",
+		"--fingerprint",
+		keyPath,
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		fp, fallbackErr := readFingerprintFallback(gpgHome, keyPath)
+		if fallbackErr != nil {
+			return "", fmt.Errorf("gpg fingerprint check failed: %w\n%s", err, out)
+		}
+		return fp, nil
+	}
+
+	fp := parseFingerprintOutput(string(out))
+	if fp == "" {
+		return "", errors.New("fingerprint not found in key material")
+	}
+	return fp, nil
+}
+
+func parseFingerprintOutput(output string) string {
+	for _, line := range strings.Split(output, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "fpr:") {
+			parts := strings.Split(line, ":")
+			if len(parts) > 9 {
+				return strings.ToUpper(parts[9])
+			}
+		}
+	}
+	return ""
+}
+
+func readFingerprintFallback(gpgHome, keyPath string) (string, error) {
+	cmd := exec.Command("gpg",
+		"--homedir", gpgHome,
+		"--no-default-keyring",
+		"--batch",
+		"--import", keyPath,
+	)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return "", fmt.Errorf("fallback import failed: %w\n%s", err, out)
+	}
+
+	cmd = exec.Command("gpg",
+		"--homedir", gpgHome,
+		"--no-default-keyring",
+		"--with-colons",
+		"--fingerprint",
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("fallback fingerprint read failed: %w\n%s", err, out)
+	}
+	return parseFingerprintOutput(string(out)), nil
+}
+
+/**
+ * evaluateFingerprint decides whether to import a key based on expected vs actual fingerprint.
+ *
+ * @param actual    Fingerprint reported by gpg for the key file.
+ * @param expected  Pinned fingerprint from nginx.org.
+ * @param name      Human-readable key label for logging.
+ * @param optional  Whether the key is optional.
+ * @return Tuple (shouldImport, error). When optional mismatches occur, returns false and nil.
+ */
+func evaluateFingerprint(actual, expected, name string, optional bool) (bool, error) {
+	if strings.EqualFold(actual, expected) {
+		return true, nil
+	}
+
+	if optional {
+		fmt.Printf("[nginx] Warning: signing key %s fingerprint mismatch (expected %s, got %s); skipping optional key\n", name, expected, actual)
+		return false, nil
+	}
+
+	return false, fmt.Errorf("unexpected key fingerprint for %s: got %s expected %s", name, actual, expected)
+}
+
+/**
+ * verifySignatureWithGPG validates the tarball signature and enforces trusted fingerprints.
+ *
+ * @param gpgHome     Isolated gpg home directory populated with trusted keys.
+ * @param tarballPath Path to the downloaded tarball.
+ * @param sigPath     Path to the detached signature file.
+ * @return error when signature validation fails or signer is untrusted.
+ */
+func verifySignatureWithGPG(gpgHome, tarballPath, sigPath string) error {
+	cmd := exec.Command("gpg",
+		"--homedir", gpgHome,
+		"--no-default-keyring",
+		"--trust-model", "always",
+		"--batch",
+		"--status-fd=1",
+		"--verify", sigPath, tarballPath,
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("gpg signature verification failed: %w\n%s", err, out)
+	}
+
+	if !parseValidSignatures(string(out)) {
+		return errors.New("signature verified but signer fingerprint is not in the trusted set")
+	}
+
+	return nil
+}
+
+/**
+ * parseValidSignatures scans GPG status output for trusted signer fingerprints.
+ *
+ * @param status Raw status output from gpg --status-fd.
+ * @return true when a trusted fingerprint is observed in VALIDSIG records.
+ */
+func parseValidSignatures(status string) bool {
+	fpTrusted := map[string]struct{}{}
+	var uidTrusted []string
+	for _, k := range nginxSigningKeys {
+		if k.Fingerprint != "" {
+			fpTrusted[strings.ToUpper(strings.TrimSpace(k.Fingerprint))] = struct{}{}
+		}
+		for _, u := range k.UIDs {
+			uidTrusted = append(uidTrusted, strings.ToLower(strings.TrimSpace(u)))
+		}
+	}
+
+	var signerFPs []string
+	var signerUIDs []string
+	for _, line := range strings.Split(status, "\n") {
+		line = strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(line, "[GNUPG:] VALIDSIG "):
+			parts := strings.Fields(line)
+			for _, token := range parts[1:] {
+				value := strings.ToUpper(strings.TrimSpace(token))
+				if len(value) == 40 && isHexString(value) {
+					signerFPs = append(signerFPs, value)
+				}
+			}
+		case strings.HasPrefix(line, "[GNUPG:] GOODSIG "):
+			idx := strings.Index(line, "GOODSIG ")
+			if idx >= 0 {
+				rest := strings.TrimSpace(line[idx+8:])
+				sp := strings.IndexByte(rest, ' ')
+				if sp > 0 && sp+1 < len(rest) {
+					uid := strings.ToLower(strings.TrimSpace(rest[sp+1:]))
+					if uid != "" {
+						signerUIDs = append(signerUIDs, uid)
+					}
+				}
+			}
+		}
+	}
+	for _, fp := range signerFPs {
+		if _, ok := fpTrusted[fp]; ok {
+			return true
+		}
+	}
+	for _, seen := range signerUIDs {
+		for _, allow := range uidTrusted {
+			if seen == allow || strings.Contains(seen, allow) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func isHexString(s string) bool {
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if !(c >= '0' && c <= '9' || c >= 'A' && c <= 'F') {
+			return false
+		}
+	}
+	return true
+}
+
+func algorithmFromChecksum(sum, defaultAlgo string) string {
+	switch len(sum) {
+	case 128:
+		return "sha512"
+	case 64:
+		return "sha256"
+	default:
+		return defaultAlgo
+	}
+}
+
+func handleChecksum(tarballPath, sum, algo string) error {
+	sum = strings.ToLower(strings.TrimSpace(sum))
+	algo = strings.ToLower(strings.TrimSpace(algo))
+
+	if sum == "" {
+		if os.Getenv("CHAUF_REQUIRE_CHECKSUM") == "1" {
+			return fmt.Errorf("ERROR: nginx checksum required but no upstream checksum asset found")
+		}
+		fmt.Println("[nginx] No upstream checksum asset found; relying on PGP signature.")
+		if sha256Hex, err := fileSHA256(tarballPath); err == nil {
+			fmt.Printf("[nginx] Local SHA256: %s\n", sha256Hex)
+		} else {
+			fmt.Printf("[nginx] Warning: failed to compute local SHA256: %v\n", err)
+		}
+		if sha512Hex, err := fileSHA512(tarballPath); err == nil {
+			fmt.Printf("[nginx] Local SHA512: %s\n", sha512Hex)
+		} else {
+			fmt.Printf("[nginx] Warning: failed to compute local SHA512: %v\n", err)
+		}
+		return nil
+	}
+
+	if err := validateChecksum(tarballPath, sum); err != nil {
+		actual := "unknown"
+		switch algo {
+		case "sha512":
+			if digest, hashErr := fileSHA512(tarballPath); hashErr == nil {
+				actual = digest
+			}
+		case "sha256":
+			if digest, hashErr := fileSHA256(tarballPath); hashErr == nil {
+				actual = digest
+			}
+		default:
+			if digest, hashErr := fileSHA512(tarballPath); hashErr == nil {
+				actual = digest
+			}
+		}
+		return fmt.Errorf("ERROR: nginx tarball checksum mismatch (expected %s got %s)", sum, actual)
+	}
+
+	if algo == "" {
+		algo = algorithmFromChecksum(sum, "sha512")
+	}
+	fmt.Printf("[nginx] Upstream checksum verified (%s).\n", algo)
+	return nil
+}
+
+func startNginxLogSection(title string) {
+	fmt.Printf("\n[ NGINX ] %s\n", strings.ToUpper(title))
+}
+
+func logNginxInfo(format string, args ...interface{}) {
+	fmt.Printf("    - %s\n", fmt.Sprintf(format, args...))
+}
+
+func logNginxSuccess(format string, args ...interface{}) {
+	fmt.Printf("    [OK] %s\n", fmt.Sprintf(format, args...))
+}
+
+/**
+ * untar extracts the tarball contents into dest while preserving permissions.
+ *
+ * @param tarball Path to the downloaded nginx source tarball.
+ * @param dest    Destination directory for extraction.
+ * @return error when extraction fails.
+ */
+func untar(tarball, dest string) error {
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		return err
+	}
+
+	file, err := os.Open(tarball)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	gzr, err := gzip.NewReader(file)
+	if err != nil {
+		return err
+	}
+	defer gzr.Close()
+
+	tr := tar.NewReader(gzr)
+	for {
+		header, err := tr.Next()
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+
+		target := filepath.Join(dest, header.Name)
+		switch header.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(target, 0o755); err != nil {
+				return err
+			}
+		case tar.TypeReg:
+			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+				return err
+			}
+			out, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(header.Mode))
+			if err != nil {
+				return err
+			}
+			if _, err := io.Copy(out, tr); err != nil {
+				out.Close()
+				return err
+			}
+			if err := out.Close(); err != nil {
+				return err
+			}
+		default:
+			continue
+		}
+	}
+}
+
+/**
+ * buildAndInstallNginx configures, builds, and installs nginx into the workspace.
+ *
+ * @param prefix    Chauffeur workspace root.
+ * @param sourceDir Directory containing the extracted nginx sources.
+ * @return error when configure/build/install steps fail.
+ */
+func buildAndInstallNginx(prefix, sourceDir string) error {
+	confArgs := []string{
+		"--prefix=" + filepath.Join(prefix, "nginx"),
+		"--conf-path=" + filepath.Join(prefix, "nginx", "etc", "nginx.conf"),
+		"--pid-path=" + filepath.Join(prefix, "nginx", "nginx.pid"),
+		"--http-log-path=" + filepath.Join(prefix, "nginx", "logs", "access.log"),
+		"--error-log-path=" + filepath.Join(prefix, "nginx", "logs", "error.log"),
+		"--with-pcre-jit",
+		"--with-http_gzip_static_module",
+		"--with-http_ssl_module",
+	}
+
+	if err := runCommand(sourceDir, "./configure", confArgs...); err != nil {
+		return fmt.Errorf("configure nginx: %w", err)
+	}
+
+	makeArgs := []string{"-j"}
+	if n := runtime.NumCPU(); n > 0 {
+		makeArgs = append(makeArgs, fmt.Sprintf("%d", n))
+	}
+	if err := runCommand(sourceDir, "make", makeArgs...); err != nil {
+		return fmt.Errorf("make nginx: %w", err)
+	}
+
+	if err := runCommand(sourceDir, "make", "install"); err != nil {
+		return fmt.Errorf("make install nginx: %w", err)
+	}
+
+	return nil
+}
+
+/**
+ * runCommand executes a command inside dir and returns stderr/stdout on failure.
+ *
+ * @param dir  Working directory for execution.
+ * @param name Command binary to run.
+ * @param args Additional command arguments.
+ * @return error when the command exits non-zero.
+ */
+func runCommand(dir, name string, args ...string) error {
+	cmd := exec.Command(name, args...)
+	cmd.Dir = dir
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("%s %s failed: %w\nstdout:\n%s\nstderr:\n%s", name, strings.Join(args, " "), err, stdout.String(), stderr.String())
+	}
+	return nil
+}
+
+/**
+ * ensureNginxLayout creates the directory structure nginx expects inside the workspace.
+ *
+ * @param prefix Chauffeur workspace root.
+ * @return error if any directory cannot be created.
+ */
+func ensureNginxLayout(prefix string) error {
+	paths := []string{
+		filepath.Join(prefix, "nginx", "etc"),
+		filepath.Join(prefix, "nginx", "conf.d"),
+		filepath.Join(prefix, "nginx", "sites-available"),
+		filepath.Join(prefix, "nginx", "sites-enabled"),
+		filepath.Join(prefix, "nginx", "logs"),
+	}
+
+	for _, path := range paths {
+		if err := os.MkdirAll(path, 0o755); err != nil {
+			return fmt.Errorf("ensure nginx path %s: %w", path, err)
+		}
+	}
+
+	return nil
+}
+
+/**
+ * writeDefaultNginxConf seeds the workspace with a minimal nginx.conf and helper file.
+ *
+ * @param prefix Chauffeur workspace root.
+ * @return error when configuration files cannot be written.
+ */
+func writeDefaultNginxConf(prefix string) error {
+	confPath := filepath.Join(prefix, "nginx", "etc", "nginx.conf")
+	if _, err := os.Stat(confPath); err == nil {
+		return nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("stat nginx.conf: %w", err)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(confPath), 0o755); err != nil {
+		return fmt.Errorf("ensure nginx etc: %w", err)
+	}
+
+	content := `worker_processes auto;
+error_log /dev/stdout info;
+pid ` + filepath.Join(prefix, "nginx", "nginx.pid") + `;
+
+events {
+	worker_connections 1024;
+}
+
+http {
+	include       mime.types;
+	default_type  application/octet-stream;
+	sendfile        on;
+	keepalive_timeout  65;
+
+	include ` + filepath.Join(prefix, "nginx", "conf.d", "*.conf") + `;
+}
+`
+
+	if err := os.WriteFile(confPath, []byte(content), 0o644); err != nil {
+		return fmt.Errorf("write nginx.conf: %w", err)
+	}
+
+	statusConf := filepath.Join(prefix, "nginx", "conf.d", "chauffeur-status.conf.disabled")
+	if _, err := os.Stat(statusConf); err == nil || !errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+
+	if err := os.WriteFile(statusConf, []byte(`# Enable manually for status endpoint.
+# server {
+# 	listen 127.0.0.1:8080;
+# 	location /nginx_status {
+# 		stub_status;
+# 	}
+# }
+`), 0o644); err != nil {
+		return fmt.Errorf("write status config: %w", err)
+	}
+
+	return nil
+}
