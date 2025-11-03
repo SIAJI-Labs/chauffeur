@@ -6,6 +6,69 @@
 
 This document is the authoritative reference for autonomous agents working on Chauffeur. **Always consult and comply with the rules, command contracts, and filesystem layouts defined here before generating or modifying code.** Keep this file up to date when behavior changes, and avoid duplicating guidance elsewhere.
 
+## Documentation Synchronization Rule
+
+**MAINTAINANCE REQUIREMENT**: When making any code changes, feature additions, or architectural modifications, you **must** also update the project documentation to maintain real-time accuracy:
+
+### Required Documentation Updates on Every Change:
+
+1. **README.md** (Project Overview)
+   - Update status indicators (✅/🚧/📋/🎯)
+   - Add new commands to usage examples
+   - Update installation instructions if needed
+   - Adjust roadmap to reflect current priorities
+   - Modify Getting Started section for new features
+
+2. **docs/TODO_STATUS.md** (Development Tracking)
+   - Mark completed features as ✅ 
+   - Move in-progress items to appropriate status
+   - Update priority queue for new objectives
+   - Add new tasks for implemented functionality
+   - Adjust release notes and timelines
+
+3. **AGENTS.md** (Technical Contracts)
+   - Add new commands with proper contracts
+   - Update filesystem layout rules
+   - Modify command flags and behaviors
+   - Add new architectural decisions or constraints
+   - Update any installation or build requirements
+
+### Documentation Update Process:
+
+1. **Before Code Changes**: Review current documentation to understand existing context
+2. **During Code Implementation**: Note documentation changes needed
+3. **After Code Completion**: Update all three documentation files immediately
+4. **Verification**: Ensure all documentation reflects the actual implemented functionality
+
+### Synchronization Checklist:
+
+- [ ] README.md reflects current feature status and usage
+- [ ] docs/TODO_STATUS.md shows accurate development progress  
+- [ ] AGENTS.md contains up-to-date technical contracts
+- [ ] All examples work with current implementation
+- [ ] Status indicators are accurate (completed vs. in-progress)
+- [ ] Priority queue reflects current development focus
+
+**PRINCIPLE**: Documentation must be as current as the code. Users should never encounter outdated information or examples that don't work with the current implementation.
+
+### Cross-Document Consistency
+
+Ensure information consistency across all three documentation files:
+
+| Type | README.md | docs/TODO_STATUS.md | AGENTS.md |
+|------|-----------|-------------------|------------|
+| **Command Status** | ✅/🚧/📋/🎯 indicators | Detailed task breakdown | Implementation contracts |
+| **Feature Lists** | User-facing overview | Development progress tracking | Technical specifications |
+| **Command Examples** | Working examples | N/A | Contract definitions |
+| **Timeline** | Roadmap overview | Release notes & sprints | N/A |
+
+### Content Rules:
+
+1. **No Conflicting Information**: Features marked as ✅ in README must match completed status in TODO_STATUS.md
+2. **Synchronized Status**: Commands listed in AGENTS.md must appear in both README and TODO_STATUS.md appropriately
+3. **Consistent Terminology**: Use same command names, flag names, and descriptions across all documents
+4. **Real-Time Accuracy**: As soon as code is implemented, update documentation - no lag between implementation and documentation
+
 ---
 
 ## 1) Project Snapshot
@@ -48,6 +111,8 @@ This document is the authoritative reference for autonomous agents working on Ch
 | `chauf php isolate <version>` | _none_ | Pin current directory/project to `<version>` (per‑project override). |
 
 > **Version examples**: `8.3`, `8.2`, `7.4`. Keep semantic digits (major.minor), allow patch in metadata but runtime folder stays `major.minor`. Never writes to `/usr/bin`; shims live under `~/.chauffeur/bin/shims`.
+
+> **NOTE**: When implementing new commands or modifying existing ones, update all three documentation files immediately following the Documentation Synchronization Rule (see above).
 
 ---
 
