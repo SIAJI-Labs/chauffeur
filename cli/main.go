@@ -18,6 +18,7 @@ Usage:
   chauf --help           Show this message.
   chauf install <service> [version]
                          Install Chauffeur-managed services (caddy, nginx, php).
+  chauf php <command>    Manage PHP runtimes (use <version>, ...).
   chauf nginx [args...]  Run the managed nginx binary with passthrough args.
   chauf caddy [args...]  Run the managed caddy binary with passthrough args.
   chauf start            Check service prerequisites before starting Chauffeur.
@@ -41,6 +42,11 @@ func main() {
 		usage()
 	case "install":
 		if err := commands.RunInstall(args[1:]); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+	case "php":
+		if err := commands.RunPHP(args[1:]); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
