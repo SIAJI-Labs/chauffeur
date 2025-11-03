@@ -12,6 +12,77 @@ Chauffeur is a host-based CLI for managing per-project PHP development services 
 - 🚧 **Project Registration**: `chauf link/links` (in progress)  
 - Linux-focused workflow (Arch/Ubuntu/Debian friendly); other OS targets are not yet supported
 
+## Background & Inspiration
+
+Chauffeur emerged from a practical need for reliable development environment management on Linux. The project's journey began when I switched from macOS to Linux and found myself missing the elegant development environment tools that made other platforms so productive.
+
+### Previous Experience
+- **macOS with Valet**: Valet's seamless PHP version management and virtual host configuration made local development effortless
+- **Windows & macOS with Herd**: Herd provided similar convenience for both Windows and macOS development environments
+- **Linux Gap**: Upon moving to Linux, I discovered there was no equivalent tool with the same simplicity and reliability
+
+### The Linux Challenge
+While Linux offers powerful development capabilities, the ecosystem lacked a Valet/Herd equivalent:
+- Existing Linux solutions were often complex or required manual configuration
+- Most tools focused on Docker containers or virtualization, adding unnecessary overhead
+- Forked ports of Valet existed but weren't actively maintained, creating reliability concerns
+
+### Project Philosophy
+Chauffeur was created to fill this gap with a principled approach:
+- **Host-based**: Runs services directly on the host system without virtualization overhead
+- **Project-isolated**: Each project gets its own isolated environment without conflicts
+- **Simple yet Powerful**: Complex functionality hidden behind straightforward commands
+- **Reliable**: Built with robust error handling and clear failure messages
+- **Host Configuration Minimization**: Isolated environments minimize impact on host system configuration - configs and services are focused in project-specific directories to prevent conflicts with other packages and system-wide installations
+
+## Development Approach
+
+This project is unique in its development methodology. The majority of the codebase was written with assistance from AI tools, guided by architectural direction and project management. This approach allows for rapid development while maintaining high code quality through clear specifications and requirements.
+
+### AI-Assisted Development
+- **AI Coding**: AI tools generate the bulk of the implementation based on detailed specifications
+- **Human Direction**: I manage the architecture, design decisions, and overall project vision
+- **Iterative Refinement**: Code is reviewed, tested, and refined through collaboration
+
+### Why This Approach?
+The AI-assisted methodology enables:
+- **Rapid Prototyping**: Quickly test architectural ideas and implementation approaches
+- **Consistent Code Quality**: AI tools generate code that follows established patterns and requirements
+- **Focus on Architecture**: More time spent on design decisions and less on boilerplate implementation
+- **Documentation-First**: Comprehensive documentation written alongside code development
+
+### AI Collaboration Model
+The AI-assisted development approach is open to all contributors, not just for CLI development beginners. This methodology allows developers with varying experience levels to contribute meaningfully:
+
+- **For All Contributors**: Anyone can use AI tools to help generate code while following the `AGENTS.md` specifications and contracts
+- **Structured Process**: AI generates implementation based on detailed requirements and architectural direction
+- **Quality Assurance**: All AI-generated code should be reviewed, tested, and refined before integration
+- **Learning Opportunity**: Contributors gain experience by reviewing AI output and understanding system architecture
+
+### Leadership & Project Direction
+While I don't have strong background in CLI tool development, I focus on:
+- **Architecture & Design**: Managing the overall system design, command contracts, and project vision
+- **Requirements Management**: Defining what tools should do and how they should work
+- **Integration & Validation**: Testing AI-generated code and ensuring it meets project goals
+- **Community Coordination**: Facilitating collaboration and maintaining project direction
+
+### Contribution Guidelines
+Chauffeur is open source and welcomes diverse contribution approaches:
+
+- **AI-Assisted Development**: Follow the same methodology used for the core codebase - generate with AI while managing architecture
+- **Traditional Development**: Experienced CLI developers are highly valued for architectural insights and code reviews
+- **Mixed Approach**: Use AI where helpful, but focus on producing high-quality, well-tested code
+- **AGENTS.md Compliance**: All contributions must respect the contracts and specifications in the project knowledge base
+
+### Project Structure
+Given the unique development approach, the project is structured to succeed with various collaboration models:
+- **Solid Foundation**: AI-generated core functionality provides working CLI tools and installation system
+- **Extensible Architecture**: Well-defined contracts and modular structure support future enhancements
+- **Community Integration**: Open source model allows collective improvement and innovation
+- **Forking Option**: Community members can propose alternative approaches through forks if desired
+
+**Note**: While the AI-assisted nature means the project may not be perfect, it provides a solid starting point that the community can collectively improve. The combination of AI generation and human management creates a unique opportunity for rapid development while maintaining architectural integrity.
+
 ## Requirements
 
 - **Go 1.22 or newer** - Chauffeur CLI is built with Go and requires a compatible Go installation
