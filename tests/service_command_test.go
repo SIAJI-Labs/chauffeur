@@ -45,3 +45,27 @@ func TestRunServiceCommandMissingBinary(t *testing.T) {
 		t.Fatalf("expected not installed message, got %q", errOutput)
 	}
 }
+
+func TestRunServiceCommandPhpSuccess(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	binDir := filepath.Join(tmpHome, ".chauffeur", "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+
+	stub := filepath.Join(binDir, "php")
+	script := "#!/usr/bin/env bash\necho stub php \"$@\"\n"
+	if err := os.WriteFile(stub, []byte(script), 0o755); err != nil {
+		t.Fatalf("write stub: %v", err)
+	}
+
+	output := captureOutput(func() error {
+		return commands.RunServiceCommand("php", []string{"-v"})
+	})
+
+	if !strings.Contains(output, "stub php -v") {
+		t.Fatalf("expected stub output, got %q", output)
+	}
+}

@@ -10,7 +10,7 @@ import (
 	"github.com/siaji/chauffeur/cli/internal/system"
 )
 
-var serviceNames = []string{"caddy", "nginx"}
+var serviceNames = []string{"caddy", "nginx", "php"}
 
 // KnownServices returns a copy of registered service names.
 func KnownServices() []string {
@@ -66,6 +66,13 @@ func newServiceSpec(name, prefix string, info system.Info) (serviceSpec, error) 
 					Info:   info,
 				})
 			},
+		}, nil
+	case "php":
+		target := filepath.Join(prefix, "bin", "php")
+		return serviceSpec{
+			name:        "php",
+			description: "default PHP CLI managed by Chauffeur",
+			binaryPath:  target,
 		}, nil
 	default:
 		return serviceSpec{}, fmt.Errorf("unknown service %q", name)

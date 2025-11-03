@@ -133,8 +133,9 @@ created_at: 2025-10-30T12:00:00+07:00
 - **Idempotency**: Re-running `init`, `install`, `link` should never corrupt state.
 - **Install prefix**: All binaries/configs live under `~/.chauffeur/` only.
 - **PATH shims**: Create wrappers in `~/.chauffeur/bin/shims` for each binary.
-- **Dry‑runs**: When `--dry-run` is present, print planned actions without side‑effects.
-- **Logging**: Human‑readable logs to STDOUT; structured logs to `~/.chauffeur/<area>/logs`.
+- **Dry‑runs**: When `--dry-run` is present, print planned actions without side-effects.
+- **Logging**: Human-readable logs to STDOUT; structured logs to `~/.chauffeur/<area>/logs`.
+- **Failure logs**: Any command failure must append a detailed log entry under `<workspace>/logs/<component>/`. Log filenames follow `<action>[-<version>]-<YYYYMMDDTHHMMSSZ>.log`, and CLI output must surface the exact path.
 - **Errors**: Clear actionable messages with suggested fix.
 - **Permissions**: Do not require root; if privileged steps are unavoidable, print the exact `sudo` command for the user to run.
 - **CLI Modularity**: Keep `main.go` limited to dispatch; implement each command in its own Go file/package (e.g. `cli/commands/<command>.go`) with focused helpers.
