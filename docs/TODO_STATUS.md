@@ -32,61 +32,50 @@ This document tracks the current status of features and improvements for the Cha
 - [x] **Dev Mode**: `chauf self-update --dev` rebuilds from current directory when it's a valid chauffeur repository
 
 ### Project Registration Foundation
+- [x] **Complete Project Registration System**: `chauf link`, `chauf links`, and `chauf unlink` commands fully implemented
 - [x] **Project Configuration Writer**: `chauf link` generates `.chauffeur/projects/<slug>/project.yaml` with per-project PHP metadata
 - [x] **Project Layout Scaffolding**: Runtime socket and log directories created alongside project configuration
-- [x] **Test Coverage**: Comprehensive tests for `chauf link`, `chauf links`, and `chauf unlink` commands
+- [x] **Test Coverage**: Comprehensive tests for `chauf link`, `chauf links`, and `chauf unlink` commands  
+- [x] **Formatted Project Listing**: `chauf links` displays projects in formatted table with domains, SSL status, PHP versions, and creation timestamps
 - [x] **Intuitive Unlink**: `chauf unlink` defaults to current directory with confirmation
 - [x] **PHP Validation**: Link command validates specified PHP version is installed
 - [x] **Project Removal**: `chauf unlink` command with smart defaults (current directory when no flags) and multiple ways to remove projects (by slug, domain, path, or all) with proper confirmation
 
 ## 🎯 Current Focus Areas
 
-### Priority 1: Per-Project PHP Isolation
-- [x] **`chauf php isolate <version>`**: Pin specific PHP version to project directory
-- [ ] **Automatic Detection**: Detect project-specific PHP requirements from config files
-- [ ] **Version Mapping**: Handle multiple projects with different PHP versions simultaneously
-- [ ] **Validation**: Ensure project PHP version is installed and compatible
+### Priority 1: Complete Service Orchestration
+- [ ] **Service Lifecycle**: Complete `chauf start/stop/restart` commands for service management
+- [ ] **Process Management**: Service monitoring and automatic restarts (Nginx, PHP-FPM, Caddy)
+- [ ] **Service Templates**: Generate nginx/caddy configs for linked projects
+- [ ] **Health Monitoring**: Service status tracking and startup coordination
 
-### Priority 2: Project Linking & Service Registration
-- [x] **`chauf link` Command**: `chauf link --site <domain> [--ssl] [--php <version>] [--force]` registration with PHP validation
-- [x] **`chauf links` Command**: List all registered projects and their configurations
-- [x] **Configuration Persistence**: Store project settings in workspace structure via project YAML files
-- [x] **Multi-Project Support**: Handle multiple projects with different configurations
-- [ ] **Service Discovery**: Automatic detection of project requirements
-
-### Priority 3: Site Accessibility
+### Priority 2: Site Accessibility Implementation
 - [ ] **Nginx Virtual Hosts**: Automatic configuration for registered project domains
 - [ ] **Caddy Integration**: Local domain resolution (no `/etc/hosts` editing required)
 - [ ] **SSL Certificate Management**: Local SSL setup for development domains
-- [ ] **Service Health Checks**: Monitor service status and startup coordination
 - [ ] **Domain Routing**: Ensure projects are accessible via configured domains
 
-## 🚧 In Progress (Supporting Work)
-
-### Service Orchestration
-- [ ] **Service Lifecycle**: `chauf start/stop/restart` commands for service management
-- [ ] **Process Management**: Service monitoring and automatic restarts
-- [ ] **Configuration Templates**: Generate nginx/caddy configs for projects
-
-### Foundation Components
-- [ ] **Testing Framework**: Unit and integration tests for new features
-- [ ] **Error Handling**: Robust error reporting and recovery mechanisms
-- [ ] **Configuration Validation**: Validate project configs and service settings
-
-## 📋 Planned Features
-
-### CLI Experience Enhancement
-- [ ] **Logging Implementation**: Create the `cli/internal/logging` package based on the standardized specification
+### Priority 3: Enhanced Logging Implementation
+- [ ] **Logging Package**: Implement the `cli/internal/logging` package based on standardized specification
 - [ ] **Command Refactoring**: Update existing commands to use the new logging framework
 - [ ] **Progress Enhancement**: Implement download progress bars for all remote operations
 - [ ] **Terminal Detection**: Ensure proper fallback for non-interactive environments
 
-### Testing Framework Implementation
-- [ ] **Test Directory Restructure**: Reorganize tests into operation-based directories (tests/install/, tests/link/, etc.)
-- [ ] **Standard Helper Functions**: Create the enhanced test helpers specified in AGENTS.md
-- [ ] **Coverage Improvement**: Achieve 80% coverage across all packages
-- [ ] **Integration Tests**: Implement end-to-end workflow testing
-- [ ] **Benchmark Tests**: Add performance testing for critical operations
+## 🚧 In Progress (Supporting Work)
+
+### Service Orchestration  
+- [ ] **Service Lifecycle**: `chauf start/stop/restart` commands for service management (in progress)
+- [ ] **Process Management**: Service monitoring and automatic restarts  
+- [ ] **Configuration Templates**: Generate nginx/caddy configs for linked projects
+- [ ] **Automated Shims**: Path management for installed services
+
+### Foundation Components
+- [x] **Testing Framework**: Comprehensive testing structure with operation-based organization
+- [ ] **Error Handling**: Robust error reporting and recovery mechanisms
+- [ ] **Test Coverage**: Achieving 80% coverage across all packages as per new standards
+- [ ] **Configuration Validation**: Validate project configs and service settings
+
+## 📋 Planned Features
 
 ### Advanced PHP Features
 - [ ] **Extension Management**: Install PHP extensions during build
@@ -99,6 +88,12 @@ This document tracks the current status of features and improvements for the Cha
 - [ ] **SSL Certificate Management**: Automatic local SSL setup
 - [ ] **Reverse Proxy Configuration**: Advanced routing rules
 - [ ] **Service Dependencies**: Start services in correct order
+
+### Advanced PHP Features
+- [ ] **Extension Management**: Install PHP extensions during build
+- [ ] **PHP Configuration**: Custom php.ini per project
+- [ ] **Multiple PHP Versions**: Run multiple versions simultaneously
+- [ ] **Performance Tuning**: Optimized PHP-FPM pool settings
 
 ### Developer Experience
 - [ ] **Health Checks**: Service status monitoring
@@ -184,14 +179,16 @@ This document tracks the current status of features and improvements for the Cha
 ### v0.1.1 (Planned - Project Focus)
 - ✅ **Priority 1**: Per-project PHP isolation (`chauf php isolate`)
 - ✅ **Priority 1**: CLI self-update command (`chauf self-update`)
-- ✅ **Logging Standards**: Complete CLI logging specification with progress indicators and visual feedback (to be implemented)
-- 🎯 **Priority 2**: Project linking system (`chauf link`/`chauf links`)
-- 🚧 Basic service orchestration foundation
+- ✅ **Priority 2**: Complete project linking system (`chauf link`/`chauf links`/`chauf unlink`)
+- ✅ **Testing Standards**: Comprehensive testing framework with operation-based structure and 80% coverage requirements
+- 🎯 **Priority 1**: Service orchestration implementation (`chauf start`/`chauf stop`)
+- 🎯 **Priority 3**: Enhanced logging framework implementation
+- 🚧 Service orchestration foundation (in progress)
 
 ### v0.1.2 (Planned - Access Focus)
-- 🎯 **Priority 3**: Site accessibility with Nginx & Caddy
+- 🎯 **Priority 2**: Site accessibility with Nginx & Caddy
 - 🔗 Automatic domain resolution and SSL management
-- 🚧 Service orchestration (start/stop/health)
+- 🚧 Service orchestration completion (start/stop/health)
 
 ### v0.2.0 (Future)
 - 📋 Complete service management and monitoring
@@ -201,4 +198,4 @@ This document tracks the current status of features and improvements for the Cha
 ---
 
 *Last Updated: 2025-11-04*
-*Status reflects current development progress and priorities*
+*Status reflects current development progress and priorities with completed project registration system and testing framework*
