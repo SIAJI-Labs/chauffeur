@@ -45,6 +45,9 @@ func writeShim(prefix, name, target string) error {
  * @return Shell script body that delegates to target.
  */
 func shimContent(name, target string) string {
+	if name == "php" {
+		return projectAwarePHPShimContent()
+	}
 	return fmt.Sprintf(`#!/usr/bin/env bash
 set -euo pipefail
 TARGET="%s"
@@ -54,6 +57,91 @@ if [[ ! -x "$TARGET" ]]; then
 fi
 exec "$TARGET" "$@"
 `, target, name)
+}
+
+// projectAwarePHPShimContent generates content for a PHP shim that checks for project isolation.
+func projectAwarePHPShimContent() string {
+	return `#!/usr/bin/env bash
+set -euo pipefail
+
+# Get workspace directory
+WORKSPACE="${HOME}/.chauffeur"
+if [[ ! -d "$WORKSPACE" ]]; then
+  echo "Chauffeur workspace not found at $WORKSPACE" >&2
+  exit 1
+fi
+
+# Get current directory
+CWD="$(pwd)"
+
+# Function to find project config
+find_project_config() {
+  local project_dir="$1"
+  local cwd="$2"
+  
+  # First try standard projects directory approach
+  local projects_dir="$project_dir/projects"
+  local slug="$(basename "$cwd")"
+  local project_config="$projects_dir/$slug/project.yaml"
+  if [[ -f "$project_config" ]]; then
+    echo "$project_config"
+    return 0
+  fi
+  
+  # Additional fallback: search all project configs for matching path
+  if [[ -d "$projects_dir" ]]; then
+    for config_file in "$projects_dir"/*/project.yaml; do
+      if [[ -f "$config_file" ]]; then
+        # Extract path from config and check if it matches current directory or parent
+        local config_path
+        config_path=$(grep "^path:" "$config_file" 2>/dev/null | sed 's/path: *//' | xargs)
+        if [[ -n "$config_path" ]]; then
+          # Check if current directory is the project directory or a subdirectory
+          if [[ "$cwd" == "$config_path"* ]]; then
+            echo "$config_file"
+            return 0
+          fi
+        fi
+      fi
+    done
+  fi
+  
+  return 1
+}
+
+# Find project configuration
+PROJECT_CONFIG=""
+PHP_VERSION=""
+if PROJECT_CONFIG=$(find_project_config "$WORKSPACE" "$CWD"); then
+  # Extract PHP version from project config
+  if grep -q "^php:" "$PROJECT_CONFIG" 2>/dev/null; then
+    PHP_VERSION=$(grep "^php:" "$PROJECT_CONFIG" | sed 's/.*php: *//' | xargs)
+  fi
+fi
+
+# Determine PHP binary path
+if [[ -n "$PHP_VERSION" ]]; then
+  # Use isolated PHP version
+  PHP_BINARY="$WORKSPACE/php/$PHP_VERSION/bin/php"
+else
+  # Use default PHP version (check config, then fallback to 8.3)
+  if [[ -f "$WORKSPACE/config/chauffeur.yaml" ]]; then
+    DEFAULT_VERSION="$(grep "default:" "$WORKSPACE/config/chauffeur.yaml" | sed 's/.*default: *//' | xargs)"
+    PHP_BINARY="$WORKSPACE/php/$DEFAULT_VERSION/bin/php"
+  else
+    # Fallback to PHP 8.3 if no config exists
+    PHP_BINARY="$WORKSPACE/php/8.3/bin/php"
+  fi
+fi
+
+if [[ ! -x "$PHP_BINARY" ]]; then
+  echo "PHP binary not found at $PHP_BINARY" >&2
+  echo "Please run 'chauf install php <version>' first" >&2
+  exit 1
+fi
+
+exec "$PHP_BINARY" "$@"
+`
 }
 
 /**

@@ -5,7 +5,8 @@ Chauffeur is a host-based CLI for managing per-project PHP development services 
 ## Status
 
 - ✅ **Installer & Configuration**: Smart installer with Go requirement checking, existing installation detection, and PATH management  
-- ✅ **PHP Management**: `chauf php install/use/isolate` with version switching and workspace setup  
+- ✅ **PHP Management**: `chauf php install/use/isolate` with version switching and workspace setup
+- ✅ **Project-Aware PHP Shims**: Automatic PHP version detection based on project context  
 - ✅ **CLI Bootstrap**: Both repository cloning and curl-based installation methods  
 - ✅ **Self-Update**: `chauf self-update` pulls latest git changes and rebuilds the CLI binary (services untouched)  
 - ✅ **Dev Mode**: `chauf self-update --dev` rebuilds CLI from current directory for development  
@@ -161,10 +162,24 @@ chauf php use 7.4
 
 # Check current version
 chauf php -v
+php -v  # Now also project-aware!
 
 # Per-project isolation
+cd my-project
 chauf php isolate 8.2
+php -v  # Uses PHP 8.2 for this project only
+cd ~
+php -v  # Uses globalPHP version
 ```
+
+#### Project-Aware PHP Shims
+
+Chauffeur's PHP shims now automatically detect project context:
+
+- **Inside Project**: Uses the PHP version specified in the project's isolation setting
+- **Outside Project**: Uses the global default PHP version set via `chauf php use <version>`
+- **Seamless Integration**: Both `php` and `chauf php` commands now behave consistently
+- **Automatic Detection**: Projects detected via the projects registry directory structure
 
 ### Updating Chauffeur
 
@@ -210,6 +225,7 @@ The uninstaller cleanly removes PATH entries without leaving whitespace pollutio
 - CLI binary refresh via `chauf self-update`  
 - Development mode rebuild via `chauf self-update --dev` for testing local changes
 - Complete project registration system with `chauf links` and `chauf unlink` commands
+- Project-aware PHP shims that automatically detect and use appropriate PHP versions
 - Comprehensive testing framework with operation-based structure
 - Enhanced CLI logging specification with visual feedback standards
 
