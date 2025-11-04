@@ -12,8 +12,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/siaji/chauffeur/cli/internal/logging"
 	"github.com/siaji/chauffeur/cli/internal/releases"
 	"github.com/siaji/chauffeur/cli/internal/system"
+	"github.com/siaji/chauffeur/cli/lib"
 )
 
 const caddyBinaryName = "caddy"
@@ -33,8 +35,10 @@ type InstallOptions struct {
  * @return error when the installation fails at any step.
  */
 func InstallCaddyTarball(opts InstallOptions) error {
+	caddyLogger := logging.NewCommandLogger("caddy")
+	
 	if opts.Prefix == "" {
-		return errors.New("install prefix is required")
+		return caddyLogger.Fail("install prefix is required", "")
 	}
 
 	client := opts.Client
@@ -42,87 +46,93 @@ func InstallCaddyTarball(opts InstallOptions) error {
 		client = &http.Client{Timeout: 60 * time.Second}
 	}
 
-	startCaddyLogSection("Preparing")
-	logCaddyInfo("Detected architecture: %s", opts.Info.Arch)
-	logCaddyInfo("Fetching release metadata from GitHub…")
+	caddyLogger.Info("Preparing for caddy installation")
+	caddyLogger.Info(fmt.Sprintf("Detected architecture: %s", opts.Info.Arch))
+	caddyLogger.Info("Fetching release metadata from GitHub…")
 	release, err := releases.LatestGitHubRelease(client, "caddyserver", "caddy")
 	if err != nil {
-		return fmt.Errorf("resolve latest Caddy release: %w", err)
+		return caddyLogger.Fail("resolve latest Caddy release", err.Error())
 	}
 	versionTag := release.TagName
 	if versionTag == "" {
-		return errors.New("latest Caddy release has empty tag name")
+		return caddyLogger.Fail("latest Caddy release has empty tag name", "")
 	}
 	version := strings.TrimPrefix(versionTag, "v")
-	logCaddySuccess("Latest release: %s (tag %s)", version, versionTag)
+	caddyLogger.Success("Latest release identified", fmt.Sprintf("%s (tag %s)", version, versionTag))
 
 	assetName, tarballURL, err := selectCaddyAsset(release, version, opts.Info.Arch)
 	if err != nil {
 		return err
 	}
-	startCaddyLogSection("Download")
-	logCaddyInfo("Resolved asset: %s", assetName)
-	logCaddyInfo("Source URL: %s", tarballURL)
+
+	// Create download section
+	caddyLogger.Info("Download")
+	downloadLogger := caddyLogger.NewChildLogger("download")
+	downloadLogger.Info(fmt.Sprintf("Resolved asset: %s", assetName))
+	downloadLogger.Info(fmt.Sprintf("Source URL: %s", tarballURL))
 
 	checksumURL, checksumIsList, err := locateCaddyChecksum(release, assetName, version)
 	if err != nil {
 		return err
 	}
-	logCaddyInfo("Checksum source: %s", checksumURL)
+	downloadLogger.Info(fmt.Sprintf("Checksum source: %s", checksumURL))
 
 	destBinDir := filepath.Join(opts.Prefix, "caddy", "bin")
 	if err := os.MkdirAll(destBinDir, 0o755); err != nil {
-		return fmt.Errorf("ensure caddy bin dir: %w", err)
+		return caddyLogger.Fail("ensure caddy bin dir", err.Error())
 	}
 
 	tmpDir, err := os.MkdirTemp("", "chauffeur-caddy-*")
 	if err != nil {
-		return fmt.Errorf("create temp dir: %w", err)
+		return caddyLogger.Fail("create temp dir", err.Error())
 	}
 	defer os.RemoveAll(tmpDir)
 
 	tarballPath := filepath.Join(tmpDir, assetName)
-	logCaddyInfo("Downloading tarball into %s", tmpDir)
-	size, err := downloadToFile(client, tarballURL, tarballPath, fmt.Sprintf("Download %s", assetName))
+	size, err := lib.DownloadToFile(client, tarballURL, tarballPath, fmt.Sprintf("Download %s", assetName))
 	if err != nil {
-		return fmt.Errorf("download caddy tarball: %w", err)
+		return caddyLogger.Fail("download caddy tarball", err.Error())
 	}
-	logCaddySuccess("Downloaded %s (%d bytes)", assetName, size)
+	downloadLogger.Success(fmt.Sprintf("Downloaded %s", assetName), fmt.Sprintf("%d bytes", size))
 
-	startCaddyLogSection("Verification")
-	logCaddyInfo("Verifying checksum…")
+	// Verification section
+	caddyLogger.Info("Verifying")
+	verifyLogger := caddyLogger.NewChildLogger("verify")
+	verifyLogger.Info("Verifying checksum…")
 	expectedSum, err := fetchCaddyChecksum(client, checksumURL, assetName, checksumIsList)
 	if err != nil {
-		return fmt.Errorf("resolve checksum: %w", err)
+		return caddyLogger.Fail("resolve checksum", err.Error())
 	}
 	if err := validateChecksum(tarballPath, expectedSum); err != nil {
-		return fmt.Errorf("validate caddy tarball: %w", err)
+		return caddyLogger.Fail("validate caddy tarball", err.Error())
 	}
-	logCaddySuccess("Checksum verification passed")
+	verifyLogger.Success("Checksum verification passed", "")
 
 	targetBinary := filepath.Join(destBinDir, caddyBinaryName)
 	if !opts.Force {
 		if info, err := os.Stat(targetBinary); err == nil && info.Mode().IsRegular() {
-			logCaddyInfo("Existing binary detected; skipping extraction (use --force to overwrite)")
+			downloadLogger.Info("Existing binary detected; skipping extraction (use --force to overwrite)")
 			return nil
 		}
 	}
 
-	startCaddyLogSection("Installation")
+	// Installation section
+	caddyLogger.Info("Installing")
+	installLogger := caddyLogger.NewChildLogger("install")
 	if err := extractBinary(tarballPath, targetBinary); err != nil {
-		return fmt.Errorf("extract caddy binary: %w", err)
+		return caddyLogger.Fail("extract caddy binary", err.Error())
 	}
-	logCaddySuccess("Installed binary at %s", targetBinary)
+	installLogger.Success("Installed binary", targetBinary)
 
 	if err := writeShim(opts.Prefix, caddyBinaryName, targetBinary); err != nil {
-		return err
+		return caddyLogger.Fail("write shim", err.Error())
 	}
-	logCaddySuccess("Updated shim %s", filepath.Join(opts.Prefix, "bin", caddyBinaryName))
+	installLogger.Success("Updated shim", filepath.Join(opts.Prefix, "bin", caddyBinaryName))
 
 	if err := writeDefaultCaddyfile(opts.Prefix); err != nil {
-		return err
+		return caddyLogger.Fail("write default caddyfile", err.Error())
 	}
-	logCaddySuccess("Workspace Caddyfile ready")
+	installLogger.Success("Workspace Caddyfile ready", "")
 
 	return nil
 }
@@ -309,24 +319,14 @@ func locateCaddyChecksum(release releases.GitHubRelease, assetName, version stri
  */
 func fetchCaddyChecksum(client *http.Client, url, assetName string, fromList bool) (string, error) {
 	if fromList {
-		return checksumFromList(client, url, assetName)
+		return lib.ChecksumFromList(client, url, assetName)
 	}
 
-	content, err := downloadText(client, url)
+	content, err := lib.DownloadText(client, url)
 	if err != nil {
 		return "", err
 	}
-	return checksumFromContent(content, assetName)
+	return lib.ChecksumFromContent(content, assetName)
 }
 
-func startCaddyLogSection(title string) {
-	fmt.Printf("\n[ CADDY ] %s\n", strings.ToUpper(title))
-}
 
-func logCaddyInfo(format string, args ...interface{}) {
-	fmt.Printf("    - %s\n", fmt.Sprintf(format, args...))
-}
-
-func logCaddySuccess(format string, args ...interface{}) {
-	fmt.Printf("    [OK] %s\n", fmt.Sprintf(format, args...))
-}

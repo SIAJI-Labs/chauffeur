@@ -26,7 +26,7 @@ This document tracks the current status of features and improvements for the Cha
 - [x] **Uninstall Command**: `chauf uninstall [--purge]` with clean PATH removal
 - [x] **Error Handling**: Graceful error messages and guidance
 - [x] **Logging System**: Structured logging for installer operations
-- [x] **Enhanced CLI Logging**: Standardized logging specification with color-coded output, progress bars, spinners, and detailed timing information (based on self-update patterns)
+- [x] **Enhanced CLI Logging**: Standardized logging specification with color-coded output, progress bars, spinners, and detailed timing information (fully implemented and tested)
 - [x] **Testing Standards**: Comprehensive testing framework with operation-based structure, 80% coverage requirements, and integration test patterns
 - [x] **Self-Update**: `chauf self-update` pulls latest git changes and rebuilds the CLI binary  
 - [x] **Dev Mode**: `chauf self-update --dev` rebuilds from current directory when it's a valid chauffeur repository
@@ -55,11 +55,10 @@ This document tracks the current status of features and improvements for the Cha
 - [ ] **SSL Certificate Management**: Local SSL setup for development domains
 - [ ] **Domain Routing**: Ensure projects are accessible via configured domains
 
-### Priority 3: Enhanced Logging Implementation
-- [ ] **Logging Package**: Implement the `cli/internal/logging` package based on standardized specification
-- [ ] **Command Refactoring**: Update existing commands to use the new logging framework
-- [ ] **Progress Enhancement**: Implement download progress bars for all remote operations
-- [ ] **Terminal Detection**: Ensure proper fallback for non-interactive environments
+### Priority 4: Log File Management
+- [ ] **Detailed Failure Logging**: Implement structured log files for command failures with timestamps and stack traces
+- [ ] **Log Rotation**: Add automatic log rotation and maintenance utilities
+- [ ] **Enhanced Error Reporting**: Display log file paths on failures with user-friendly error messages
 
 ## 🚧 In Progress (Supporting Work)
 
@@ -129,13 +128,13 @@ This document tracks the current status of features and improvements for the Cha
 
 ## Priority Queue
 
-### High Priority (Next Sprint - Project Focus)
-1. **Priority 1**: Auto-detect project PHP requirements and suggest isolation versions
-2. **Priority 1**: Validate isolated PHP versions against installed runtimes and report gaps
-3. **Priority 2**: Extend `chauf link` to generate PHP-FPM/Nginx/Caddy assets
-4. **Priority 2**: Add `chauf links` command to list registered projects
-5. **Logging Enhancement**: Implement the standardized logging package and refactor key commands
-6. **Testing Framework**: Reorganize test structure and achieve 80% coverage per new standards
+### High Priority (Next Sprint - Service Focus)
+1. **Priority 1**: Complete service orchestration implementation (`chauf start`/`chauf stop`)
+2. **Priority 1**: Service process monitoring and automatic restarts for Nginx, PHP-FPM, Caddy
+3. **Priority 2**: Automatic configuration template generation for linked projects
+4. **Priority 2**: Nginx virtual host configuration for registered project domains
+5. **Priority 4**: Implement detailed failure logging with structured log files
+6. **Testing Coverage**: Continue expanding test coverage for new features
 
 ### Medium Priority (Following Sprint - Access Focus)
 1. **Priority 3**: Add Nginx virtual host generation for projects
@@ -181,8 +180,8 @@ This document tracks the current status of features and improvements for the Cha
 - ✅ **Priority 1**: CLI self-update command (`chauf self-update`)
 - ✅ **Priority 2**: Complete project linking system (`chauf link`/`chauf links`/`chauf unlink`)
 - ✅ **Testing Standards**: Comprehensive testing framework with operation-based structure and 80% coverage requirements
+- ✅ **Priority 3**: Enhanced logging framework implementation (fully tested and verified)
 - 🎯 **Priority 1**: Service orchestration implementation (`chauf start`/`chauf stop`)
-- 🎯 **Priority 3**: Enhanced logging framework implementation
 - 🚧 Service orchestration foundation (in progress)
 
 ### v0.1.2 (Planned - Access Focus)

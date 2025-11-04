@@ -10,7 +10,7 @@ Chauffeur is a host-based CLI for managing per-project PHP development services 
 - ✅ **Self-Update**: `chauf self-update` pulls latest git changes and rebuilds the CLI binary (services untouched)  
 - ✅ **Dev Mode**: `chauf self-update --dev` rebuilds CLI from current directory for development  
 - ✅ **Shell Integration**: Clean PATH management with no whitespace pollution  
-- ✅ **Enhanced Logging**: Structured CLI output with color-coded status, progress indicators, and detailed timing information  
+- ✅ **Enhanced Logging**: Structured CLI output with color-coded status, progress indicators, and detailed timing information - fully implemented and tested  
 - ✅ **Project Registration**: Complete `chauf link`, `chauf links`, and `chauf unlink` commands with comprehensive project management  
 - ✅ **Comprehensive Testing**: Full test suite with operation-based structure and 80% coverage standards  
 - 🚧 **Service Orchestration**: `chauf start/stop` (in progress)  
@@ -204,10 +204,10 @@ The uninstaller cleanly removes PATH entries without leaving whitespace pollutio
 - Caddy integration for local domain resolution (no `/etc/hosts` editing)
 - SSL certificate management for local development domains
 
-**Priority 3: Enhanced Logging Implementation**
-- Implement the standardized logging package (`cli/internal/logging`)
-- Refactor existing commands to use enhanced logging framework
-- Progress bars for downloads and spinners for long operations
+**Priority 4: Log File Management**
+- Implement detailed failure logging with structured log files
+- Add log rotation and maintenance utilities
+- Enhanced error reporting with log file paths on failures
 
 ### In Progress 🚧
 - Service orchestration (`chauf start`, `chauf stop`) for Nginx, PHP-FPM, and Caddy
