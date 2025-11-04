@@ -483,6 +483,225 @@ myproj.test {
 slug := slugify(filepath.Base(pwd))
 proj := Project{ Path: pwd, PHP: optPHP, Site: {...} }
 WriteYAML("~/.chauffeur/projects/"+slug+"/project.yaml", proj)
+```
+
+## 6.4) Testing Standards
+
+**Directory Structure**: All tests must be organized under `tests/` following operation-based structure:
+```
+tests/
+├── install/
+│   ├── php_test.go          # PHP installation tests
+│   ├── nginx_test.go        # Nginx installation tests
+│   └── caddy_test.go        # Caddy installation tests
+├── link/
+│   ├── link_project_test.go  # Project linking tests
+│   ├── unlink_project_test.go # Project unlinking tests
+│   └── list_projects_test.go # Project listing tests
+├── php/
+│   ├── php_use_test.go      # PHP global version switching
+│   ├── php_isolate_test.go  # Project PHP isolation
+│   └── php_binary_test.go   # PHP binary execution
+├── self_update/
+│   ├── update_test.go       # Self-update functionality
+│   └── dev_update_test.go   # Development mode updates
+├── start_stop/
+│   ├── start_test.go        # Service startup tests
+│   └── stop_test.go         # Service shutdown tests
+└── integration/
+    ├── end_to_end_test.go   # Full workflow tests
+    └── real_world_test.go   # Real-world scenario tests
+```
+
+**Test Function Naming**: Use descriptive names following the pattern:
+```go
+func TestCommandComponentAction(t *testing.T)
+func TestLinkProjectCreatesConfig(t *testing.T)
+func TestPhpUseSetsDefaultVersion(t *testing.T)
+func TestSelfUpdateDevModeRebuildsFromRepo(t *testing.T)
+```
+
+**Test Structure and Coverage**:
+
+### 6.4.1) Standard Test Template
+
+All tests should follow this structure:
+```go
+func TestCommandSpecificBehavior(t *testing.T) {
+    // 1. Setup: Create temporary environment
+    tmpHome := t.TempDir()
+    t.Setenv("HOME", tmpHome)
+    
+    // 2. Arrange: Set up the test state
+    // - Create necessary directories
+    // - Set up mock files
+    // - Configure environment variables
+    
+    // 3. Act: Execute the function/behavior being tested
+    output := captureOutput(func() error {
+        return commands.RunCommand([]string{"arg1", "arg2"})
+    })
+    
+    // 4. Assert: Verify the results
+    assert.Contains(t, output, "expected message")
+    assert.FileExists(t, expectedFilePath)
+    
+    // 5. Cleanup: Use t.Cleanup() for any manual cleanup
+    t.Cleanup(func() {
+        // Clean up resources
+    })
+}
+```
+
+### 6.4.2) Coverage Requirements
+
+**Minimum Coverage Standards**:
+- **Unit Tests**: 80% line coverage minimum for all packages
+- **Integration Tests**: Cover all command entry points and success/failure paths
+- **Error Paths**: Test all error conditions and edge cases
+- **File Operations**: Test file creation, modification, deletion
+- **Environment Variables**: Test with different HOME, PATH configurations
+
+**Required Test Categories**:
+
+#### 6.4.2.1) Command Tests
+- **Success Cases**: Normal operation flows
+- **Error Cases**: Invalid arguments, missing files, permission issues
+- **Edge Cases**: Empty inputs, corrupted files, network failures
+- **Flag Combinations**: Test all flag combinations and interactions
+
+#### 6.4.2.2) Installation Tests  
+- **Clean Install**: First-time installation scenarios
+- **Reinstall**: Installing over existing installations
+- **Force Install**: `--force` flag behavior
+- **Version Validation**: Supported/unsupported version handling
+- **Network Errors**: Timeout, connection failure scenarios
+
+#### 6.4.2.3) Configuration Tests
+- **Default Config**: Creating and reading default configurations
+- **Custom Config**: Handling user modifications
+- **Migration**: Config version upgrades and backwards compatibility
+- **Validation**: Invalid configuration detection and error reporting
+
+#### 6.4.2.4) File System Tests
+- **Permission Handling**: Different permission scenarios
+- **Path Resolution**: Relative/absolute path handling
+- **Race Conditions**: Concurrent access scenarios
+- **Symlinks**: Symlink creation, following, and validation
+
+### 6.4.3) Test Utilities and Helpers
+
+**Standard Helper Functions** (in `tests/helpers_test.go`):
+```go
+// Already exists: captureOutput(), captureError()
+// Add these standard helpers:
+
+// createTempFile creates a temporary file with given content
+func createTempFile(t *testing.T, content string) string
+
+// createMockWorkspace sets up a complete mock chauffeur workspace
+func createMockWorkspace(t *testing.T, versions ...string) string
+
+// mockPHPInstallation creates a fake PHP installation
+func mockPHPInstallation(t *testing.T, tmpHome, version string) string
+
+// assertProjectConfig validates project.yaml contents
+func assertProjectConfig(t *testing.T, configPath string, expected interface{})
+
+// assertLogEntry checks if specific log entry exists
+func assertLogEntry(t *testing.T, logPath, expectedMessage string)
+```
+
+### 6.4.4) Integration Test Standards
+
+**End-to-End Tests**: Should cover complete user workflows:
+```go
+func TestCompleteWorkflow_PHPProjectSetup(t *testing.T) {
+    // 1. Install Chauffeur
+    // 2. Install PHP 8.3
+    // 3. Create test project
+    // 4. Link project with custom domain
+    // 5. Isolate project to specific PHP version
+    // 6. Start services
+    // 7. Verify accessibility
+    // 8. Stop and cleanup
+}
+```
+
+### 6.4.5) Mock and Test Structure Guidelines
+
+**Test Isolation**: Each test should:
+- Use `t.TempDir()` for temporary directories
+- Use `t.Setenv()` for environment variables
+- Use `t.Cleanup()` for cleanup operations
+- Never modify the actual user's `~/.chauffeur/` directory
+
+**Dependency Injection**:
+- Use interface-based design for easier mocking
+- Create testable functions that accept dependencies
+- Avoid static global state in production code
+
+### 6.4.6) Performance and Reliability Tests
+
+**Benchmark Tests**:
+```go
+func BenchmarkPHPInstallation(b *testing.B) {
+    for i := 0; i < b.N; i++ {
+        // Benchmark installation performance
+    }
+}
+```
+
+**Parallel Testing**:
+```go
+func TestConcurrentOperations(t *testing.T) {
+    t.Parallel()
+    // Test concurrent command execution
+}
+```
+
+### 6.4.7) Test Execution and CI Integration
+
+**Test Standards for CI/CD**:
+- All tests must pass on clean environments
+- Use deterministic versions and checksums in tests
+- Mock external dependencies (HTTP calls, filesystem operations)
+- Include timeout handling for long-running operations
+
+**Local Development**:
+```bash
+# Run all tests with coverage
+go test -v -race -coverprofile=coverage.out ./tests/...
+
+# Run specific test category  
+go test -v ./tests/install/...
+
+# Run with coverage requirements
+go test -v -race -cover ./tests/ && \
+  go tool cover -func=coverage.out | \
+  awk '/total:/{print $3}' | \
+  sed 's/%//' | \
+  awk '{if($1 < 80) {exit 1}}'
+```
+
+### 6.4.8) Test Documentation
+
+**Test Documentation Requirements**:
+- Each test package should have a package comment explaining its purpose
+- Complex tests should have inline comments explaining the test scenario
+- Integration tests should document the user workflow being tested
+- Performance-sensitive tests should include timing expectations
+
+**Example Package Comment**:
+```go
+// Package install tests the chauffeur installation commands.
+// These tests verify:
+// - Service installation (php, nginx, caddy)
+// - Configuration file generation
+// - Error handling for various failure scenarios
+// - File system interaction and permission handling
+package install
+```
 
 ---
 
