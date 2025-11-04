@@ -26,6 +26,7 @@ This document tracks the current status of features and improvements for the Cha
 - [x] **Uninstall Command**: `chauf uninstall [--purge]` with clean PATH removal
 - [x] **Error Handling**: Graceful error messages and guidance
 - [x] **Logging System**: Structured logging for installer operations
+- [x] **Enhanced CLI Logging**: Standardized logging specification with color-coded output, progress bars, spinners, and detailed timing information (based on self-update patterns)
 - [x] **Self-Update**: `chauf self-update` pulls latest git changes and rebuilds the CLI binary  
 - [x] **Dev Mode**: `chauf self-update --dev` rebuilds from current directory when it's a valid chauffeur repository
 
@@ -72,6 +73,12 @@ This document tracks the current status of features and improvements for the Cha
 - [ ] **Configuration Validation**: Validate project configs and service settings
 
 ## 📋 Planned Features
+
+### CLI Experience Enhancement
+- [ ] **Logging Implementation**: Create the `cli/internal/logging` package based on the standardized specification
+- [ ] **Command Refactoring**: Update existing commands to use the new logging framework
+- [ ] **Progress Enhancement**: Implement download progress bars for all remote operations
+- [ ] **Terminal Detection**: Ensure proper fallback for non-interactive environments
 
 ### Advanced PHP Features
 - [ ] **Extension Management**: Install PHP extensions during build
@@ -124,6 +131,7 @@ This document tracks the current status of features and improvements for the Cha
 2. **Priority 1**: Validate isolated PHP versions against installed runtimes and report gaps
 3. **Priority 2**: Extend `chauf link` to generate PHP-FPM/Nginx/Caddy assets
 4. **Priority 2**: Add `chauf links` command to list registered projects
+5. **Logging Enhancement**: Implement the standardized logging package and refactor key commands
 
 ### Medium Priority (Following Sprint - Access Focus)
 1. **Priority 3**: Add Nginx virtual host generation for projects
@@ -161,10 +169,12 @@ This document tracks the current status of features and improvements for the Cha
 - ✅ Clean PATH management
 - ✅ PHP version management
 - ✅ Multiple installation methods
+- ✅ Enhanced CLI logging specification with visual feedback standards
 
 ### v0.1.1 (Planned - Project Focus)
 - ✅ **Priority 1**: Per-project PHP isolation (`chauf php isolate`)
 - ✅ **Priority 1**: CLI self-update command (`chauf self-update`)
+- ✅ **Logging Standards**: Complete CLI logging specification with progress indicators and visual feedback (to be implemented)
 - 🎯 **Priority 2**: Project linking system (`chauf link`/`chauf links`)
 - 🚧 Basic service orchestration foundation
 
@@ -180,5 +190,5 @@ This document tracks the current status of features and improvements for the Cha
 
 ---
 
-*Last Updated: 2025-11-05*
+*Last Updated: 2025-11-04*
 *Status reflects current development progress and priorities*
