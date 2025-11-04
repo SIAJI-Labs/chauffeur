@@ -234,3 +234,4 @@ See [TODO_STATUS.md](docs/TODO_STATUS.md) for comprehensive project status and r
 - Clean PATH management prevents shell config pollution.
 - Changes should respect the contracts outlined in `AGENTS.md` (project knowledge base).
 - Supports both development (repo clone) and production (curl) installation workflows.
+- **Testing Standards**: Comprehensive test suite with operation-based structure, 80% coverage requirement, and integration testing for complete workflows.
