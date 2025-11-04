@@ -18,6 +18,7 @@ This document tracks the current status of features and improvements for the Cha
 - [x] **PHP Version Detection**: Smart detection of installed versions
 - [x] **Configuration Management**: Automatic config file creation and updates
 - [x] **Legacy PHP Support**: PHP 7.4 with OpenSSL 1.1.1w vendor
+- [x] **Per-Project Override**: `chauf php isolate <version>` command for project-local defaults
 
 ### CLI Infrastructure
 - [x] **Command Structure**: Modular Go packages in `cli/commands/*`
@@ -25,20 +26,24 @@ This document tracks the current status of features and improvements for the Cha
 - [x] **Uninstall Command**: `chauf uninstall [--purge]` with clean PATH removal
 - [x] **Error Handling**: Graceful error messages and guidance
 - [x] **Logging System**: Structured logging for installer operations
+- [x] **Self-Update**: `chauf self-update` pulls latest git changes and rebuilds the CLI binary
+
+### Project Registration Foundation
+- [x] **Project Configuration Writer**: `chauf link` generates `.chauffeur/projects/<slug>/project.yaml` with per-project PHP metadata
+- [x] **Project Layout Scaffolding**: Runtime socket and log directories created alongside project configuration
 
 ## 🎯 Current Focus Areas
 
 ### Priority 1: Per-Project PHP Isolation
-- [ ] **`chauf php isolate <version>`**: Pin specific PHP version to project directory
-- [ ] **Project Configuration System**: `.chauffeur/project.yaml` with per-project PHP settings
+- [x] **`chauf php isolate <version>`**: Pin specific PHP version to project directory
 - [ ] **Automatic Detection**: Detect project-specific PHP requirements from config files
 - [ ] **Version Mapping**: Handle multiple projects with different PHP versions simultaneously
 - [ ] **Validation**: Ensure project PHP version is installed and compatible
 
 ### Priority 2: Project Linking & Service Registration
-- [ ] **`chauf link` Command**: `chauf link --site <domain> --ssl --php <version>` registration
+- [ ] **`chauf link` Command**: `chauf link --site <domain> [--ssl] [--php <version>] [--force]` registration
 - [ ] **`chauf links` Command**: List all registered projects and their configurations
-- [ ] **Configuration Persistence**: Store project settings in workspace structure
+- [x] **Configuration Persistence**: Store project settings in workspace structure via project YAML files
 - [ ] **Multi-Project Support**: Handle multiple projects with different configurations
 - [ ] **Service Discovery**: Automatic detection of project requirements
 
@@ -110,9 +115,9 @@ This document tracks the current status of features and improvements for the Cha
 ## Priority Queue
 
 ### High Priority (Next Sprint - Project Focus)
-1. **Priority 1**: Implement `chauf php isolate <version>` for per-project PHP isolation
-2. **Priority 1**: Create project configuration system (`.chauffeur/project.yaml`)
-3. **Priority 2**: Implement `chauf link --site <domain>` command
+1. **Priority 1**: Auto-detect project PHP requirements and suggest isolation versions
+2. **Priority 1**: Validate isolated PHP versions against installed runtimes and report gaps
+3. **Priority 2**: Extend `chauf link` to generate PHP-FPM/Nginx/Caddy assets
 4. **Priority 2**: Add `chauf links` command to list registered projects
 
 ### Medium Priority (Following Sprint - Access Focus)
@@ -128,6 +133,7 @@ This document tracks the current status of features and improvements for the Cha
 4. Implement automated shims for all managed binaries
 5. Add PHP extension management capabilities
 6. Pre-built binary distribution strategy
+7. Update `chauf self-update` defaults to public HTTPS remote and release branch once repository is published
 
 ## blockers & Dependencies
 
@@ -152,7 +158,8 @@ This document tracks the current status of features and improvements for the Cha
 - ✅ Multiple installation methods
 
 ### v0.1.1 (Planned - Project Focus)
-- 🎯 **Priority 1**: Per-project PHP isolation (`chauf php isolate`)
+- ✅ **Priority 1**: Per-project PHP isolation (`chauf php isolate`)
+- ✅ **Priority 1**: CLI self-update command (`chauf self-update`)
 - 🎯 **Priority 2**: Project linking system (`chauf link`/`chauf links`)
 - 🚧 Basic service orchestration foundation
 
@@ -168,5 +175,5 @@ This document tracks the current status of features and improvements for the Cha
 
 ---
 
-*Last Updated: 2025-11-04*
+*Last Updated: 2025-11-05*
 *Status reflects current development progress and priorities*
