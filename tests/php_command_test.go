@@ -42,8 +42,13 @@ func TestPHPUseSetsDefault(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read shim: %v", err)
 	}
-	if !strings.Contains(string(data), filepath.Join("php", version, "bin", "php")) {
-		t.Fatalf("shim does not reference version %s", version)
+	// With project-aware shims, the shim content is static and doesn't contain version references
+	// Check that the shim is a proper bash script instead
+	if !strings.Contains(string(data), "#!/usr/bin/env bash") {
+		t.Fatalf("shim is not a proper bash script")
+	}
+	if !strings.Contains(string(data), "WORKSPACE=") {
+		t.Fatalf("shim doesn't contain project-aware logic")
 	}
 }
 
@@ -112,6 +117,15 @@ func TestPHPCommandPassthrough(t *testing.T) {
 func TestPHPIsolateUpdatesProjectConfig(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
+
+	// Install default PHP 8.3 for linking
+	defaultPHPBinDir := filepath.Join(tmpHome, ".chauffeur", "php", "8.3", "bin")
+	if err := os.MkdirAll(defaultPHPBinDir, 0o755); err != nil {
+		t.Fatalf("mkdir default php bin: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(defaultPHPBinDir, "php"), []byte("#!/usr/bin/env bash\n"), 0o755); err != nil {
+		t.Fatalf("write default php stub: %v", err)
+	}
 
 	version := "7.4"
 	phpBinDir := filepath.Join(tmpHome, ".chauffeur", "php", version, "bin")

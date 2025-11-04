@@ -136,7 +136,7 @@ func patchLegacyOpenSSL(logger *logging.CommandLogger, sourceDir string) error {
 		logPHPInfo(logger, "Injecting OpenSSL 3.x compatibility shims")
 		insertPos := findOpenSSLShimInsertPos(data)
 		if insertPos < 0 {
-			logPHPWarn(logger, "could not locate config.h block; prepending shim", "")
+			logger.Warn("could not locate config.h block; prepending shim", "")
 			insertPos = 0
 		}
 		data = insertSnippet(data, compatSnippet, insertPos)
