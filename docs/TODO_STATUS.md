@@ -26,7 +26,8 @@ This document tracks the current status of features and improvements for the Cha
 - [x] **Uninstall Command**: `chauf uninstall [--purge]` with clean PATH removal
 - [x] **Error Handling**: Graceful error messages and guidance
 - [x] **Logging System**: Structured logging for installer operations
-- [x] **Self-Update**: `chauf self-update` pulls latest git changes and rebuilds the CLI binary
+- [x] **Self-Update**: `chauf self-update` pulls latest git changes and rebuilds the CLI binary  
+- [x] **Dev Mode**: `chauf self-update --dev` rebuilds from current directory when it's a valid chauffeur repository
 
 ### Project Registration Foundation
 - [x] **Project Configuration Writer**: `chauf link` generates `.chauffeur/projects/<slug>/project.yaml` with per-project PHP metadata

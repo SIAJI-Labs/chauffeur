@@ -8,6 +8,7 @@ Chauffeur is a host-based CLI for managing per-project PHP development services 
 - ✅ **PHP Management**: `chauf php install/use/isolate` with version switching and workspace setup  
 - ✅ **CLI Bootstrap**: Both repository cloning and curl-based installation methods  
 - ✅ **Self-Update**: `chauf self-update` pulls latest git changes and rebuilds the CLI binary (services untouched)  
+- ✅ **Dev Mode**: `chauf self-update --dev` rebuilds CLI from current directory for development  
 - ✅ **Shell Integration**: Clean PATH management with no whitespace pollution  
 - 🚧 **Service Orchestration**: `chauf start/stop` (in progress)  
 - 🚧 **Project Registration**: Basic project config creation via `chauf link`; listing & service wiring in progress  
@@ -153,10 +154,16 @@ chauf php isolate 8.2
 Refresh the CLI in-place by pulling the latest git changes and rebuilding (managed services stay intact):
 
 ```bash
+# Update from remote repository
 chauf self-update
+
+# Or rebuild from current directory (development mode)
+chauf self-update --dev
 ```
 
 The command clones (or updates) the Chauffeur repository under `~/.chauffeur/src/chauffeur`, verifies the tree is clean, fast-forwards to the latest `main` commit, and runs `go build` to replace `~/.chauffeur/bin/chauf`. It uses the SSH remote `git@github.com:SIAJI-Labs/chauffeur.git` by default—make sure your SSH key has access (override via `CHAUF_REPO_URL` when the project becomes public). You’ll need both `git` and `go` available in your PATH.
+
+With the `--dev` flag, the command rebuilds the CLI binary from the current working directory if it's a valid Chauffeur repository. The directory must be a git repository containing the required files (`cli/main.go`, `go.mod`, and `AGENTS.md`), providing a convenient way to test local changes without committing them to the repository.
 
 ### Uninstallation
 
@@ -181,7 +188,8 @@ The uninstaller cleanly removes PATH entries without leaving whitespace pollutio
 - Shell integration (Bash/Zsh) with clean PATH handling
 - Project configuration writer via `chauf link` (slug creation, per-project PHP metadata)
 - Per-project PHP overrides via `chauf php isolate`
-- CLI binary refresh via `chauf self-update`
+- CLI binary refresh via `chauf self-update`  
+- Development mode rebuild via `chauf self-update --dev` for testing local changes
 
 ### Current Focus 🎯
 **Priority 1: Per-Project PHP Isolation**
