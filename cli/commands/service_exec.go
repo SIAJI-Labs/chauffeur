@@ -4,7 +4,10 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 
+	"github.com/siaji/chauffeur/cli/internal/config"
+	"github.com/siaji/chauffeur/cli/internal/projects"
 	"github.com/siaji/chauffeur/cli/internal/system"
 	"github.com/siaji/chauffeur/cli/internal/workspace"
 )
@@ -31,6 +34,15 @@ func RunServiceCommand(name string, args []string) error {
 		return err
 	}
 
+	// Special handling for PHP to support project isolation
+	if name == "php" {
+		binaryPath, err := getProjectAwarePHPBinary(prefix)
+		if err != nil {
+			return err
+		}
+		return runBinaryCommand(binaryPath, args)
+	}
+
 	spec, err := newServiceSpec(name, prefix, info)
 	if err != nil {
 		return err
@@ -44,7 +56,87 @@ func RunServiceCommand(name string, args []string) error {
 		return fmt.Errorf("service %s is not installed; run 'chauf install %s' first", name, name)
 	}
 
-	cmd := exec.Command(spec.binaryPath, args...)
+	return runBinaryCommand(spec.binaryPath, args)
+}
+
+/**
+ * getProjectAwarePHPBinary returns the appropriate PHP binary path taking project isolation into account.
+ *
+ * @param prefix Chauffeur workspace prefix.
+ * @return path to PHP binary that should be executed.
+ */
+func getProjectAwarePHPBinary(prefix string) (string, error) {
+	// Check if current directory is part of a linked project
+	cfg, err := config.Load()
+	if err != nil {
+		// Fall back to default behavior
+		spec, specErr := newServiceSpec("php", prefix, system.Info{})
+		if specErr != nil {
+			return "", specErr
+		}
+		return spec.binaryPath, nil
+	}
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		// Fall back to default behavior
+		spec, specErr := newServiceSpec("php", prefix, system.Info{})
+		if specErr != nil {
+			return "", specErr
+		}
+		return spec.binaryPath, nil
+	}
+	cwd, err = filepath.Abs(cwd)
+	if err != nil {
+		// Fall back to default behavior
+		spec, specErr := newServiceSpec("php", prefix, system.Info{})
+		if specErr != nil {
+			return "", specErr
+		}
+		return spec.binaryPath, nil
+	}
+
+	projectCfg, _, err := projects.FindByPath(cfg.ProjectsDir, cwd)
+	if err != nil {
+		// Not in a linked project, use default behavior
+		spec, specErr := newServiceSpec("php", prefix, system.Info{})
+		if specErr != nil {
+			return "", specErr
+		}
+		return spec.binaryPath, nil
+	}
+
+	// We're in a linked project, check if PHP is isolated
+	if projectCfg.PHP != "" {
+		// Project has PHP isolation, check if the isolated version is installed
+		isolatedBinary := filepath.Join(prefix, "php", projectCfg.PHP, "bin", "php")
+		if _, err := os.Stat(isolatedBinary); err == nil {
+			// Isolated PHP version is installed, use it
+			return isolatedBinary, nil
+		} else {
+			// Isolated PHP version is not installed, warn and fall back to default
+			fmt.Printf("Warning: Project PHP version %s is not installed. Using default PHP instead.\n", projectCfg.PHP)
+			spec, specErr := newServiceSpec("php", prefix, system.Info{})
+			if specErr != nil {
+				return "", specErr
+			}
+			return spec.binaryPath, nil
+		}
+	}
+
+	// No isolation or no specific version, use default behavior
+	spec, specErr := newServiceSpec("php", prefix, system.Info{})
+	if specErr != nil {
+		return "", specErr
+	}
+	return spec.binaryPath, nil
+}
+
+/**
+ * runBinaryCommand executes a binary with the given arguments.
+ */
+func runBinaryCommand(binaryPath string, args []string) error {
+	cmd := exec.Command(binaryPath, args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin
