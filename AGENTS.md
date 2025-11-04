@@ -99,7 +99,8 @@ Ensure information consistency across all three documentation files:
 | `chauf start` | `--project <path?>`, `--all`, `--dry-run` | Start services for current project (or all registered with `--all`). |
 | `chauf stop` | `--project <path?>`, `--all`, `--dry-run` | Stop services. |
 | `chauf uninstall` | `--purge` | Remove Chauffeur workspace. `--purge` also deletes caches and installed runtimes. |
-| `chauf link` | `--site <domain>`, `--ssl`, `--php <version>` | Register **PWD** as a project. Optionally map local domain via Caddy, set default PHP for this project. |
+| `chauf link` | `--site <domain>`, `--ssl`, `--php <version>`, `--force` | Register **PWD** as a project. Creates `project.yaml`, prepares runtime/log dirs, optionally map local domain via Caddy, set default PHP for this project. |
+| `chauf self-update` | _none_ | Pull latest Chauffeur git changes via SSH and rebuild the CLI binary in-place (services unaffected; requires git & go). |
 | `chauf links` | _none_ | List all registered projects and their metadata. |
 
 ### PHP Management
@@ -108,7 +109,7 @@ Ensure information consistency across all three documentation files:
 |---|---|---|
 | `chauf php install <version>` | `--force`, `--no-ext`, `--from <source>` | Install PHP runtime `<version>` into `~/.chauffeur/php/<version>` (source can be `source`, `tarball`, or `distro-extract`; default `tarball`). |
 | `chauf php use <version>` | _none_ | Set global default PHP version used by `chauf php ...` commands. |
-| `chauf php isolate <version>` | _none_ | Pin current directory/project to `<version>` (per‑project override). |
+| `chauf php isolate <version>` | _none_ | Pin current directory/project to `<version>` (requires linked project and installed runtime). |
 
 > **Version examples**: `8.3`, `8.2`, `7.4`. Keep semantic digits (major.minor), allow patch in metadata but runtime folder stays `major.minor`. Never writes to `/usr/bin`; shims live under `~/.chauffeur/bin/shims`.
 
@@ -187,6 +188,9 @@ created_at: 2025-10-30T12:00:00+07:00
 - Using **Caddy** avoids editing `/etc/hosts`; Codex should generate Caddyfile entries that route `site.test` → local upstream.
 - Services must **not conflict** with host services or ports; prefer per‑project Unix sockets and reverse proxy fan‑out via Caddy/Nginx.
 - PHP isolation: `use` sets **global** default; `isolate` writes **project.yaml** override.
+- `chauf link` generates `~/.chauffeur/projects/<slug>/project.yaml` (slug from directory name) and prepares runtime/log directories; `--force` must be supplied to overwrite an existing registration.
+- `chauf php isolate <version>` validates that the requested runtime is installed and the current directory is linked before updating the project configuration.
+- `chauf self-update` ensures a clean git workspace, fast-forwards the Chauffeur repo under `~/.chauffeur/src/chauffeur` using the SSH remote `git@github.com:SIAJI-Labs/chauffeur.git` by default (override via `CHAUF_REPO_URL`), then rebuilds the CLI binary; service runtimes remain untouched (use `chauf install <service> --force` to refresh runtimes).
 - First install must handle not‑on‑PATH scenario: provide shell one‑liner to add `~/.chauffeur/bin` to PATH in `~/.bashrc`/`~/.zshrc`.
 
 ---
@@ -289,8 +293,10 @@ WriteYAML("~/.chauffeur/projects/"+slug+"/project.yaml", proj)
 1. `chauf init` creates workspace; re‑running is no‑op.
 2. `chauf php install 8.3` creates `~/.chauffeur/php/8.3/bin/php`.
 3. `chauf php use 8.3` updates `chauffeur.yaml` default.
-4. `chauf link --site myproj.test --ssl --php 8.2` creates project folder, Caddy block, and PHP‑FPM pool.
-5. `chauf start` in project directory boots required services; `stop` halts them cleanly.
+4. `chauf link --site myproj.test --ssl --php 8.2` creates project folder structure and `project.yaml` metadata (Caddy/Nginx assets pending).
+5. `chauf php isolate 7.4` updates the linked project's `project.yaml` with the per-project PHP override.
+6. `chauf self-update` fast-forwards the workspace git clone and rebuilds the CLI binary in-place.
+7. `chauf start` in project directory boots required services; `stop` halts them cleanly.
 
 ---
 

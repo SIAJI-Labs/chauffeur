@@ -19,6 +19,7 @@ Usage:
   chauf install <service> [version]
                          Install Chauffeur-managed services (caddy, nginx, php).
   chauf php <command>    Manage PHP runtimes (use <version>, ...).
+  chauf self-update      Update the Chauffeur CLI to the latest release.
   chauf nginx [args...]  Run the managed nginx binary with passthrough args.
   chauf caddy [args...]  Run the managed caddy binary with passthrough args.
   chauf start            Check service prerequisites before starting Chauffeur.
@@ -30,6 +31,8 @@ Usage:
 
 func main() {
 	args := os.Args[1:]
+	commands.SetCLIVersion(version)
+
 	if len(args) == 0 {
 		usage()
 		return
@@ -47,6 +50,16 @@ func main() {
 		}
 	case "php":
 		if err := commands.RunPHP(args[1:]); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+	case "self-update":
+		if err := commands.RunSelfUpdate(args[1:]); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+	case "link":
+		if err := commands.RunLink(args[1:]); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}

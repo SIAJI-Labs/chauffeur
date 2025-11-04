@@ -7,9 +7,10 @@ Chauffeur is a host-based CLI for managing per-project PHP development services 
 - ✅ **Installer & Configuration**: Smart installer with Go requirement checking, existing installation detection, and PATH management  
 - ✅ **PHP Management**: `chauf php install/use/isolate` with version switching and workspace setup  
 - ✅ **CLI Bootstrap**: Both repository cloning and curl-based installation methods  
+- ✅ **Self-Update**: `chauf self-update` pulls latest git changes and rebuilds the CLI binary (services untouched)  
 - ✅ **Shell Integration**: Clean PATH management with no whitespace pollution  
 - 🚧 **Service Orchestration**: `chauf start/stop` (in progress)  
-- 🚧 **Project Registration**: `chauf link/links` (in progress)  
+- 🚧 **Project Registration**: Basic project config creation via `chauf link`; listing & service wiring in progress  
 - Linux-focused workflow (Arch/Ubuntu/Debian friendly); other OS targets are not yet supported
 
 ## Background & Inspiration
@@ -143,9 +144,19 @@ chauf php use 7.4
 # Check current version
 chauf php -v
 
-# Per-project isolation (planned)
+# Per-project isolation
 chauf php isolate 8.2
 ```
+
+### Updating Chauffeur
+
+Refresh the CLI in-place by pulling the latest git changes and rebuilding (managed services stay intact):
+
+```bash
+chauf self-update
+```
+
+The command clones (or updates) the Chauffeur repository under `~/.chauffeur/src/chauffeur`, verifies the tree is clean, fast-forwards to the latest `main` commit, and runs `go build` to replace `~/.chauffeur/bin/chauf`. It uses the SSH remote `git@github.com:SIAJI-Labs/chauffeur.git` by default—make sure your SSH key has access (override via `CHAUF_REPO_URL` when the project becomes public). You’ll need both `git` and `go` available in your PATH.
 
 ### Uninstallation
 
@@ -168,15 +179,16 @@ The uninstaller cleanly removes PATH entries without leaving whitespace pollutio
 - PHP runtime management (`chauf php install/use/isolate`)
 - Config management with automatic file creation
 - Shell integration (Bash/Zsh) with clean PATH handling
+- Project configuration writer via `chauf link` (slug creation, per-project PHP metadata)
+- Per-project PHP overrides via `chauf php isolate`
+- CLI binary refresh via `chauf self-update`
 
 ### Current Focus 🎯
 **Priority 1: Per-Project PHP Isolation**
-- `chauf php isolate <version>` to pin specific PHP version to project directory
-- Project configuration (`.chauffeur/project.yaml`) with per-project PHP settings
 - Automatic detection of project-specific PHP requirements
 
 **Priority 2: Project Linking & Service Registration**
-- `chauf link --site <domain> --ssl --php <version>` to register projects
+- `chauf link --site <domain> [--ssl] [--php <version>] [--force]` to register projects
 - `chauf links` to list all registered projects and their configurations
 - Integration with Nginx and Caddy for automatic service discovery
 
@@ -198,6 +210,15 @@ The uninstaller cleanly removes PATH entries without leaving whitespace pollutio
 - Performance monitoring and health checks
 
 See [TODO_STATUS.md](docs/TODO_STATUS.md) for comprehensive project status and roadmap details.
+
+## Project Registration Flow
+
+- Run `chauf link --site myproj.test --ssl` inside a project directory to create `~/.chauffeur/projects/<slug>/project.yaml`.
+- The command records the absolute project path, PHP version (defaults to global), optional domain metadata, and prepares runtime/log directories.
+- Use `--php <version>` to pin a per-project PHP version without touching global defaults.
+- Run `chauf php isolate <version>` in the project directory to switch the linked PHP runtime (requires the version to be installed).
+- Re-run with `--force` when intentionally overwriting an existing project registration.
+- Upcoming work: emit Nginx/Caddy templates and expose `chauf links` for listing registrations.
 
 ## Development Notes
 
