@@ -69,16 +69,153 @@ var (
 	lookPath   = exec.LookPath
 )
 
+// runDevUpdate rebuilds the CLI binary from the current working directory
+func runDevUpdate() error {
+	// Verify we're in a valid git repository
+	spin := newSpinner("Verifying chauffeur repository")
+	repoDir, err := os.Getwd()
+	if err != nil {
+		spin.Fail("get working directory")
+		return fmt.Errorf("get working directory: %w", err)
+	}
+	
+	// Check if this is a git repository
+	gitDir := filepath.Join(repoDir, ".git")
+	if _, err := os.Stat(gitDir); err != nil {
+		spin.Fail("not a git repository")
+		return fmt.Errorf("current directory is not a git repository")
+	}
+	
+	// Check if it has the required structure for a chauffeur repo
+	requiredPaths := []string{
+		"cli/main.go",
+		"go.mod",
+		"AGENTS.md",
+	}
+	
+	for _, path := range requiredPaths {
+		fullPath := filepath.Join(repoDir, path)
+		if _, err := os.Stat(fullPath); err != nil {
+			spin.Fail("invalid chauf repo structure")
+			return fmt.Errorf("missing required file/directory: %s", path)
+		}
+	}
+	spin.Success("validated chauf repo structure")
+	
+	// Get the current working directory info
+	spin = newSpinner("Preparing rebuild environment")
+	start := time.Now()
+	
+	// Get current git HEAD for reference
+	currentSHA, err := runCommand(repoDir, "git", "rev-parse", "HEAD")
+	if err != nil {
+		spin.Fail("get current commit")
+		return fmt.Errorf("get current commit: %w", err)
+	}
+	currentSHA = strings.TrimSpace(currentSHA)
+	
+	// Get target executable path
+	target := os.Getenv("CHAUF_SELF_UPDATE_TARGET")
+	if target == "" {
+		target, err = os.Executable()
+		if err != nil {
+			spin.Fail("determine executable path")
+			return fmt.Errorf("determine executable path: %w", err)
+		}
+		if resolved, err := filepath.EvalSymlinks(target); err == nil {
+			target = resolved
+		}
+	}
+	
+	// Ensure target directory exists
+	dir := filepath.Dir(target)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		spin.Fail("prepare target directory")
+		return fmt.Errorf("ensure binary directory: %w", err)
+	}
+	
+	spin.Success(fmt.Sprintf("ready to rebuild (commit %s, %s)", shortSHA(currentSHA), formatDuration(time.Since(start))))
+	
+	// Build the new binary
+	if err := buildFromSource(repoDir, target, currentSHA); err != nil {
+		return err
+	}
+	
+	fmt.Printf("\n%s %s from development directory\n", blue(statusPrefix), bold(green("Dev rebuild complete")))
+	fmt.Printf("%s Built from current working directory: %s\n", blue(statusPrefix), gray(repoDir))
+	fmt.Printf("%s Using commit: %s\n", blue(statusPrefix), gray(shortSHA(currentSHA)))
+	fmt.Printf("%s Installed to: %s\n", blue(statusPrefix), gray(target))
+	
+	return nil
+}
+
+// buildFromSource builds the binary from the specified directory
+func buildFromSource(repoDir, target, commitSHA string) error {
+	// Create temporary file for new binary
+	dir := filepath.Dir(target)
+	tmpFile, err := os.CreateTemp(dir, "chauf-dev-build-*")
+	if err != nil {
+		return fmt.Errorf("prepare temporary binary: %w", err)
+	}
+	tmpPath := tmpFile.Name()
+	_ = tmpFile.Close()
+	defer func() { _ = os.Remove(tmpPath) }()
+	
+	spin := newSpinner(fmt.Sprintf("Building from source (@%s)", shortSHA(commitSHA)))
+	start := time.Now()
+	
+	// Build the binary
+	if err := goBuild(repoDir, tmpPath); err != nil {
+		spin.Fail("build failed")
+		return fmt.Errorf("go build: %w", err)
+	}
+	
+	// Set executable permissions
+	if err := os.Chmod(tmpPath, 0o755); err != nil {
+		spin.Fail("set permissions failed")
+		return fmt.Errorf("set binary permissions: %w", err)
+	}
+	
+	// Backup existing binary
+	backupPath := target + ".bak"
+	if err := os.Rename(target, backupPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		spin.Fail("backup failed")
+		return fmt.Errorf("backup existing binary: %w", err)
+	}
+	
+	// Install new binary
+	if err := os.Rename(tmpPath, target); err != nil {
+		_ = os.Rename(backupPath, target)
+		spin.Fail("install failed")
+		return fmt.Errorf("install new binary: %w", err)
+	}
+	
+	// Clean up backup
+	_ = os.Remove(backupPath)
+	spin.Success(fmt.Sprintf("installed to %s (%s)", target, formatDuration(time.Since(start))))
+	
+	return nil
+}
+
 // RunSelfUpdate handles `chauf self-update`.
 func RunSelfUpdate(args []string) error {
+	var isDev bool
+	remainingArgs := []string{}
+	
 	for _, arg := range args {
 		switch arg {
 		case "--help", "-h":
 			printSelfUpdateUsage()
 			return nil
+		case "--dev":
+			isDev = true
 		default:
-			return fmt.Errorf("unknown flag for self-update: %s", arg)
+			remainingArgs = append(remainingArgs, arg)
 		}
+	}
+
+	if isDev {
+		return runDevUpdate()
 	}
 
 	updater, err := newGitSelfUpdater()
@@ -514,6 +651,10 @@ func printSelfUpdateUsage() {
 	fmt.Print(`Chauffeur Self-Update
 
 Usage:
-  chauf self-update   Update chauffeur by pulling the latest git changes and rebuilding the CLI binary.
+  chauf self-update           Update chauffeur by pulling the latest git changes and rebuilding the CLI binary.
+  chauf self-update --dev     Rebuild the CLI binary from the current working directory (must be a chauffeur repo).
+
+Flags:
+  --dev                       Rebuild from current directory if it's a valid chauffeur repository.
 `)
 }

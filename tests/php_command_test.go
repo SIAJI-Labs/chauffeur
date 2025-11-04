@@ -109,6 +109,99 @@ func TestPHPCommandPassthrough(t *testing.T) {
 	}
 }
 
+func TestPHPIsolateUpdatesProjectConfig(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	version := "7.4"
+	phpBinDir := filepath.Join(tmpHome, ".chauffeur", "php", version, "bin")
+	if err := os.MkdirAll(phpBinDir, 0o755); err != nil {
+		t.Fatalf("mkdir php bin: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(phpBinDir, "php"), []byte("#!/usr/bin/env bash\n"), 0o755); err != nil {
+		t.Fatalf("write php stub: %v", err)
+	}
+
+	projectRoot := filepath.Join(t.TempDir(), "proj")
+	if err := os.MkdirAll(projectRoot, 0o755); err != nil {
+		t.Fatalf("mkdir project: %v", err)
+	}
+
+	originalWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(originalWD)
+	})
+	if err := os.Chdir(projectRoot); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+
+	if err := commands.RunLink(nil); err != nil {
+		t.Fatalf("link project: %v", err)
+	}
+
+	projectsDir := filepath.Join(tmpHome, ".chauffeur", "projects")
+	configPath := filepath.Join(projectsDir, "proj", "project.yaml")
+	initialConfig := readFile(t, configPath)
+	initialCreated := lineWithPrefix(initialConfig, "created_at:")
+
+	output := captureOutput(func() error {
+		return commands.RunPHP([]string{"isolate", version})
+	})
+
+	if !strings.Contains(output, "pinned to "+version) {
+		t.Fatalf("expected isolate output to mention version, got %q", output)
+	}
+
+	updatedConfig := readFile(t, configPath)
+	if !strings.Contains(updatedConfig, "php: "+version) {
+		t.Fatalf("expected php version to be updated, got %s", updatedConfig)
+	}
+	if updatedCreated := lineWithPrefix(updatedConfig, "created_at:"); initialCreated != "" && updatedCreated != initialCreated {
+		t.Fatalf("expected created_at to remain unchanged (before=%q, after=%q)", initialCreated, updatedCreated)
+	}
+}
+
+func TestPHPIsolateRequiresLinkedProject(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	version := "7.4"
+	phpBinDir := filepath.Join(tmpHome, ".chauffeur", "php", version, "bin")
+	if err := os.MkdirAll(phpBinDir, 0o755); err != nil {
+		t.Fatalf("mkdir php bin: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(phpBinDir, "php"), []byte("#!/usr/bin/env bash\n"), 0o755); err != nil {
+		t.Fatalf("write php stub: %v", err)
+	}
+
+	projectRoot := filepath.Join(t.TempDir(), "unlinked")
+	if err := os.MkdirAll(projectRoot, 0o755); err != nil {
+		t.Fatalf("mkdir project: %v", err)
+	}
+
+	originalWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(originalWD)
+	})
+	if err := os.Chdir(projectRoot); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+
+	errMsg := captureError(func() error {
+		return commands.RunPHP([]string{"isolate", version})
+	})
+
+	if !strings.Contains(errMsg, "Run 'chauf link'") {
+		t.Fatalf("expected instruction to link project, got %q", errMsg)
+	}
+}
+
 func readDefaultPHPVersion(t *testing.T, home string) string {
 	t.Helper()
 
@@ -170,4 +263,23 @@ projects_dir: %s
 	if err := os.WriteFile(cfgFile, []byte(content), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
+}
+
+func readFile(t *testing.T, path string) string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read file %s: %v", path, err)
+	}
+	return string(data)
+}
+
+func lineWithPrefix(content, prefix string) string {
+	lines := strings.Split(content, "\n")
+	for _, line := range lines {
+		if strings.HasPrefix(strings.TrimSpace(line), prefix) {
+			return strings.TrimSpace(line)
+		}
+	}
+	return ""
 }

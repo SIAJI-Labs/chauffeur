@@ -8,6 +8,7 @@ import (
 
 	"github.com/siaji/chauffeur/cli/installers"
 	"github.com/siaji/chauffeur/cli/internal/config"
+	"github.com/siaji/chauffeur/cli/internal/projects"
 	"github.com/siaji/chauffeur/cli/internal/workspace"
 )
 
@@ -26,6 +27,11 @@ func RunPHP(args []string) error {
 			return fmt.Errorf("php use requires <version>")
 		}
 		return runPHPUse(args[1])
+	case "isolate":
+		if len(args) < 2 {
+			return fmt.Errorf("php isolate requires <version>")
+		}
+		return runPHPIsolate(args[1])
 	default:
 		return runPHPBinary(args)
 	}
@@ -74,12 +80,68 @@ func runPHPUse(version string) error {
 	return nil
 }
 
+func runPHPIsolate(version string) error {
+	if !installers.IsPHPVersionSupported(version) {
+		return fmt.Errorf("PHP version %s is not supported. Supported versions: %s", version, installers.GetSupportedVersionsList())
+	}
+
+	prefix, err := workspace.Dir()
+	if err != nil {
+		return err
+	}
+
+	binary := filepath.Join(prefix, "php", version, "bin", "php")
+	if _, err := os.Stat(binary); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			fmt.Printf("PHP %s is not installed. Run 'chauf install php %s' first.\n", version, version)
+			return fmt.Errorf("php %s not installed", version)
+		}
+		return fmt.Errorf("check php binary: %w", err)
+	}
+
+	cfg, err := config.Load()
+	if err != nil {
+		return fmt.Errorf("load configuration: %w", err)
+	}
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("determine current directory: %w", err)
+	}
+	cwd, err = filepath.Abs(cwd)
+	if err != nil {
+		return fmt.Errorf("resolve project path: %w", err)
+	}
+
+	projectCfg, layout, err := projects.FindByPath(cfg.ProjectsDir, cwd)
+	if err != nil {
+		if errors.Is(err, projects.ErrProjectNotFound) {
+			return fmt.Errorf("project is not linked. Run 'chauf link' in this directory first")
+		}
+		return fmt.Errorf("load project configuration: %w", err)
+	}
+
+	projectCfg.PHP = version
+	if projectCfg.Runtime.PHPFPM == "" {
+		projectCfg.Runtime.PHPFPM = layout.SocketPath
+	}
+
+	if err := projects.WriteConfig(projectCfg, layout.ConfigPath, true); err != nil {
+		return fmt.Errorf("update project configuration: %w", err)
+	}
+
+	fmt.Printf("Project PHP version pinned to %s (config: %s)\n", version, layout.ConfigPath)
+	return nil
+}
+
 func printPHPUsage() {
 	fmt.Print(`Chauffeur PHP Commands
 
 Usage:
   chauf php [args...]       Execute the default PHP CLI with passthrough args.
   chauf php use <version>   Set the default PHP version.
+  chauf php isolate <version>
+                             Pin the current project to a specific PHP version.
 `)
 }
 
