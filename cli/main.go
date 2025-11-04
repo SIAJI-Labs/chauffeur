@@ -18,6 +18,8 @@ Usage:
   chauf --help           Show this message.
   chauf install <service> [version]
                          Install Chauffeur-managed services (caddy, nginx, php).
+  chauf remove <service> [version]
+                         Remove installed Chauffeur-managed services.
   chauf php <command>    Manage PHP runtimes (use <version>, ...).
   chauf self-update      Update the Chauffeur CLI to the latest release.
   chauf nginx [args...]  Run the managed nginx binary with passthrough args.
@@ -48,6 +50,11 @@ func main() {
 		usage()
 	case "install":
 		if err := commands.RunInstall(args[1:]); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+	case "remove":
+		if err := commands.RunRemove(args[1:]); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}

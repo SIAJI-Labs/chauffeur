@@ -125,9 +125,29 @@ chauf --version
 - **Multiple Shell Support**: Works with Bash and Zsh with proper rc file handling
 - **Enhanced Logging**: Structured output with progress indicators, timing, and visual feedback
 
+### Service Management
+
+Once installed, you can manage services:
+
+```bash
+# Install services
+chauf install php 8.3
+chauf install nginx
+chauf install caddy
+
+# Remove services
+chauf remove php 8.3        # Remove specific PHP version
+chauf remove php           # Remove all PHP versions
+chauf remove nginx         # Remove nginx
+chauf remove caddy         # Remove caddy
+
+# Remove without confirmation
+chauf remove nginx --force
+```
+
 ### PHP Management
 
-Once installed, you can manage PHP versions:
+PHP versions have additional management options:
 
 ```bash
 # Install PHP versions

@@ -11,6 +11,7 @@ This document tracks the current status of features and improvements for the Cha
 - [x] **Shell Integration**: Automatic PATH management for Bash and Zsh
 - [x] **Clean PATH Management**: No whitespace pollution in shell config files
 - [x] **Idempotent Installation**: Safe to run multiple times
+- [x] **Service Removal**: `chauf remove` command for uninstalling individual services with version support and confirmation prompts
 
 ### PHP Management
 - [x] **PHP Installation**: `chauf php install <version>` for building from source
@@ -174,6 +175,7 @@ This document tracks the current status of features and improvements for the Cha
 - ✅ Multiple installation methods
 - ✅ Enhanced CLI logging specification with visual feedback standards
 - ✅ Comprehensive testing framework standards with 80% coverage requirements
+- ✅ Service Removal Command: `chauf remove` with version support and confirmation prompts
 
 ### v0.1.1 (Planned - Project Focus)
 - ✅ **Priority 1**: Per-project PHP isolation (`chauf php isolate`)
