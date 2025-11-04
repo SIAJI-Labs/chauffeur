@@ -11,8 +11,10 @@ Chauffeur is a host-based CLI for managing per-project PHP development services 
 - ✅ **Dev Mode**: `chauf self-update --dev` rebuilds CLI from current directory for development  
 - ✅ **Shell Integration**: Clean PATH management with no whitespace pollution  
 - ✅ **Enhanced Logging**: Structured CLI output with color-coded status, progress indicators, and detailed timing information  
+- ✅ **Project Registration**: Complete `chauf link`, `chauf links`, and `chauf unlink` commands with comprehensive project management  
+- ✅ **Comprehensive Testing**: Full test suite with operation-based structure and 80% coverage standards  
 - 🚧 **Service Orchestration**: `chauf start/stop` (in progress)  
-- 🚧 **Project Registration**: Basic project config creation via `chauf link`; listing & service wiring in progress  
+- 🚧 **Site Accessibility**: Nginx/Caddy integration for domain routing (in progress)  
 - Linux-focused workflow (Arch/Ubuntu/Debian friendly); other OS targets are not yet supported
 
 ## Background & Inspiration
@@ -187,26 +189,30 @@ The uninstaller cleanly removes PATH entries without leaving whitespace pollutio
 - Per-project PHP overrides via `chauf php isolate`
 - CLI binary refresh via `chauf self-update`  
 - Development mode rebuild via `chauf self-update --dev` for testing local changes
+- Complete project registration system with `chauf links` and `chauf unlink` commands
+- Comprehensive testing framework with operation-based structure
+- Enhanced CLI logging specification with visual feedback standards
 
 ### Current Focus 🎯
-**Priority 1: Per-Project PHP Isolation**
-- Automatic detection of project-specific PHP requirements
+**Priority 1: Complete Service Orchestration**
+- `chauf start` and `chauf stop` commands for managing services
+- Integration with Nginx, PHP-FPM, and Caddy processes
+- Service process monitoring and health checks
 
-**Priority 2: Project Linking & Service Registration**
-- `chauf link --site <domain> [--ssl] [--php <version>] [--force]` to register projects
-- `chauf links` to list all registered projects and their configurations
-- Integration with Nginx and Caddy for automatic service discovery
-
-**Priority 3: Site Accessibility**
-- Automatic Nginx virtual host configuration for registered domains
+**Priority 2: Site Accessibility Implementation**
+- Nginx virtual host configuration for registered domains
 - Caddy integration for local domain resolution (no `/etc/hosts` editing)
 - SSL certificate management for local development domains
-- Service health checks and startup coordination
+
+**Priority 3: Enhanced Logging Implementation**
+- Implement the standardized logging package (`cli/internal/logging`)
+- Refactor existing commands to use enhanced logging framework
+- Progress bars for downloads and spinners for long operations
 
 ### In Progress 🚧
 - Service orchestration (`chauf start`, `chauf stop`) for Nginx, PHP-FPM, and Caddy
 - Automated shim generation and log handling
-- Project registration system foundation
+- Nginx/Caddy template generation for linked projects
 
 ### Planned 📋
 - `chauf init` explicit workspace initialization
@@ -224,8 +230,8 @@ See [TODO_STATUS.md](docs/TODO_STATUS.md) for comprehensive project status and r
 - Run `chauf php isolate <version>` in the project directory to switch the linked PHP runtime (requires the version to be installed).
 - Re-run with `--force` when intentionally overwriting an existing project registration.
 - Run `chauf unlink` to remove a project registration (defaults to current directory when no flags provided).
-- Run `chauf links` to list all registered projects and their configurations.
-- Upcoming work: emit Nginx/Caddy templates and expose `chauf links` for listing registrations.
+- Run `chauf links` to list all registered projects and their configurations in a formatted table with domains, SSL status, PHP versions, and creation timestamps.
+- Upcoming work: emit Nginx/Caddy templates and integrate with service orchestration.
 
 ## Development Notes
 
