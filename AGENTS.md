@@ -8,7 +8,7 @@ This document is the authoritative reference for autonomous agents working on Ch
 
 ## Documentation Synchronization Rule
 
-**MAINTAINANCE REQUIREMENT**: When making any code changes, feature additions, or architectural modifications, you **must** also update the project documentation to maintain real-time accuracy:
+**MAINTENANCE REQUIREMENT**: When making any code changes, feature additions, or architectural modifications, you **must** also update the project documentation to maintain real-time accuracy:
 
 ### Required Documentation Updates on Every Change:
 
@@ -485,7 +485,9 @@ proj := Project{ Path: pwd, PHP: optPHP, Site: {...} }
 WriteYAML("~/.chauffeur/projects/"+slug+"/project.yaml", proj)
 ```
 
-## 6.4) Testing Standards
+---
+
+## 7) Testing Standards
 
 **Directory Structure**: All tests must be organized under `tests/` following operation-based structure:
 ```
@@ -523,7 +525,7 @@ func TestSelfUpdateDevModeRebuildsFromRepo(t *testing.T)
 
 **Test Structure and Coverage**:
 
-### 6.4.1) Standard Test Template
+### 7.1) Standard Test Template
 
 All tests should follow this structure:
 ```go
@@ -553,7 +555,7 @@ func TestCommandSpecificBehavior(t *testing.T) {
 }
 ```
 
-### 6.4.2) Coverage Requirements
+### 7.2) Coverage Requirements
 
 **Minimum Coverage Standards**:
 - **Unit Tests**: 80% line coverage minimum for all packages
@@ -564,32 +566,32 @@ func TestCommandSpecificBehavior(t *testing.T) {
 
 **Required Test Categories**:
 
-#### 6.4.2.1) Command Tests
+#### 7.2.1) Command Tests
 - **Success Cases**: Normal operation flows
 - **Error Cases**: Invalid arguments, missing files, permission issues
 - **Edge Cases**: Empty inputs, corrupted files, network failures
 - **Flag Combinations**: Test all flag combinations and interactions
 
-#### 6.4.2.2) Installation Tests  
+#### 7.2.2) Installation Tests  
 - **Clean Install**: First-time installation scenarios
 - **Reinstall**: Installing over existing installations
 - **Force Install**: `--force` flag behavior
 - **Version Validation**: Supported/unsupported version handling
 - **Network Errors**: Timeout, connection failure scenarios
 
-#### 6.4.2.3) Configuration Tests
+#### 7.2.3) Configuration Tests
 - **Default Config**: Creating and reading default configurations
 - **Custom Config**: Handling user modifications
 - **Migration**: Config version upgrades and backwards compatibility
 - **Validation**: Invalid configuration detection and error reporting
 
-#### 6.4.2.4) File System Tests
+#### 7.2.4) File System Tests
 - **Permission Handling**: Different permission scenarios
 - **Path Resolution**: Relative/absolute path handling
 - **Race Conditions**: Concurrent access scenarios
 - **Symlinks**: Symlink creation, following, and validation
 
-### 6.4.3) Test Utilities and Helpers
+### 7.3) Test Utilities and Helpers
 
 **Standard Helper Functions** (in `tests/helpers_test.go`):
 ```go
@@ -612,7 +614,7 @@ func assertProjectConfig(t *testing.T, configPath string, expected interface{})
 func assertLogEntry(t *testing.T, logPath, expectedMessage string)
 ```
 
-### 6.4.4) Integration Test Standards
+### 7.4) Integration Test Standards
 
 **End-to-End Tests**: Should cover complete user workflows:
 ```go
@@ -628,7 +630,7 @@ func TestCompleteWorkflow_PHPProjectSetup(t *testing.T) {
 }
 ```
 
-### 6.4.5) Mock and Test Structure Guidelines
+### 7.5) Mock and Test Structure Guidelines
 
 **Test Isolation**: Each test should:
 - Use `t.TempDir()` for temporary directories
@@ -641,7 +643,7 @@ func TestCompleteWorkflow_PHPProjectSetup(t *testing.T) {
 - Create testable functions that accept dependencies
 - Avoid static global state in production code
 
-### 6.4.6) Performance and Reliability Tests
+### 7.6) Performance and Reliability Tests
 
 **Benchmark Tests**:
 ```go
@@ -660,7 +662,7 @@ func TestConcurrentOperations(t *testing.T) {
 }
 ```
 
-### 6.4.7) Test Execution and CI Integration
+### 7.7) Test Execution and CI Integration
 
 **Test Standards for CI/CD**:
 - All tests must pass on clean environments
@@ -684,7 +686,7 @@ go test -v -race -cover ./tests/ && \
   awk '{if($1 < 80) {exit 1}}'
 ```
 
-### 6.4.8) Test Documentation
+### 7.8) Test Documentation
 
 **Test Documentation Requirements**:
 - Each test package should have a package comment explaining its purpose
@@ -705,7 +707,7 @@ package install
 
 ---
 
-## 7) ADRs (Architecture Decision Records)
+## 8) ADRs (Architecture Decision Records)
 
 1. **ADR‑001: Manual Registration**  – Accepted 2025‑10‑30  
 2. **ADR‑002: Caddy for Local Domains** – Accepted 2025‑10‑30  
@@ -719,7 +721,7 @@ package install
 
 ---
 
-## 8) Prompts & Guardrails for Codex
+## 9) Prompts & Guardrails for Codex
 
 - Always assume **UTC** timestamps in generated files unless otherwise specified.
 - When creating files in `$HOME`, expand to absolute paths.
@@ -735,7 +737,7 @@ package install
 
 ---
 
-## 9) Acceptance Tests (high‑level)
+## 10) Acceptance Tests (high‑level)
 
 1. `chauf init` creates workspace; re‑running is no‑op.
 2. `chauf php install 8.3` creates `~/.chauffeur/php/8.3/bin/php`.
@@ -747,7 +749,7 @@ package install
 
 ---
 
-## 10) Glossary
+## 11) Glossary
 
 - **Workspace**: `~/.chauffeur/` root directory.  
 - **Isolation**: Per‑project PHP‑FPM and config; no host conflicts.  
@@ -755,7 +757,7 @@ package install
 
 ---
 
-## 11) Open Questions / TODOs
+## 12) Open Questions / TODOs
 
 - Decide acquisition method per binary: build-from-source vs vendor tarballs (with checksum/signature verification).  
 - Define Windows/macOS support stance.  
