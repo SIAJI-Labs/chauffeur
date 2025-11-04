@@ -46,7 +46,7 @@ func writeShim(prefix, name, target string) error {
  */
 func shimContent(name, target string) string {
 	if name == "php" {
-		return projectAwarePHPShimContent()
+		return ProjectAwarePHPShimContent()
 	}
 	return fmt.Sprintf(`#!/usr/bin/env bash
 set -euo pipefail
@@ -59,8 +59,8 @@ exec "$TARGET" "$@"
 `, target, name)
 }
 
-// projectAwarePHPShimContent generates content for a PHP shim that checks for project isolation.
-func projectAwarePHPShimContent() string {
+// ProjectAwarePHPShimContent generates content for a PHP shim that checks for project isolation.
+func ProjectAwarePHPShimContent() string {
 	return `#!/usr/bin/env bash
 set -euo pipefail
 

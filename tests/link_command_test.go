@@ -13,6 +13,15 @@ func TestLinkCreatesProjectConfig(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
 
+	// Create mock PHP 8.3 installation
+	phpDir := filepath.Join(tmpHome, ".chauffeur", "php", "8.3", "bin")
+	if err := os.MkdirAll(phpDir, 0o755); err != nil {
+		t.Fatalf("mkdir php bin: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(phpDir, "php"), []byte("#!/usr/bin/env bash\n"), 0o755); err != nil {
+		t.Fatalf("write php stub: %v", err)
+	}
+
 	projectDir := filepath.Join(t.TempDir(), "my-app")
 	if err := os.MkdirAll(projectDir, 0o755); err != nil {
 		t.Fatalf("mkdir project: %v", err)
@@ -61,6 +70,15 @@ func TestLinkCreatesProjectConfig(t *testing.T) {
 func TestLinkRequiresForceToOverwrite(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
+
+	// Create mock PHP 8.3 installation
+	phpDir := filepath.Join(tmpHome, ".chauffeur", "php", "8.3", "bin")
+	if err := os.MkdirAll(phpDir, 0o755); err != nil {
+		t.Fatalf("mkdir php bin: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(phpDir, "php"), []byte("#!/usr/bin/env bash\n"), 0o755); err != nil {
+		t.Fatalf("write php stub: %v", err)
+	}
 
 	projectDir := filepath.Join(t.TempDir(), "site")
 	if err := os.MkdirAll(projectDir, 0o755); err != nil {
