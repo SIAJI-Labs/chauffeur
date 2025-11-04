@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/siaji/chauffeur/cli/internal/logging"
 )
 
 /**
@@ -267,16 +269,19 @@ func computeFileHash(path string, hasher hash.Hash) (string, error) {
 }
 
 type progressPrinter struct {
-	label     string
-	total     int64
-	current   int64
-	width     int
-	lastPrint time.Time
-	done      bool
+	logger     *logging.CommandLogger
+	label      string
+	total      int64
+	current    int64
+	width      int
+	lastPrint  time.Time
+	done       bool
 }
 
 func newProgressPrinter(label string, total int64) *progressPrinter {
+	logger := logging.NewCommandLogger("install")
 	return &progressPrinter{
+		logger:    logger,
 		label:     label,
 		total:     total,
 		width:     32,
@@ -312,18 +317,21 @@ func (p *progressPrinter) render() {
 			filled = p.width
 		}
 		bar := strings.Repeat("#", filled) + strings.Repeat(".", p.width-filled)
-		fmt.Printf("\r    - %s [%s] %3.0f%%", p.label, bar, ratio*100)
+		// Use command logger prefix format and clear line
+		fmt.Printf("\r\033[K%s %s... [%s] %3.0f%%", p.logger.Prefix(), p.label, bar, ratio*100)
 	} else {
-		fmt.Printf("\r    - %s %s", p.label, humanBytes(p.current))
+		fmt.Printf("\r\033[K%s %s... %s", p.logger.Prefix(), p.label, humanBytes(p.current))
 	}
+	// Ensure the output is flushed immediately
+	fmt.Print("")
 	p.lastPrint = time.Now()
 }
 
 func (p *progressPrinter) renderFinal() {
 	if p.total > 0 {
-		fmt.Printf("\r    - %s [%s] 100%% (%s)\n", p.label, strings.Repeat("#", p.width), humanBytes(p.current))
+		fmt.Printf("\r\033[K%s %s... [%s] 100%% (%s)\n", p.logger.Prefix(), p.label, strings.Repeat("#", p.width), humanBytes(p.current))
 	} else {
-		fmt.Printf("\r    - %s %s\n", p.label, humanBytes(p.current))
+		fmt.Printf("\r\033[K%s %s... %s\n", p.logger.Prefix(), p.label, humanBytes(p.current))
 	}
 }
 

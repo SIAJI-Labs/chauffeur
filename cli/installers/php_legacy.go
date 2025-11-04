@@ -5,33 +5,38 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	
+	"github.com/siaji/chauffeur/cli/internal/logging"
 )
 
 // applyLegacyPHPSourcePatches injects compatibility shims for legacy PHP releases
 // that no longer build cleanly against modern system dependencies.
-func applyLegacyPHPSourcePatches(version, sourceDir string) error {
+func applyLegacyPHPSourcePatches(version, sourceDir string, logger *logging.CommandLogger) error {
 	needsCompat := version == "7.4" || version == "8.0"
 	if !needsCompat {
 		return nil
 	}
 
-	logPHPInfo("Applying compatibility patches for legacy PHP %s in directory %s", version, sourceDir)
+	if logger == nil {
+		logger = logging.NewCommandLogger("install")
+	}
+	logPHPInfo(logger, "Applying compatibility patches for legacy PHP %s in directory %s", version, sourceDir)
 
-	if err := patchLegacyLibxml(sourceDir); err != nil {
+	if err := patchLegacyLibxml(logger, sourceDir); err != nil {
 		return err
 	}
-	if err := patchLegacyOpenSSL(sourceDir); err != nil {
+	if err := patchLegacyOpenSSL(logger, sourceDir); err != nil {
 		return err
 	}
-	if err := patchLegacyScanf(sourceDir); err != nil {
+	if err := patchLegacyScanf(logger, sourceDir); err != nil {
 		return err
 	}
 
-	logPHPSuccess("Legacy compatibility patches applied")
+	logPHPSuccess(logger, "Legacy compatibility patches applied")
 	return nil
 }
 
-func patchLegacyLibxml(sourceDir string) error {
+func patchLegacyLibxml(logger *logging.CommandLogger, sourceDir string) error {
 	target := filepath.Join(sourceDir, "ext", "libxml", "libxml.c")
 	data, err := os.ReadFile(target)
 	if err != nil {
@@ -51,7 +56,8 @@ func patchLegacyLibxml(sourceDir string) error {
 
 `)
 
-		logPHPInfo("Injecting ATTRIBUTE_UNUSED shim for libxml >= 2.12")
+		logger.Info("Injecting ATTRIBUTE_UNUSED shim for libxml >= 2.12")
+			logger.Info("Adjusting libxml handler casting for legacy build")
 		data = append(snippet, data...)
 		modified = true
 	}
@@ -64,7 +70,7 @@ func patchLegacyLibxml(sourceDir string) error {
 
 	for old, newVal := range replacements {
 		if bytes.Contains(data, []byte(old)) && !bytes.Contains(data, []byte(newVal)) {
-			logPHPInfo("Adjusting libxml handler casting for legacy build")
+			logPHPInfo(logger, "Adjusting libxml handler casting for legacy build")
 			updated := bytes.ReplaceAll(data, []byte(old), []byte(newVal))
 			if !bytes.Equal(updated, data) {
 				data = updated
@@ -84,9 +90,12 @@ func patchLegacyLibxml(sourceDir string) error {
 	return nil
 }
 
-func patchLegacyOpenSSL(sourceDir string) error {
+func patchLegacyOpenSSL(logger *logging.CommandLogger, sourceDir string) error {
 	target := filepath.Join(sourceDir, "ext", "openssl", "openssl.c")
-	logPHPInfo("Patching OpenSSL file: %s", target)
+	logPHPInfo(logger, "Patching OpenSSL file: %s", target)
+	logPHPInfo(logger, "Adjusting EVP_PKEY RSA accessor for OpenSSL 3.x const correctness")
+	logPHPInfo(logger, "Injecting OpenSSL 3.x compatibility shims")
+			logPHPInfo(logger, "Patching OpenSSL shims in: %s", target)
 
 	// Check if file exists before trying to read
 	if _, err := os.Stat(target); os.IsNotExist(err) {
@@ -103,7 +112,7 @@ func patchLegacyOpenSSL(sourceDir string) error {
 	// Always update call sites before inserting helper to ensure consistency.
 	replaced := bytes.ReplaceAll(data, []byte("EVP_PKEY_get0_RSA("), []byte("EVP_PKEY_get0_RSA_NONCONST("))
 	if !bytes.Equal(replaced, data) {
-		logPHPInfo("Adjusting EVP_PKEY RSA accessor for OpenSSL 3.x const correctness")
+		logPHPInfo(logger, "Adjusting EVP_PKEY RSA accessor for OpenSSL 3.x const correctness")
 		data = replaced
 		modified = true
 	}
@@ -124,10 +133,10 @@ func patchLegacyOpenSSL(sourceDir string) error {
 			"#endif\n" +
 			"/* ==== end OpenSSL 3.x shims ==== */\n\n",
 		)
-		logPHPInfo("Injecting OpenSSL 3.x compatibility shims")
+		logPHPInfo(logger, "Injecting OpenSSL 3.x compatibility shims")
 		insertPos := findOpenSSLShimInsertPos(data)
 		if insertPos < 0 {
-			logPHPWarn("could not locate config.h block; prepending shim")
+			logPHPWarn(logger, "could not locate config.h block; prepending shim", "")
 			insertPos = 0
 		}
 		data = insertSnippet(data, compatSnippet, insertPos)
@@ -135,7 +144,7 @@ func patchLegacyOpenSSL(sourceDir string) error {
 			!bytes.Contains(data, []byte("RSA_SSLV23_PADDING")) {
 			return fmt.Errorf("legacy OpenSSL shim missing after patch in %s", target)
 		}
-		logPHPInfo("Patching OpenSSL shims in: %s", target)
+		logPHPInfo(logger, "Patching OpenSSL shims in: %s", target)
 		modified = true
 	}
 
@@ -148,7 +157,7 @@ func patchLegacyOpenSSL(sourceDir string) error {
 			lines++
 		}
 	}
-	logPHPInfo("openssl.c head:\n%s", out.String())
+	logPHPInfo(logger, "openssl.c head:\n%s", out.String())
 
 	if !bytes.Contains(data, []byte(compatMarker)) || !bytes.Contains(data, []byte("EVP_PKEY_get0_RSA_NONCONST")) {
 		return fmt.Errorf("failed to inject OpenSSL compatibility shim into %s", target)
@@ -283,7 +292,7 @@ func insertSnippet(data []byte, snippet []byte, pos int) []byte {
 	return builder.Bytes()
 }
 
-func patchLegacyScanf(sourceDir string) error {
+func patchLegacyScanf(logger *logging.CommandLogger, sourceDir string) error {
 	target := filepath.Join(sourceDir, "ext", "standard", "scanf.c")
 	data, err := os.ReadFile(target)
 	if err != nil {
@@ -295,7 +304,7 @@ func patchLegacyScanf(sourceDir string) error {
 	oldDecl := []byte("zend_long (*fn)() = NULL;")
 	newDecl := []byte("zend_long (*fn)(const char *, char **, int) = NULL;")
 	if bytes.Contains(data, oldDecl) && !bytes.Contains(data, newDecl) {
-		logPHPInfo("Updating sscanf function pointer prototype for modern compilers")
+		logPHPInfo(logger, "Updating sscanf function pointer prototype for modern compilers")
 		data = bytes.ReplaceAll(data, oldDecl, newDecl)
 		modified = true
 	}

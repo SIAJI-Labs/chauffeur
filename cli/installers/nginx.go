@@ -15,7 +15,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/siaji/chauffeur/cli/internal/logging"
 	"github.com/siaji/chauffeur/cli/internal/releases"
+	"github.com/siaji/chauffeur/cli/lib"
 )
 
 const nginxBinaryName = "nginx"
@@ -76,8 +78,10 @@ var nginxSigningKeys = []nginxSigningKey{
  * @return error when installation cannot complete successfully.
  */
 func InstallNginxSource(opts InstallOptions) error {
+	nginxLogger := logging.NewCommandLogger("nginx")
+	
 	if opts.Prefix == "" {
-		return errors.New("install prefix is required")
+		return nginxLogger.Fail("install prefix is required", "")
 	}
 
 	if opts.Client == nil {
@@ -86,12 +90,12 @@ func InstallNginxSource(opts InstallOptions) error {
 
 	release, err := releases.LatestGitHubRelease(opts.Client, "nginx", "nginx")
 	if err != nil {
-		return fmt.Errorf("resolve latest Nginx release: %w", err)
+		return nginxLogger.Fail("resolve latest Nginx release", err.Error())
 	}
 
 	tag := release.TagName
 	if tag == "" {
-		return errors.New("latest Nginx release has empty tag name")
+		return nginxLogger.Fail("latest Nginx release has empty tag name", "")
 	}
 
 	version := strings.TrimPrefix(tag, "release-")
@@ -99,12 +103,12 @@ func InstallNginxSource(opts InstallOptions) error {
 		version = strings.TrimPrefix(tag, "v")
 	}
 	if version == "" {
-		return fmt.Errorf("cannot derive version from tag %s", tag)
+		return nginxLogger.Fail("cannot derive version from tag", tag)
 	}
 
-	startNginxLogSection("Preparing")
-	logNginxInfo("Release tag: %s (version %s)", tag, version)
-	logNginxInfo("Install prefix: %s", filepath.Join(opts.Prefix, "nginx"))
+	nginxLogger.Info("Installing nginx (source build from nginx.org release)...")
+	nginxLogger.Info(fmt.Sprintf("Release tag: %s (version %s)", tag, version))
+	nginxLogger.Info(fmt.Sprintf("Install prefix: %s", filepath.Join(opts.Prefix, "nginx")))
 
 	binaryPath := filepath.Join(opts.Prefix, "nginx", "sbin", nginxBinaryName)
 	if !opts.Force {
@@ -113,9 +117,10 @@ func InstallNginxSource(opts InstallOptions) error {
 		}
 	}
 
+	nginxLogger.Info("Download")
 	tmpDir, err := os.MkdirTemp("", "chauffeur-nginx-*")
 	if err != nil {
-		return fmt.Errorf("create temp dir: %w", err)
+		return nginxLogger.Fail("create temp dir", err.Error())
 	}
 	defer os.RemoveAll(tmpDir)
 
@@ -126,65 +131,63 @@ func InstallNginxSource(opts InstallOptions) error {
 	}
 
 	tarballPath := filepath.Join(tmpDir, tarballName)
-	startNginxLogSection("Download")
-	logNginxInfo("Source URL: %s", tarballURL)
-	logNginxInfo("Staging directory: %s", tmpDir)
-	logNginxInfo("Downloading tarball...")
-	size, err := downloadToFile(opts.Client, tarballURL, tarballPath, fmt.Sprintf("Download %s", tarballName))
+	downloadLogger := nginxLogger.NewChildLogger("download")
+	size, err := lib.DownloadToFileWithLogger(opts.Client, tarballURL, tarballPath, fmt.Sprintf("Download %s", tarballName), downloadLogger)
 	if err != nil {
-		return fmt.Errorf("download nginx source: %w", err)
+		return nginxLogger.Fail("download nginx source", err.Error())
 	}
-	logNginxSuccess("Downloaded %s (%s)", tarballName, humanBytes(size))
+	downloadLogger.Success(fmt.Sprintf("Downloaded %s", tarballName), humanBytes(size))
 
-	startNginxLogSection("Verification")
-	logNginxInfo("Validating PGP signature")
-	if err := verifyNginxSignature(opts.Client, tarballPath, tarballName, tmpDir); err != nil {
-		return fmt.Errorf("verify PGP signature: %w", err)
+	nginxLogger.Info("Verifying")
+	verificationLogger := nginxLogger.NewChildLogger("verifying")
+	if err := verifyNginxSignature(opts.Client, tarballPath, tarballName, tmpDir, verificationLogger); err != nil {
+		return nginxLogger.Fail("verify PGP signature", err.Error())
 	}
 
-	startNginxLogSection("Checksum")
 	sum, algo, err := fetchNginxChecksum(opts.Client, release, tag, version, tarballName)
 	if err != nil {
-		return fmt.Errorf("resolve nginx checksum: %w", err)
+		return nginxLogger.Fail("resolve nginx checksum", err.Error())
 	}
 
-	if err := handleChecksum(tarballPath, sum, algo); err != nil {
+	if err := handleChecksum(tarballPath, sum, algo, verificationLogger); err != nil {
 		return err
 	}
 
-	startNginxLogSection("Build")
+	nginxLogger.Info("Building")
+	buildLogger := nginxLogger.NewChildLogger("build")
 	extractRoot := filepath.Join(tmpDir, "src")
 	sourceDir := filepath.Join(extractRoot, fmt.Sprintf("nginx-%s", version))
-	logNginxInfo("Extracting sources to %s", extractRoot)
+	buildLogger.Info(fmt.Sprintf("Extracting sources to %s", extractRoot))
 	if err := untar(tarballPath, extractRoot); err != nil {
-		return fmt.Errorf("extract nginx source: %w", err)
+		return nginxLogger.Fail("extract nginx source", err.Error())
 	}
-	logNginxSuccess("Sources extracted")
+	buildLogger.Success("Sources extracted", "")
 
-	logNginxInfo("Configuring and compiling nginx")
+	buildLogger.Info("Configuring and compiling nginx")
 	if err := buildAndInstallNginx(opts.Prefix, sourceDir); err != nil {
 		return err
 	}
-	logNginxSuccess("nginx built and installed to %s", filepath.Join(opts.Prefix, "nginx"))
+	buildLogger.Success("nginx built and installed", filepath.Join(opts.Prefix, "nginx"))
 
-	startNginxLogSection("Finalize")
-	logNginxInfo("Ensuring workspace layout")
+	nginxLogger.Info("Finalizing")
+	finalizeLogger := nginxLogger.NewChildLogger("finalize")
+	finalizeLogger.Info("Ensuring workspace layout")
 	if err := ensureNginxLayout(opts.Prefix); err != nil {
 		return err
 	}
-	logNginxSuccess("Runtime layout ready")
+	finalizeLogger.Success("Runtime layout ready", "")
 
-	logNginxInfo("Writing nginx shim")
+	finalizeLogger.Info("Writing nginx shim")
 	if err := writeShim(opts.Prefix, nginxBinaryName, binaryPath); err != nil {
 		return err
 	}
-	logNginxSuccess("Shim written to %s", filepath.Join(opts.Prefix, "bin", nginxBinaryName))
+	finalizeLogger.Success("Shim written", filepath.Join(opts.Prefix, "bin", nginxBinaryName))
 
-	logNginxInfo("Writing default configuration")
+	finalizeLogger.Info("Writing default configuration")
 	if err := writeDefaultNginxConf(opts.Prefix); err != nil {
 		return err
 	}
-	logNginxSuccess("Default nginx.conf ready")
+	finalizeLogger.Success("Default nginx.conf ready", "")
 
 	return nil
 }
@@ -202,26 +205,26 @@ func InstallNginxSource(opts InstallOptions) error {
 func fetchNginxChecksum(client *http.Client, release releases.GitHubRelease, tag, version, tarballName string) (string, string, error) {
 	// Prefer release-specific checksum assets.
 	if url, ok := release.AssetURL(tarballName + ".sha512"); ok {
-		content, err := downloadText(client, url)
+		content, err := lib.DownloadText(client, url)
 		if err == nil {
-			if sum, err := checksumFromContent(content, tarballName); err == nil {
+			if sum, err := lib.ChecksumFromContent(content, tarballName); err == nil {
 				sum = strings.ToLower(sum)
 				return sum, "sha512", nil
 			}
-			if sum, err := checksumFromContent(content, ""); err == nil {
+			if sum, err := lib.ChecksumFromContent(content, ""); err == nil {
 				sum = strings.ToLower(sum)
 				return sum, "sha512", nil
 			}
 		}
 	}
 	if url, ok := release.AssetURL(tarballName + ".sha256"); ok {
-		content, err := downloadText(client, url)
+		content, err := lib.DownloadText(client, url)
 		if err == nil {
-			if sum, err := checksumFromContent(content, tarballName); err == nil {
+			if sum, err := lib.ChecksumFromContent(content, tarballName); err == nil {
 				sum = strings.ToLower(sum)
 				return sum, "sha256", nil
 			}
-			if sum, err := checksumFromContent(content, ""); err == nil {
+			if sum, err := lib.ChecksumFromContent(content, ""); err == nil {
 				sum = strings.ToLower(sum)
 				return sum, "sha256", nil
 			}
@@ -235,7 +238,7 @@ func fetchNginxChecksum(client *http.Client, release releases.GitHubRelease, tag
 	}
 	for _, candidate := range listCandidates {
 		if url, ok := release.AssetURL(candidate); ok {
-			sum, err := checksumFromList(client, url, tarballName)
+			sum, err := lib.ChecksumFromList(client, url, tarballName)
 			if err == nil {
 				sum = strings.ToLower(sum)
 				return sum, algorithmFromChecksum(sum, "sha512"), nil
@@ -247,11 +250,11 @@ func fetchNginxChecksum(client *http.Client, release releases.GitHubRelease, tag
 	fallbackURL := fmt.Sprintf("https://nginx.org/download/%s.sha512", tarballName)
 	content, err := downloadText(client, fallbackURL)
 	if err == nil {
-		if sum, err := checksumFromContent(content, tarballName); err == nil {
+		if sum, err := lib.ChecksumFromContent(content, tarballName); err == nil {
 			sum = strings.ToLower(sum)
 			return sum, "sha512", nil
 		}
-		if sum, err := checksumFromContent(content, ""); err == nil {
+		if sum, err := lib.ChecksumFromContent(content, ""); err == nil {
 			sum = strings.ToLower(sum)
 			return sum, "sha512", nil
 		}
@@ -260,11 +263,11 @@ func fetchNginxChecksum(client *http.Client, release releases.GitHubRelease, tag
 	fallbackURL = fmt.Sprintf("https://nginx.org/download/%s.sha256", tarballName)
 	content, err = downloadText(client, fallbackURL)
 	if err == nil {
-		if sum, err := checksumFromContent(content, tarballName); err == nil {
+		if sum, err := lib.ChecksumFromContent(content, tarballName); err == nil {
 			sum = strings.ToLower(sum)
 			return sum, "sha256", nil
 		}
-		if sum, err := checksumFromContent(content, ""); err == nil {
+		if sum, err := lib.ChecksumFromContent(content, ""); err == nil {
 			sum = strings.ToLower(sum)
 			return sum, "sha256", nil
 		}
@@ -282,15 +285,17 @@ func fetchNginxChecksum(client *http.Client, release releases.GitHubRelease, tag
  * @param workDir     Workspace directory for temporary signature/key storage.
  * @return error when signature verification fails.
  */
-func verifyNginxSignature(client *http.Client, tarballPath, tarballName, workDir string) error {
+func verifyNginxSignature(client *http.Client, tarballPath, tarballName, workDir string, parentLogger *logging.CommandLogger) error {
+	logger := parentLogger.NewChildLogger("verifying")
+	
 	if _, err := exec.LookPath("gpg"); err != nil {
-		return fmt.Errorf("gpg not found in PATH: %w", err)
+		return logger.Fail("gpg not found in PATH", err.Error())
 	}
 
 	sigURL := fmt.Sprintf("https://nginx.org/download/%s.asc", tarballName)
 	sigPath := tarballPath + ".asc"
-	logNginxInfo("Downloading signature into %s", sigPath)
-	if _, err := downloadToFile(client, sigURL, sigPath, fmt.Sprintf("Signature %s", tarballName)); err != nil {
+	// Signature download happens silently, progress shown via progress bar
+	if _, err := lib.DownloadToFileWithLogger(client, sigURL, sigPath, fmt.Sprintf("Signature %s", tarballName), logger); err != nil {
 		return fmt.Errorf("download signature: %w", err)
 	}
 
@@ -310,8 +315,8 @@ func verifyNginxSignature(client *http.Client, tarballPath, tarballName, workDir
 
 	for idx, key := range nginxSigningKeys {
 		keyFile := filepath.Join(keysDir, fmt.Sprintf("nginx-key-%d.asc", idx))
-		logNginxInfo("Fetching signing key: %s", key.Name)
-		if _, err := downloadToFile(client, key.URL, keyFile, fmt.Sprintf("Key %s", key.Name)); err != nil {
+		logger.Info(fmt.Sprintf("Fetching signing key: %s", key.Name))
+		if _, err := lib.DownloadToFileWithLogger(client, key.URL, keyFile, fmt.Sprintf("Key %s", key.Name), logger); err != nil {
 			return fmt.Errorf("download signing key %s: %w", key.Name, err)
 		}
 		if err := importNginxKey(gpgHome, keyFile, key.Fingerprint, key.Optional, key.Name); err != nil {
@@ -322,7 +327,7 @@ func verifyNginxSignature(client *http.Client, tarballPath, tarballName, workDir
 	if err := verifySignatureWithGPG(gpgHome, tarballPath, sigPath); err != nil {
 		return err
 	}
-	logNginxSuccess("PGP signature verified successfully")
+	logger.Success("PGP signature verified successfully", "")
 	return nil
 }
 
@@ -337,10 +342,12 @@ func verifyNginxSignature(client *http.Client, tarballPath, tarballName, workDir
  * @return error when fingerprint mismatches for mandatory keys or import fails.
  */
 func importNginxKey(gpgHome, keyPath, fingerprint string, optional bool, name string) error {
+	logger := logging.NewCommandLogger("install")
+	
 	fp, err := readKeyFingerprint(gpgHome, keyPath)
 	if err != nil {
 		if optional {
-			fmt.Printf("[nginx] Warning: signing key %s could not be inspected (%v); skipping optional key\n", name, err)
+			logger.Warn("signing key could not be inspected", fmt.Sprintf("%s (%v); skipping optional key", name, err))
 			return nil
 		}
 		return err
@@ -349,7 +356,7 @@ func importNginxKey(gpgHome, keyPath, fingerprint string, optional bool, name st
 	shouldImport, err := evaluateFingerprint(fp, fingerprint, name, optional)
 	if err != nil {
 		if optional {
-			fmt.Printf("[nginx] Warning: signing key %s skipped (%v)\n", name, err)
+			logger.Warn("signing key skipped", fmt.Sprintf("%s (%v)", name, err))
 			return nil
 		}
 		return err
@@ -450,12 +457,14 @@ func readFingerprintFallback(gpgHome, keyPath string) (string, error) {
  * @return Tuple (shouldImport, error). When optional mismatches occur, returns false and nil.
  */
 func evaluateFingerprint(actual, expected, name string, optional bool) (bool, error) {
+	logger := logging.NewCommandLogger("install")
+	
 	if strings.EqualFold(actual, expected) {
 		return true, nil
 	}
 
 	if optional {
-		fmt.Printf("[nginx] Warning: signing key %s fingerprint mismatch (expected %s, got %s); skipping optional key\n", name, expected, actual)
+		logger.Warn("signing key fingerprint mismatch", fmt.Sprintf("%s (expected %s, got %s); skipping optional key", name, expected, actual))
 		return false, nil
 	}
 
@@ -572,24 +581,24 @@ func algorithmFromChecksum(sum, defaultAlgo string) string {
 	}
 }
 
-func handleChecksum(tarballPath, sum, algo string) error {
+func handleChecksum(tarballPath, sum, algo string, logger *logging.CommandLogger) error {
 	sum = strings.ToLower(strings.TrimSpace(sum))
 	algo = strings.ToLower(strings.TrimSpace(algo))
 
 	if sum == "" {
 		if os.Getenv("CHAUF_REQUIRE_CHECKSUM") == "1" {
-			return fmt.Errorf("ERROR: nginx checksum required but no upstream checksum asset found")
+			return logger.Fail("ERROR: nginx checksum required but no upstream checksum asset found", "")
 		}
-		fmt.Println("[nginx] No upstream checksum asset found; relying on PGP signature.")
+		logger.Info("No upstream checksum asset found; relying on PGP signature.")
 		if sha256Hex, err := fileSHA256(tarballPath); err == nil {
-			fmt.Printf("[nginx] Local SHA256: %s\n", sha256Hex)
+			logger.Info(fmt.Sprintf("Local SHA256: %s", sha256Hex))
 		} else {
-			fmt.Printf("[nginx] Warning: failed to compute local SHA256: %v\n", err)
+			logger.Warn("failed to compute local SHA256", err.Error())
 		}
 		if sha512Hex, err := fileSHA512(tarballPath); err == nil {
-			fmt.Printf("[nginx] Local SHA512: %s\n", sha512Hex)
+			logger.Info(fmt.Sprintf("Local SHA512: %s", sha512Hex))
 		} else {
-			fmt.Printf("[nginx] Warning: failed to compute local SHA512: %v\n", err)
+			logger.Warn("failed to compute local SHA512", err.Error())
 		}
 		return nil
 	}
@@ -616,20 +625,9 @@ func handleChecksum(tarballPath, sum, algo string) error {
 	if algo == "" {
 		algo = algorithmFromChecksum(sum, "sha512")
 	}
-	fmt.Printf("[nginx] Upstream checksum verified (%s).\n", algo)
+	installLogger := logging.NewCommandLogger("install")
+	installLogger.Info(fmt.Sprintf("Upstream checksum verified (%s).", algo))
 	return nil
-}
-
-func startNginxLogSection(title string) {
-	fmt.Printf("\n[ NGINX ] %s\n", strings.ToUpper(title))
-}
-
-func logNginxInfo(format string, args ...interface{}) {
-	fmt.Printf("    - %s\n", fmt.Sprintf(format, args...))
-}
-
-func logNginxSuccess(format string, args ...interface{}) {
-	fmt.Printf("    [OK] %s\n", fmt.Sprintf(format, args...))
 }
 
 /**

@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"github.com/siaji/chauffeur/cli/internal/config"
+	"github.com/siaji/chauffeur/cli/internal/logging"
+	"github.com/siaji/chauffeur/cli/lib"
 )
 
 const phpBinaryName = "php"
@@ -143,8 +145,10 @@ func GetSupportedVersionsList() string {
  * @return error when installation cannot complete successfully.
  */
 func InstallPHPSource(version string, opts InstallOptions) (err error) {
+	phpLogger := logging.NewCommandLogger("php")
+	
 	if opts.Prefix == "" {
-		return errors.New("install prefix is required")
+		return phpLogger.Fail("install prefix is required", "")
 	}
 
 	if opts.Client == nil {
@@ -153,28 +157,29 @@ func InstallPHPSource(version string, opts InstallOptions) (err error) {
 
 	// Validate PHP version
 	if !IsPHPVersionSupported(version) {
-		return fmt.Errorf("PHP version %s is not supported. Supported versions: %s", version, GetSupportedVersionsList())
+		return phpLogger.Fail(fmt.Sprintf("PHP version %s is not supported", version), GetSupportedVersionsList())
 	}
 
 	defer func() {
 		if err != nil && opts.Prefix != "" {
 			if logPath, logErr := logToolFailure(opts.Prefix, "php", "install", version, err); logErr != nil {
-				logPHPWarn("failed to write php installer log: %v", logErr)
+				phpLogger.Warn("failed to write php installer log", logErr.Error())
 			} else {
-				logPHPError("Installation failed. See %s for full log.", logPath)
+				phpLogger.Info(fmt.Sprintf("Installation failed. See %s for full log.", logPath))
 			}
 		}
 	}()
 
-	startPHPLogSection("Preparing")
-	logPHPInfo("Target PHP version: %s", version)
-	logPHPInfo("Architecture: %s", opts.Info.Arch)
-	logPHPInfo("Install prefix: %s", filepath.Join(opts.Prefix, "php", version))
+	phpLogger.Info("Preparing")
+	prepareLogger := phpLogger.NewChildLogger("prepare")
+	prepareLogger.Info(fmt.Sprintf("Target PHP version: %s", version))
+	prepareLogger.Info(fmt.Sprintf("Architecture: %s", opts.Info.Arch))
+	prepareLogger.Info(fmt.Sprintf("Install prefix: %s", filepath.Join(opts.Prefix, "php", version)))
 
 	binaryPath := filepath.Join(opts.Prefix, "php", version, "bin", phpBinaryName)
 	if !opts.Force {
 		if info, err := os.Stat(binaryPath); err == nil && info.Mode().IsRegular() {
-			logPHPInfo("PHP %s is already installed", version)
+			prepareLogger.Info(fmt.Sprintf("PHP %s is already installed", version))
 			return nil
 		}
 	}
@@ -191,7 +196,7 @@ func InstallPHPSource(version string, opts InstallOptions) (err error) {
 		return fmt.Errorf("resolve latest PHP %s patch version: %w", version, err)
 	}
 
-	logPHPInfo("Latest patch version: %s", patchVersion)
+	prepareLogger.Info(fmt.Sprintf("Latest patch version: %s", patchVersion))
 
 	tarballName := fmt.Sprintf("php-%s.tar.gz", patchVersion)
 
@@ -205,94 +210,100 @@ func InstallPHPSource(version string, opts InstallOptions) (err error) {
 	var tarballURL string
 	var downloadErr error
 
+	phpLogger.Info("Downloading")
+	downloadLogger := phpLogger.NewChildLogger("download")
+	downloadLogger.Info(fmt.Sprintf("Attempting download of %s", tarballName))
+	
 	for _, url := range tarballURLs {
 		tarballPath := filepath.Join(tmpDir, tarballName)
-		startPHPLogSection("Download")
-		logPHPInfo("Attempting download from: %s", url)
-
-		size, err := downloadToFile(opts.Client, url, tarballPath, fmt.Sprintf("Download %s", tarballName))
+		size, err := lib.DownloadToFileWithLogger(opts.Client, url, tarballPath, fmt.Sprintf("Download %s", tarballName), downloadLogger)
 		if err == nil {
 			tarballURL = url
-			logPHPSuccess("Downloaded %s (%s)", tarballName, humanBytes(size))
+			downloadLogger.Success(fmt.Sprintf("Downloaded %s", tarballName), lib.HumanBytes(size))
 			break
 		}
 		downloadErr = err
-		logPHPInfo("Failed to download from %s: %v", url, err)
 	}
 
 	if tarballURL == "" {
+		downloadLogger.Warn("All download attempts failed", downloadErr.Error())
 		return fmt.Errorf("all download attempts failed: %w", downloadErr)
 	}
 
 	tarballPath := filepath.Join(tmpDir, tarballName)
 
-	startPHPLogSection("Verification")
-	logPHPInfo("Validating GPG signature...")
-	if err := verifyPHPSignature(opts.Client, tarballPath, tarballName, tmpDir); err != nil {
-		return fmt.Errorf("verify GPG signature: %w", err)
+	phpLogger.Info("Verifying")
+	verificationLogger := phpLogger.NewChildLogger("verifying")
+	verificationLogger.Info("Validating GPG signature...")
+	if err := verifyPHPSignature(verificationLogger, opts.Client, tarballPath, tarballName, tmpDir); err != nil {
+		return phpLogger.Fail("verify GPG signature", err.Error())
 	}
 
-	startPHPLogSection("Build")
+	phpLogger.Info("Building")
+	buildLogger := phpLogger.NewChildLogger("build")
 	extractRoot := filepath.Join(tmpDir, "src")
 	sourceDir := filepath.Join(extractRoot, fmt.Sprintf("php-%s", patchVersion))
-	logPHPInfo("Extracting sources to %s", extractRoot)
+	buildLogger.Info(fmt.Sprintf("Extracting sources to %s", extractRoot))
 	if err := untarPHP(tarballPath, extractRoot); err != nil {
-		return fmt.Errorf("extract php source: %w", err)
+		return phpLogger.Fail("extract php source", err.Error())
 	}
-	logPHPSuccess("Sources extracted")
+	buildLogger.Success("Sources extracted", "")
 
-	if err := applyLegacyPHPSourcePatches(version, sourceDir); err != nil {
-		return fmt.Errorf("apply compatibility patches: %w", err)
+	if err := applyLegacyPHPSourcePatches(version, sourceDir, buildLogger); err != nil {
+		return phpLogger.Fail("apply compatibility patches", err.Error())
 	}
 
-	logPHPInfo("Configuring and compiling PHP")
-	if err := buildAndInstallPHP(opts, version, sourceDir); err != nil {
-		return err
+	spin := buildLogger.NewSpinner("Configuring and compiling PHP")
+	if err := buildAndInstallPHP(opts, version, sourceDir, buildLogger); err != nil {
+		spin.Fail("compilation failed")
+		return phpLogger.Fail("configure and compile PHP", err.Error())
 	}
-	logPHPSuccess("PHP %s built and installed to %s", version, filepath.Join(opts.Prefix, "php", version))
+	spin.Success("PHP compiled and installed")
+	buildLogger.Success(fmt.Sprintf("PHP %s built and installed to %s", version, filepath.Join(opts.Prefix, "php", version)), "")
 
-	startPHPLogSection("Finalize")
-	logPHPInfo("Ensuring workspace layout")
+	phpLogger.Info("Finalizing")
+	finalizeLogger := phpLogger.NewChildLogger("finalize")
+	finalizeLogger.Info("Ensuring workspace layout")
 	if err := ensurePHPlayout(opts.Prefix, version); err != nil {
 		return err
 	}
-	logPHPSuccess("Runtime layout ready")
+	finalizeLogger.Success("Runtime layout ready", "")
 
 	shimName := fmt.Sprintf("php-%s", version)
-	logPHPInfo("Writing PHP shim")
+	finalizeLogger.Info("Writing PHP shim")
 	if err := writeShim(opts.Prefix, shimName, binaryPath); err != nil {
 		return err
 	}
-	logPHPSuccess("Shim written to %s", filepath.Join(opts.Prefix, "bin", shimName))
+	finalizeLogger.Success(fmt.Sprintf("Shim written to %s", filepath.Join(opts.Prefix, "bin", shimName)), "")
 
 	defaultShim := filepath.Join(opts.Prefix, "bin", "php")
 	if _, err := os.Stat(defaultShim); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			logPHPInfo("Setting default PHP shim to version %s", version)
+			finalizeLogger.Info(fmt.Sprintf("Setting default PHP shim to version %s", version))
 			if err := UpdateDefaultPHPShim(opts.Prefix, version); err != nil {
 				return err
 			}
-			logPHPSuccess("Default PHP shim now targets %s", version)
+			finalizeLogger.Success(fmt.Sprintf("Default PHP shim now targets %s", version), "")
 		} else {
 			return fmt.Errorf("stat default php shim: %w", err)
 		}
 	}
 
 	if cfg, err := config.Load(); err != nil {
-		logPHPWarn("unable to load config: %v", err)
+		finalizeLogger.Warn("unable to load config", err.Error())
 	} else if cfg.PHP.Default == "" {
 		if err := config.SetDefaultPHPVersion(version); err != nil {
-			logPHPWarn("failed to set default PHP version: %v", err)
+			finalizeLogger.Warn("failed to set default PHP version", err.Error())
 		} else {
-			logPHPSuccess("Default PHP version set to %s", version)
+			finalizeLogger.Success(fmt.Sprintf("Default PHP version set to %s", version), "")
 		}
 	}
 
-	logPHPInfo("Writing PHP-FPM configuration")
+	finalizeLogger.Info("Writing PHP-FPM configuration")
 	if err := writeDefaultPHPFPMConf(opts.Prefix, version); err != nil {
 		return err
 	}
-	logPHPSuccess("PHP-FPM configuration ready")
+	finalizeLogger.Success("PHP-FPM configuration ready", "")
 
 	return nil
 }
@@ -343,15 +354,15 @@ func getLatestPHPPatchVersion(client *http.Client, version string) (string, erro
  * @param workDir     Workspace directory for temporary signature/key storage.
  * @return error when signature verification fails.
  */
-func verifyPHPSignature(client *http.Client, tarballPath, tarballName, workDir string) error {
+func verifyPHPSignature(logger *logging.CommandLogger, client *http.Client, tarballPath, tarballName, workDir string) error {
 	if _, err := exec.LookPath("gpg"); err != nil {
 		return fmt.Errorf("gpg not found in PATH: %w", err)
 	}
 
 	sigURL := fmt.Sprintf("https://www.php.net/distributions/%s.asc", tarballName)
 	sigPath := tarballPath + ".asc"
-	logPHPInfo("Downloading signature into %s", sigPath)
-	if _, err := downloadToFile(client, sigURL, sigPath, fmt.Sprintf("Signature %s", tarballName)); err != nil {
+	// Signature download happens silently, progress shown via progress bar
+	if _, err := lib.DownloadToFileWithLogger(client, sigURL, sigPath, fmt.Sprintf("Signature %s", tarballName), logger); err != nil {
 		return fmt.Errorf("download signature: %w", err)
 	}
 
@@ -372,8 +383,8 @@ func verifyPHPSignature(client *http.Client, tarballPath, tarballName, workDir s
 	// Download and import the complete PHP keyring
 	keyringURL := "https://www.php.net/distributions/php-keyring.gpg"
 	keyringPath := filepath.Join(keysDir, "php-keyring.gpg")
-	logPHPInfo("Downloading PHP keyring")
-	if _, err := downloadToFile(client, keyringURL, keyringPath, "PHP Keyring"); err != nil {
+	// Keyring download happens silently, progress shown via progress bar
+	if _, err := lib.DownloadToFileWithLogger(client, keyringURL, keyringPath, "PHP Keyring", logger); err != nil {
 		return fmt.Errorf("download PHP keyring: %w", err)
 	}
 
@@ -387,12 +398,12 @@ func verifyPHPSignature(client *http.Client, tarballPath, tarballName, workDir s
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("import PHP keyring: %w\n%s", err, out)
 	}
-	logPHPSuccess("PHP keyring imported successfully")
+	logPHPSuccess(logger, "PHP keyring imported successfully")
 
-	if err := verifyPHPSignatureWithGPG(gpgHome, tarballPath, sigPath); err != nil {
+	if err := verifyPHPSignatureWithGPG(gpgHome, tarballPath, sigPath, logger); err != nil {
 		return err
 	}
-	logPHPSuccess("GPG signature verified successfully")
+	logPHPSuccess(logger, "GPG signature verified successfully")
 	return nil
 }
 
@@ -404,7 +415,10 @@ func verifyPHPSignature(client *http.Client, tarballPath, tarballName, workDir s
  * @param sigPath     Path to the detached signature file.
  * @return error when signature validation fails.
  */
-func verifyPHPSignatureWithGPG(gpgHome, tarballPath, sigPath string) error {
+func verifyPHPSignatureWithGPG(gpgHome, tarballPath, sigPath string, logger *logging.CommandLogger) error {
+	if logger == nil {
+		logger = logging.NewCommandLogger("install")
+	}
 	cmd := exec.Command("gpg",
 		"--homedir", gpgHome,
 		"--no-default-keyring",
@@ -417,7 +431,7 @@ func verifyPHPSignatureWithGPG(gpgHome, tarballPath, sigPath string) error {
 	}
 
 	// Since we're using the official PHP keyring, any valid signature is acceptable
-	logPHPSuccess("GPG signature verification passed")
+	logger.Success("GPG signature verified successfully", "")
 	return nil
 }
 
@@ -429,7 +443,10 @@ func verifyPHPSignatureWithGPG(gpgHome, tarballPath, sigPath string) error {
  * @param sourceDir Directory containing the extracted PHP sources.
  * @return error when configure/build/install steps fail.
  */
-func buildAndInstallPHP(opts InstallOptions, version, sourceDir string) error {
+func buildAndInstallPHP(opts InstallOptions, version, sourceDir string, logger *logging.CommandLogger) error {
+	if logger == nil {
+		logger = logging.NewCommandLogger("install")
+	}
 	prefix := opts.Prefix
 	installDir := filepath.Join(prefix, "php", version)
 
@@ -469,7 +486,7 @@ func buildAndInstallPHP(opts InstallOptions, version, sourceDir string) error {
 	}
 
 	if err := runCommandForPHP(sourceDir, nil, "./buildconf", "--force"); err != nil {
-		logCommandFailure(err)
+		logCommandFailure(err, logger)
 		return fmt.Errorf("buildconf failed: %w", err)
 	}
 
@@ -487,10 +504,10 @@ func buildAndInstallPHP(opts InstallOptions, version, sourceDir string) error {
 		)
 
 		vendorPrefix := filepath.Join(prefix, "vendors", "openssl-1.1.1w")
-		if err := ensureOpenSSL111(prefix, vendorPrefix, opts.Client, logPHPInfo); err != nil {
-			return fmt.Errorf("vendor OpenSSL 1.1.1w: %w", err)
+		if err := ensureOpenSSL111(prefix, vendorPrefix, opts.Client, nil, logger); err != nil {
+			return logger.Fail("vendor OpenSSL 1.1.1w", err.Error())
 		}
-		logPHPInfo("Using vendored OpenSSL 1.1.1w at %s", vendorPrefix)
+		logger.Info(fmt.Sprintf("Using vendored OpenSSL 1.1.1w at %s", vendorPrefix))
 
 		confArgs = rewriteWithOpenSSL(confArgs, vendorPrefix)
 		pkgConfigValue = prependEnvPath(filepath.Join(vendorPrefix, "lib", "pkgconfig"), os.Getenv("PKG_CONFIG_PATH"))
@@ -502,15 +519,15 @@ func buildAndInstallPHP(opts InstallOptions, version, sourceDir string) error {
 		)
 	}
 
-	logPHPInfo("Source directory: %s", sourceDir)
+	logger.Info(fmt.Sprintf("Source directory: %s", sourceDir))
 	if legacy {
-		logPHPInfo("PKG_CONFIG_PATH=%s", pkgConfigValue)
-		logPHPInfo("LD_LIBRARY_PATH=%s", ldLibraryValue)
+		logger.Info(fmt.Sprintf("PKG_CONFIG_PATH=%s", pkgConfigValue))
+		logger.Info(fmt.Sprintf("LD_LIBRARY_PATH=%s", ldLibraryValue))
 	}
-	logPHPInfo("Configure args: ./configure %s", strings.Join(confArgs, " "))
+	logger.Info(fmt.Sprintf("Configure args: ./configure %s", strings.Join(confArgs, " ")))
 
 	if err := runCommandForPHP(sourceDir, buildEnv, "./configure", confArgs...); err != nil {
-		logCommandFailure(err)
+		logCommandFailure(err, logger)
 		return fmt.Errorf("configure php: %w", err)
 	}
 
@@ -519,22 +536,30 @@ func buildAndInstallPHP(opts InstallOptions, version, sourceDir string) error {
 		makeArgs = append(makeArgs, fmt.Sprintf("%d", n))
 	}
 	if err := runCommandForPHP(sourceDir, buildEnv, "make", makeArgs...); err != nil {
-		logCommandFailure(err)
+		logCommandFailure(err, logger)
 		return fmt.Errorf("make php: %w", err)
 	}
 
 	if err := runCommandForPHP(sourceDir, buildEnv, "make", "install"); err != nil {
-		logCommandFailure(err)
+		logCommandFailure(err, logger)
 		return fmt.Errorf("make install php: %w", err)
 	}
 
 	return nil
 }
 
-func ensureOpenSSL111(workspacePrefix, vendorPrefix string, client *http.Client, logf func(string, ...interface{})) error {
-	if logf == nil {
-		logf = logPHPInfo
+func ensureOpenSSL111(workspacePrefix, vendorPrefix string, client *http.Client, logf func(string, ...interface{}), logger *logging.CommandLogger) error {
+	if logger == nil {
+		logger = logging.NewCommandLogger("install")
 	}
+	
+	// Safe log function that handles nil logf
+	safeLogf := func(format string, args ...interface{}) {
+		if logf != nil {
+			logf(format, args...)
+		}
+	}
+	
 	expected := strings.ToLower(openssl111wExpectedSHA256)
 	if len(expected) != 64 {
 		return fmt.Errorf("invalid expected SHA256 length: %d", len(expected))
@@ -543,7 +568,7 @@ func ensureOpenSSL111(workspacePrefix, vendorPrefix string, client *http.Client,
 	cryptoLib := filepath.Join(vendorPrefix, "lib", "libcrypto.so.1.1")
 	sslLib := filepath.Join(vendorPrefix, "lib", "libssl.so.1.1")
 	if fileExists(cryptoLib) && fileExists(sslLib) {
-		logf("Using vendored OpenSSL %s at %s", openssl111wVersion, vendorPrefix)
+		safeLogf("Using vendored OpenSSL %s at %s", openssl111wVersion, vendorPrefix)
 		return nil
 	}
 
@@ -566,21 +591,21 @@ func ensureOpenSSL111(workspacePrefix, vendorPrefix string, client *http.Client,
 	if fileExists(cachePath) {
 		sum, err := fileSHA256(cachePath)
 		if err == nil && strings.EqualFold(sum, expected) {
-			logf("Reusing cached %s (computed=%s expected=%s)", cachePath, strings.ToLower(sum), expected)
+			logger.Info(fmt.Sprintf("Reusing cached %s (computed=%s expected=%s)", cachePath, strings.ToLower(sum), expected))
 			tarballPath = cachePath
 			computed = strings.ToLower(sum)
 			usedURL = "cache"
 		} else {
 			if err != nil {
-				logPHPWarn("failed to hash cached OpenSSL tarball %s: %v", cachePath, err)
+				logger.Warn("failed to hash cached OpenSSL tarball", err.Error())
 			} else {
-				logPHPWarn("Cached OpenSSL tarball checksum mismatch (computed=%s expected=%s); re-downloading", strings.ToLower(sum), expected)
+				logger.Warn("Cached OpenSSL tarball checksum mismatch", fmt.Sprintf("(computed=%s expected=%s); re-downloading", strings.ToLower(sum), expected))
 			}
 			_ = os.Remove(cachePath)
 		}
 	}
 
-	logf("Vendoring OpenSSL %s into %s", openssl111wVersion, vendorPrefix)
+	logger.Info(fmt.Sprintf("Vendoring OpenSSL %s into %s", openssl111wVersion, vendorPrefix))
 	if err := os.MkdirAll(vendorPrefix, 0o755); err != nil {
 		return fmt.Errorf("ensure openssl prefix: %w", err)
 	}
@@ -596,9 +621,9 @@ func ensureOpenSSL111(workspacePrefix, vendorPrefix string, client *http.Client,
 		urls := []string{openssl111wPrimaryURL, openssl111wFallbackURL}
 		for _, url := range urls {
 			downloadDest := filepath.Join(tmpDir, openssl111wTarball)
-			logf("Downloading %s", url)
-			if _, err := downloadToFile(client, url, downloadDest, "OpenSSL 1.1.1w"); err != nil {
-				logPHPWarn("Download from %s failed: %v", url, err)
+			safeLogf("Downloading %s", url)
+			if _, err := lib.DownloadToFileWithLogger(client, url, downloadDest, "OpenSSL 1.1.1w", logger); err != nil {
+				logger.Warn("Download from "+url+" failed", err.Error())
 				lastErr = err
 				continue
 			}
@@ -606,14 +631,14 @@ func ensureOpenSSL111(workspacePrefix, vendorPrefix string, client *http.Client,
 			sum, err := fileSHA256(downloadDest)
 			if err != nil {
 				lastErr = fmt.Errorf("hash openssl tarball: %w", err)
-				logPHPWarn("Failed to compute checksum for %s: %v", url, err)
+				logger.Warn("Failed to compute checksum for "+url, err.Error())
 				continue
 			}
 			lower := strings.ToLower(sum)
-			logf("Downloaded %s (computed=%s expected=%s)", url, lower, expected)
+			safeLogf("Downloaded %s (computed=%s expected=%s)", url, lower, expected)
 			if !strings.EqualFold(sum, expected) {
-				logPHPWarn("OpenSSL %s: checksum mismatch (expected %s, got %s) from %s", openssl111wVersion, expected, lower, url)
-				logPHPWarn("If mirrors moved, try the fallback URL %s (already auto-handled).", openssl111wFallbackURL)
+				logger.Warn("OpenSSL "+openssl111wVersion+": checksum mismatch", fmt.Sprintf("expected %s, got %s from %s", expected, lower, url))
+				logger.Warn("If mirrors moved, try the fallback URL "+openssl111wFallbackURL+" (already auto-handled)", "")
 				_ = os.Remove(downloadDest)
 				lastErr = fmt.Errorf("OpenSSL %s: checksum mismatch (expected %s, got %s) from %s", openssl111wVersion, expected, lower, url)
 				continue
@@ -621,14 +646,14 @@ func ensureOpenSSL111(workspacePrefix, vendorPrefix string, client *http.Client,
 
 			if err := copyFile(downloadDest, cachePath); err != nil {
 				lastErr = fmt.Errorf("cache openssl tarball: %w", err)
-				logPHPWarn("Failed to cache OpenSSL tarball: %v", err)
+				logger.Warn("Failed to cache OpenSSL tarball", err.Error())
 				_ = os.Remove(downloadDest)
 				continue
 			}
 			tarballPath = cachePath
 			computed = lower
 			usedURL = url
-			logf("Cached OpenSSL tarball at %s", cachePath)
+			safeLogf("Cached OpenSSL tarball at %s", cachePath)
 			_ = os.Remove(downloadDest)
 			break
 		}
@@ -649,7 +674,7 @@ func ensureOpenSSL111(workspacePrefix, vendorPrefix string, client *http.Client,
 			computed = strings.ToLower(sum)
 		}
 	}
-	logf("Using OpenSSL archive from %s (computed=%s expected=%s)", usedURL, computed, expected)
+	safeLogf(fmt.Sprintf("Using OpenSSL archive from %s (computed=%s expected=%s)", usedURL, computed, expected))
 
 	sourceRoot := filepath.Join(tmpDir, "src")
 	if err := untarPHP(tarballPath, sourceRoot); err != nil {
@@ -662,9 +687,9 @@ func ensureOpenSSL111(workspacePrefix, vendorPrefix string, client *http.Client,
 		fmt.Sprintf("--openssldir=%s", filepath.Join(vendorPrefix, "ssl")),
 		"shared",
 	}
-	logf("Running: ./config %s", strings.Join(configArgs, " "))
+	logger.Info(fmt.Sprintf("Running: ./config %s", strings.Join(configArgs, " ")))
 	if err := runCommandForPHP(opensslSource, nil, "./config", configArgs...); err != nil {
-		logCommandFailure(err)
+		logCommandFailure(err, logger)
 		return fmt.Errorf("openssl config: %w", err)
 	}
 
@@ -672,15 +697,15 @@ func ensureOpenSSL111(workspacePrefix, vendorPrefix string, client *http.Client,
 	if n := runtime.NumCPU(); n > 0 {
 		makeArgs = append(makeArgs, fmt.Sprintf("%d", n))
 	}
-	logf("Running: make %s", strings.Join(makeArgs, " "))
+	logger.Info(fmt.Sprintf("Running: make %s", strings.Join(makeArgs, " ")))
 	if err := runCommandForPHP(opensslSource, nil, "make", makeArgs...); err != nil {
-		logCommandFailure(err)
+		logCommandFailure(err, logger)
 		return fmt.Errorf("openssl make: %w", err)
 	}
 
-	logf("Running: make install_sw")
+	logger.Info("Running: make install_sw")
 	if err := runCommandForPHP(opensslSource, nil, "make", "install_sw"); err != nil {
-		logCommandFailure(err)
+		logCommandFailure(err, logger)
 		return fmt.Errorf("openssl make install_sw: %w", err)
 	}
 
@@ -688,7 +713,7 @@ func ensureOpenSSL111(workspacePrefix, vendorPrefix string, client *http.Client,
 		return fmt.Errorf("vendored OpenSSL seems incomplete (missing libcrypto.so.1.1/libssl.so.1.1)")
 	}
 
-	logPHPSuccess("OpenSSL %s installed at %s", openssl111wVersion, vendorPrefix)
+	logger.Success(fmt.Sprintf("OpenSSL %s installed at %s", openssl111wVersion, vendorPrefix), "")
 	return nil
 }
 
@@ -861,30 +886,33 @@ func getPHPUser() string {
 	return "www-data" // fallback
 }
 
-func startPHPLogSection(title string) {
-	fmt.Printf("\n[ PHP ] %s\n", strings.ToUpper(title))
+func startPHPLogSection(logger *logging.CommandLogger, title string) {
+	logger.Info(strings.ToUpper(title))
 }
 
-func logPHPInfo(format string, args ...interface{}) {
-	fmt.Printf("    - %s\n", fmt.Sprintf(format, args...))
+func logPHPInfo(logger *logging.CommandLogger, format string, args ...interface{}) {
+	logger.Info(fmt.Sprintf(format, args...))
 }
 
-func logPHPSuccess(format string, args ...interface{}) {
-	fmt.Printf("    [OK] %s\n", fmt.Sprintf(format, args...))
+func logPHPSuccess(logger *logging.CommandLogger, format string, args ...interface{}) {
+	logger.Success(fmt.Sprintf(format, args...), "")
 }
 
-func logPHPWarn(format string, args ...interface{}) {
-	fmt.Printf("    [WARN] %s\n", fmt.Sprintf(format, args...))
+func logPHPWarn(logger *logging.CommandLogger, format string, args ...interface{}) {
+	logger.Warn(fmt.Sprintf(format, args...), "")
 }
 
-func logPHPError(format string, args ...interface{}) {
-	fmt.Printf("    [ERR] %s\n", fmt.Sprintf(format, args...))
+func logPHPError(logger *logging.CommandLogger, format string, args ...interface{}) {
+	logger.Info(fmt.Sprintf("ERROR: %s", fmt.Sprintf(format, args...)))
 }
 
-func logCommandFailure(err error) {
+func logCommandFailure(err error, logger *logging.CommandLogger) {
+	if logger == nil {
+		logger = logging.NewCommandLogger("install")
+	}
 	var detail detailedError
 	if errors.As(err, &detail) {
-		logPHPError(detail.Detail())
+		logPHPError(logger, detail.Detail())
 	}
 }
 
