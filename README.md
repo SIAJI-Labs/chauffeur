@@ -10,6 +10,7 @@ Chauffeur is a host-based CLI for managing per-project PHP development services 
 - ✅ **Self-Update**: `chauf self-update` pulls latest git changes and rebuilds the CLI binary (services untouched)  
 - ✅ **Dev Mode**: `chauf self-update --dev` rebuilds CLI from current directory for development  
 - ✅ **Shell Integration**: Clean PATH management with no whitespace pollution  
+- ✅ **Enhanced Logging**: Structured CLI output with color-coded status, progress indicators, and detailed timing information  
 - 🚧 **Service Orchestration**: `chauf start/stop` (in progress)  
 - 🚧 **Project Registration**: Basic project config creation via `chauf link`; listing & service wiring in progress  
 - Linux-focused workflow (Arch/Ubuntu/Debian friendly); other OS targets are not yet supported
@@ -60,13 +61,6 @@ The AI-assisted development approach is open to all contributors, not just for C
 - **Structured Process**: AI generates implementation based on detailed requirements and architectural direction
 - **Quality Assurance**: All AI-generated code should be reviewed, tested, and refined before integration
 - **Learning Opportunity**: Contributors gain experience by reviewing AI output and understanding system architecture
-
-### Leadership & Project Direction
-While I don't have strong background in CLI tool development, I focus on:
-- **Architecture & Design**: Managing the overall system design, command contracts, and project vision
-- **Requirements Management**: Defining what tools should do and how they should work
-- **Integration & Validation**: Testing AI-generated code and ensuring it meets project goals
-- **Community Coordination**: Facilitating collaboration and maintaining project direction
 
 ### Contribution Guidelines
 Chauffeur is open source and welcomes diverse contribution approaches:
@@ -127,6 +121,7 @@ chauf --version
 - **Clean PATH Management**: Automatically manages shell PATH without creating whitespace pollution
 - **Idempotent Installation**: Safe to run multiple times; handles upgrades gracefully
 - **Multiple Shell Support**: Works with Bash and Zsh with proper rc file handling
+- **Enhanced Logging**: Structured output with progress indicators, timing, and visual feedback
 
 ### PHP Management
 
@@ -164,6 +159,8 @@ chauf self-update --dev
 The command clones (or updates) the Chauffeur repository under `~/.chauffeur/src/chauffeur`, verifies the tree is clean, fast-forwards to the latest `main` commit, and runs `go build` to replace `~/.chauffeur/bin/chauf`. It uses the SSH remote `git@github.com:SIAJI-Labs/chauffeur.git` by default—make sure your SSH key has access (override via `CHAUF_REPO_URL` when the project becomes public). You’ll need both `git` and `go` available in your PATH.
 
 With the `--dev` flag, the command rebuilds the CLI binary from the current working directory if it's a valid Chauffeur repository. The directory must be a git repository containing the required files (`cli/main.go`, `go.mod`, and `AGENTS.md`), providing a convenient way to test local changes without committing them to the repository.
+
+**Visual Feedback**: All commands now feature enhanced logging with color-coded output, progress bars for downloads, spinners for long operations, and structured summaries with timing information. The logging system provides clear visual feedback about operation progress and completion.
 
 ### Uninstallation
 

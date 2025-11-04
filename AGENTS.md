@@ -206,11 +206,236 @@ created_at: 2025-10-30T12:00:00+07:00
 - **Install prefix**: All binaries/configs live under `~/.chauffeur/` only.
 - **PATH shims**: Create wrappers in `~/.chauffeur/bin/shims` for each binary.
 - **Dry‑runs**: When `--dry-run` is present, print planned actions without side-effects.
-- **Logging**: Human-readable logs to STDOUT; structured logs to `~/.chauffeur/<area>/logs`.
+- **Logging**: Follow the standardized CLI logging specification below.
 - **Failure logs**: Any command failure must append a detailed log entry under `<workspace>/logs/<component>/`. Log filenames follow `<action>[-<version>]-<YYYYMMDDTHHMMSSZ>.log`, and CLI output must surface the exact path.
 - **Errors**: Clear actionable messages with suggested fix.
 - **Permissions**: Do not require root; if privileged steps are unavoidable, print the exact `sudo` command for the user to run.
 - **CLI Modularity**: Keep `main.go` limited to dispatch; implement each command in its own Go file/package (e.g. `cli/commands/<command>.go`) with focused helpers.
+
+---
+
+## 5.1) CLI Logging Specification
+
+All Chauffeur CLI commands must follow a consistent, human-readable logging pattern that balances visual appeal with informative output. The logging system is inspired by the `self-update` command's style and incorporates structured progress indicators.
+
+### 5.1.1) Color and Formatting Standards
+
+**ANSI Color Palette (from self-update command):**
+```go
+const (
+    colorReset  = "\033[0m"
+    colorRed    = "\033[31m"
+    colorGreen  = "\033[32m"
+    colorYellow = "\033[33m"
+    colorBlue   = "\033[34m"
+    colorGray   = "\033[90m"
+    colorBold   = "\033[1m"
+)
+```
+
+**Usage Patterns:**
+- `blue("[ command-name ]")` - Command prefix for status messages
+- `bold(text)` - Important information, headers, summaries
+- `green("✓")` - Success indicators
+- `red("✗")` - Failure indicators  
+- `yellow(text)` - Warnings, EOL notices, cautions
+- `gray(text)` - Secondary information, URLs, SHAs, file paths
+- `colorize(color, text)` - Helper function with terminal detection
+
+### 5.1.2) Progress Indicators
+
+**Spinners (for indeterminate operations):**
+```go
+type progressSpinner struct {
+    message    string
+    enabled    bool
+    stop       chan struct{}
+    done       chan struct{}
+    startTime  time.Time
+    dotCounter int
+}
+
+// Usage patterns from self-update:
+spin := newSpinner("Cloning Chauffeur sources")  // Active operation
+spin.Success("into ~/.chauffeur/src/chauffeur") // Success with context
+spin.Fail("clone failed")                        // Failure with context
+```
+
+**Progress Bars (for downloads/long-running transfers):**
+```go
+type progressPrinter struct {
+    label     string
+    total     int64
+    current   int64
+    width     int
+    lastPrint time.Time
+}
+
+// Usage from installers:
+progress := newProgressPrinter("Download nginx.tar.gz", totalBytes)
+writer = io.MultiWriter(file, progress)
+// Renders: "    - Download nginx.tar.gz [##########........] 65%"
+```
+
+### 5.1.3) Command Output Structure
+
+**Multi-step Operation Format (like self-update):**
+```
+[ self-update ] Starting self-update process...
+[ self-update ] Cloning Chauffeur sources ✓ into ~/.chauffeur/src/chauffeur (42.1s)
+[ self-update ] Updating branch main ✓ updated to a1b2c3d (was f4e5d6c, 12.3s)
+[ self-update ] Building Chauffeur CLI ✓ binary installed to /usr/local/bin/chauf (8.7s)
+
+[ self-update ] Summary:
+  └── Duration: 63.2s
+  └── Previous: f4e5d6c
+  └── Current:  a1b2c3d
+  └── Changes:  updated
+
+[ self-update ] Self-update complete (commit a1b2c3d).
+```
+
+**Installation Command Format (like service install):**
+```
+[ install ] Installing PHP 8.3...
+[ install ] Downloading php-8.3.12.tar.gz... [####################] 100% (15.2 MiB)
+[ install ] Extracting source archive... ✓ (2.1s)
+[ install ] Configuring build environment... ✓ (1.8s)
+[ install ] Compiling PHP 8.3... ✓ (3m 42.1s)
+[ install ] Installing to ~/.chauffeur/php/8.3... ✓ (0.8s)
+
+[ install ] PHP 8.3 installation complete.
+  └── Location: ~/.chauffeur/php/8.3
+  └── PHP CLI: ~/.chauffeur/bin/shims/php-8.3
+  └── Extensions: gd, pdo, curl, json, mbstring
+```
+
+**Error Handling Format:**
+```
+[ install ] Downloading nginx.tar.gz ✗ failed
+  └── Error: HTTP 404: https://nginx.org/download/nginx-1.25.3.tar.gz
+  └── Suggestion: Check if the version exists or try --force to reinstall
+```
+
+**Warning/Informational Format:**
+```
+[ install ] Installing PHP 7.4...
+  ⚠ Warning: PHP 7.4 has reached End of Life (EOL)
+  └── Consider using PHP 8.2+ for production deployments
+[ install ] Continuing with PHP 7.4 installation...
+```
+
+### 5.1.4) Status Message Patterns
+
+**Command Prefixes (consistent across all commands):**
+```go
+const statusPrefix = "[ command-name ]"  // Replace with actual command
+```
+
+**Operation Progress Messages:**
+- Present continuous: `"Downloading..."`, `"Configuring..."`, `"Building..."`
+- Active with context: `"Downloading to ~/.chauffeur/cache..."`
+
+**Status Indicators:**
+- `✓` or `green("✓")` - Success completion
+- `✗` or `red("✗")` - Failed completion  
+- `⚠` or `yellow("⚠")` - Warning/caution
+- `└──` - Hierarchical context information (gray)
+
+### 5.1.5) Timing Information
+
+**Duration Formatting:**
+```go
+func formatDuration(d time.Duration) string {
+    // Handles appropriate human-readable formatting
+    // Examples: "42.1s", "3m 42.1s", "1h 23m 45s"
+}
+```
+
+**Always show timing:**
+- Operation completion: `✓ (2.3s)`
+- Download progress: `[####...] 67% (12.3 MiB/s)`
+- Summary sections: Include overall duration
+
+### 5.1.6) Terminal Detection
+
+**Always implement terminal-aware output:**
+```go
+func isTerminal(f *os.File) bool {
+    info, err := f.Stat()
+    if err != nil {
+        return false
+    }
+    return (info.Mode() & os.ModeCharDevice) != 0
+}
+
+func colorize(color, text string) string {
+    if !isTerminal(os.Stdout) {
+        return text  // Strip colors when not a terminal
+    }
+    return color + text + colorReset
+}
+```
+
+**Fallback for non-terminals:**
+- Remove spinner animations, show static messages
+- Remove color formatting
+- Keep progress bars functional (text-based)
+
+### 5.1.7) Logging Implementation Requirements
+
+**New Helper Functions (create in cli/internal/logging):**
+```go
+// Command logger with consistent formatting
+type CommandLogger struct {
+    command string
+    colors  bool
+}
+
+// Methods to implement:
+- NewCommandLogger(command string) *CommandLogger
+- Info(message string)
+- Success(message, context string)
+- Fail(message, error string) 
+- Warn(message, context string)
+- StartSpinner(message string) *Spinner
+- StartProgress(label string, total int64) *ProgressPrinter
+- PrintSummary(items []SummaryItem)
+```
+
+**Integration Points:**
+- All command handlers should create a logger instance
+- Replace `fmt.Printf` calls with logger methods
+- Ensure consistent prefix usage: `[ command-name ]`
+- Add appropriate color and formatting based on output type
+
+### 5.1.8) Log File Structure
+
+**Detailed Failure Logs:**
+```
+~/.chauffeur/logs/
+  install/
+    php-8.3-install-20250104T143022Z.log  // Detailed error log
+    nginx-install-20250104T142155Z.log
+  self-update/
+    update-20250104T141533Z.log
+```
+
+**Log File Format:**
+```
+2025-01-04T14:30:22Z [INFO] Starting PHP 8.3 installation
+2025-01-04T14:30:22Z [DEBUG] Workspace: /home/user/.chauffeur
+2025-01-04T14:30:23Z [INFO] Downloading from https://www.php.net/distributions/php-8.3.12.tar.gz
+2025-01-04T14:30:38Z [ERROR] Download failed: HTTP 404: Not Found
+2025-01-04T14:30:38Z [ERROR] Stack trace: ...
+```
+
+**Always show log file path on failures:**
+```
+[ install ] Download failed ✗
+  └── Error: HTTP 404 from download URL
+  └── Detailed log: ~/.chauffeur/logs/install/php-8.3-install-20250104T143022Z.log
+```
 
 ---
 
