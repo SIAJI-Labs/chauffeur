@@ -98,6 +98,7 @@ Ensure information consistency across all three documentation files:
 | `chauf init` | `--force`, `--quiet` | Initialize Chauffeur workspace in `~/.chauffeur/` (idempotent). Creates default dirs and templates. |
 | `chauf start` | `--project <path?>`, `--all`, `--dry-run` | Start services for current project (or all registered with `--all`). |
 | `chauf stop` | `--project <path?>`, `--all`, `--dry-run` | Stop services. |
+| `chauf remove` | `--force`, `<service>`, `[<version>]` | Remove installed service (php, nginx, caddy). Use `--force` to skip confirmation prompts. PHP version can be specified for per-version removal. |
 | `chauf uninstall` | `--purge` | Remove Chauffeur workspace. `--purge` also deletes caches and installed runtimes. |
 | `chauf link` | `--site <domain>`, `--ssl`, `--php <version>`, `--force` | Register **PWD** as a project. Creates `project.yaml`, prepares runtime/log dirs, optionally map local domain via Caddy, set default PHP for this project. Validates specified PHP version is installed. |
 | `chauf links` | _none_ | List all registered projects and their metadata. |
@@ -192,6 +193,7 @@ created_at: 2025-10-30T12:00:00+07:00
 - `chauf link` generates `~/.chauffeur/projects/<slug>/project.yaml` (slug from directory name) and prepares runtime/log directories; `--force` must be supplied to overwrite an existing registration.
 - `chauf unlink` removes project registrations and their directories; when run without flags and inside a registered project directory, it unlinks that project by default; explicit flags include `--slug <slug>` to unlink by project slug, `--site <domain>` to unlink by site domain, `--project <path>` to unlink by absolute path, and `--all` to unlink all projects; requires confirmation unless `--force` is provided.
 - `chauf php isolate <version>` validates that the requested runtime is installed and the current directory is linked before updating the project configuration.
+- `chauf remove` removes installed services from the Chauffeur workspace. By default, prompts for confirmation before deletion. With `--force`, removes without prompts. For PHP, can remove specific versions (`chauf remove php 8.3`) or all versions (`chauf remove php`). Automatically removes corresponding shims and updates default PHP if removed version was the default.
 - `chauf self-update` ensures a clean git workspace, fast-forwards the Chauffeur repo under `~/.chauffeur/src/chauffeur` using the SSH remote `git@github.com:SIAJI-Labs/chauffeur.git` by default (override via `CHAUF_REPO_URL`), then rebuilds the CLI binary; service runtimes remain untouched (use `chauf install <service> --force` to refresh runtimes).
 - With `--dev` flag, `chauf self-update --dev` rebuilds the CLI binary from the current working directory if it's a valid Chauffeur repository (must be a git repo containing `cli/main.go`, `go.mod`, and `AGENTS.md`).
 - First install must handle not‑on‑PATH scenario: provide shell one‑liner to add `~/.chauffeur/bin` to PATH in `~/.bashrc`/`~/.zshrc`.
@@ -496,6 +498,8 @@ tests/
 │   ├── php_test.go          # PHP installation tests
 │   ├── nginx_test.go        # Nginx installation tests
 │   └── caddy_test.go        # Caddy installation tests
+├── remove/
+│   └── remove_command_test.go # Service removal tests
 ├── link/
 │   ├── link_project_test.go  # Project linking tests
 │   ├── unlink_project_test.go # Project unlinking tests
@@ -745,10 +749,45 @@ func TestProgress_ProgressBarIntegration(t *testing.T) {
 }
 ```
 
+**Service Removal Testing**:
+```go
+// tests/remove_command_test.go - Service removal validation  
+func TestRemove_MissingArguments(t *testing.T) {
+    // Tests error handling when no services specified
+    // Validates proper error messages and usage guidance
+}
+
+func TestRemove_UnknownService(t *testing.T) {
+    // Tests validation of unknown service names
+    // Ensures only known services (php, nginx, caddy) can be removed
+}
+
+func TestRemove_PHPAllVersions(t *testing.T) {
+    // Tests removal of all PHP versions
+    // Validates directory cleanup and shim removal
+}
+
+func TestRemove_SpecificPHPVersion(t *testing.T) {
+    // Tests removal of specific PHP version
+    // Confirms per-version removal doesn't affect other versions
+}
+
+func TestRemove_NginxService(t *testing.T) {
+    // Tests nginx service removal
+    // Validates complete nginx directory cleanup
+}
+
+func TestRemove_MultipleServices(t *testing.T) {
+    // Tests simultaneous removal of multiple services
+    // Validates batch processing and error handling
+}
+```
+
 **Test Results**:
 - All 11 logging/progress tests pass successfully
-- Progress bars display correctly with `[ command-name ]` prefix
-- Color formatting works with proper terminal detection
+- 12 comprehensive remove command tests covering all scenarios
+- Progress bars display correctly with `[ remove ]` prefix
+- Color formatting works with proper terminal detection  
 - Error handling prevents system crashes and panics
 - Performance impact is minimal (commands complete quickly)
 - Integration tests verify logging doesn't interfere with execution
