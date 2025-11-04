@@ -99,9 +99,10 @@ Ensure information consistency across all three documentation files:
 | `chauf start` | `--project <path?>`, `--all`, `--dry-run` | Start services for current project (or all registered with `--all`). |
 | `chauf stop` | `--project <path?>`, `--all`, `--dry-run` | Stop services. |
 | `chauf uninstall` | `--purge` | Remove Chauffeur workspace. `--purge` also deletes caches and installed runtimes. |
-| `chauf link` | `--site <domain>`, `--ssl`, `--php <version>`, `--force` | Register **PWD** as a project. Creates `project.yaml`, prepares runtime/log dirs, optionally map local domain via Caddy, set default PHP for this project. |
-| `chauf self-update` | `--dev` | Pull latest Chauffeur git changes via SSH and rebuild the CLI binary in-place (services unaffected; requires git & go). With --dev, rebuild from current directory if it's a valid chauffeur repository. |
+| `chauf link` | `--site <domain>`, `--ssl`, `--php <version>`, `--force` | Register **PWD** as a project. Creates `project.yaml`, prepares runtime/log dirs, optionally map local domain via Caddy, set default PHP for this project. Validates specified PHP version is installed. |
 | `chauf links` | _none_ | List all registered projects and their metadata. |
+| `chauf unlink` | `--force`, `--slug <slug>`, `--site <domain>`, `--project <path>`, `--all` | Remove a registered project. Can unlink by slug, domain, path, all projects with proper confirmation unless --force is used. |
+| `chauf self-update` | `--dev` | Pull latest Chauffeur git changes via SSH and rebuild the CLI binary in-place (services unaffected; requires git & go). With --dev, rebuild from current directory if it's a valid chauffeur repository. |
 
 ### PHP Management
 
@@ -189,6 +190,7 @@ created_at: 2025-10-30T12:00:00+07:00
 - Services must **not conflict** with host services or ports; prefer per‑project Unix sockets and reverse proxy fan‑out via Caddy/Nginx.
 - PHP isolation: `use` sets **global** default; `isolate` writes **project.yaml** override.
 - `chauf link` generates `~/.chauffeur/projects/<slug>/project.yaml` (slug from directory name) and prepares runtime/log directories; `--force` must be supplied to overwrite an existing registration.
+- `chauf unlink` removes project registrations and their directories; when run without flags and inside a registered project directory, it unlinks that project by default; explicit flags include `--slug <slug>` to unlink by project slug, `--site <domain>` to unlink by site domain, `--project <path>` to unlink by absolute path, and `--all` to unlink all projects; requires confirmation unless `--force` is provided.
 - `chauf php isolate <version>` validates that the requested runtime is installed and the current directory is linked before updating the project configuration.
 - `chauf self-update` ensures a clean git workspace, fast-forwards the Chauffeur repo under `~/.chauffeur/src/chauffeur` using the SSH remote `git@github.com:SIAJI-Labs/chauffeur.git` by default (override via `CHAUF_REPO_URL`), then rebuilds the CLI binary; service runtimes remain untouched (use `chauf install <service> --force` to refresh runtimes).
 - With `--dev` flag, `chauf self-update --dev` rebuilds the CLI binary from the current working directory if it's a valid Chauffeur repository (must be a git repo containing `cli/main.go`, `go.mod`, and `AGENTS.md`).

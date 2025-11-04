@@ -23,6 +23,9 @@ Usage:
   chauf nginx [args...]  Run the managed nginx binary with passthrough args.
   chauf caddy [args...]  Run the managed caddy binary with passthrough args.
   chauf start            Check service prerequisites before starting Chauffeur.
+  chauf link             Register current directory as a project.
+  chauf links            List all registered projects.
+  chauf unlink           Unlink a registered project (by slug, domain, path, or all).
   chauf uninstall        Remove the Chauffeur workspace (keeps runtimes by default).
   chauf uninstall --purge
                          Remove the workspace and delete runtimes/caches.
@@ -60,6 +63,16 @@ func main() {
 		}
 	case "link":
 		if err := commands.RunLink(args[1:]); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+	case "links":
+		if err := commands.RunLinks(args[1:]); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+	case "unlink":
+		if err := commands.RunUnlink(args[1:]); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}

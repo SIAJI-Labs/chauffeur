@@ -32,6 +32,10 @@ This document tracks the current status of features and improvements for the Cha
 ### Project Registration Foundation
 - [x] **Project Configuration Writer**: `chauf link` generates `.chauffeur/projects/<slug>/project.yaml` with per-project PHP metadata
 - [x] **Project Layout Scaffolding**: Runtime socket and log directories created alongside project configuration
+- [x] **Test Coverage**: Comprehensive tests for `chauf link`, `chauf links`, and `chauf unlink` commands
+- [x] **Intuitive Unlink**: `chauf unlink` defaults to current directory with confirmation
+- [x] **PHP Validation**: Link command validates specified PHP version is installed
+- [x] **Project Removal**: `chauf unlink` command with smart defaults (current directory when no flags) and multiple ways to remove projects (by slug, domain, path, or all) with proper confirmation
 
 ## 🎯 Current Focus Areas
 
@@ -42,10 +46,10 @@ This document tracks the current status of features and improvements for the Cha
 - [ ] **Validation**: Ensure project PHP version is installed and compatible
 
 ### Priority 2: Project Linking & Service Registration
-- [ ] **`chauf link` Command**: `chauf link --site <domain> [--ssl] [--php <version>] [--force]` registration
-- [ ] **`chauf links` Command**: List all registered projects and their configurations
+- [x] **`chauf link` Command**: `chauf link --site <domain> [--ssl] [--php <version>] [--force]` registration with PHP validation
+- [x] **`chauf links` Command**: List all registered projects and their configurations
 - [x] **Configuration Persistence**: Store project settings in workspace structure via project YAML files
-- [ ] **Multi-Project Support**: Handle multiple projects with different configurations
+- [x] **Multi-Project Support**: Handle multiple projects with different configurations
 - [ ] **Service Discovery**: Automatic detection of project requirements
 
 ### Priority 3: Site Accessibility
