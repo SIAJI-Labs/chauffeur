@@ -226,6 +226,8 @@ See [TODO_STATUS.md](docs/TODO_STATUS.md) for comprehensive project status and r
 - Use `--php <version>` to pin a per-project PHP version without touching global defaults.
 - Run `chauf php isolate <version>` in the project directory to switch the linked PHP runtime (requires the version to be installed).
 - Re-run with `--force` when intentionally overwriting an existing project registration.
+- Run `chauf unlink` to remove a project registration (defaults to current directory when no flags provided).
+- Run `chauf links` to list all registered projects and their configurations.
 - Upcoming work: emit Nginx/Caddy templates and expose `chauf links` for listing registrations.
 
 ## Development Notes
