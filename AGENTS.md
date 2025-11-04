@@ -113,6 +113,16 @@ Ensure information consistency across all three documentation files:
 | `chauf php use <version>` | _none_ | Set global default PHP version used by `chauf php ...` commands. |
 | `chauf php isolate <version>` | _none_ | Pin current directory/project to `<version>` (requires linked project and installed runtime). |
 
+#### Project-Aware PHP Shim Behavior
+
+**PHP Shim Context Detection**: The `php` command (not just `chauf php`) automatically detects project context and selects appropriate PHP version:
+
+- **Inside Linked Project**: Uses PHP version specified in project's `project.yaml` via `chauf php isolate`
+- **Outside Any Project**: Uses global default PHP version set via `chauf php use <version>`
+- **Fallback Logic**: If no global default is configured, falls back to PHP 8.3
+- **Automatic Detection**: Projects detected by searching `~/.chauffeur/projects/` registry and matching project paths to current directory
+- **Seamless Integration**: Both `php -v` and `chauf php -v` now behave consistently based on directory context
+
 > **Version examples**: `8.3`, `8.2`, `7.4`. Keep semantic digits (major.minor), allow patch in metadata but runtime folder stays `major.minor`. Never writes to `/usr/bin`; shims live under `~/.chauffeur/bin/shims`.
 
 > **NOTE**: When implementing new commands or modifying existing ones, update all three documentation files immediately following the Documentation Synchronization Rule (see above).
@@ -190,6 +200,7 @@ created_at: 2025-10-30T12:00:00+07:00
 - Using **Caddy** avoids editing `/etc/hosts`; Codex should generate Caddyfile entries that route `site.test` → local upstream.
 - Services must **not conflict** with host services or ports; prefer per‑project Unix sockets and reverse proxy fan‑out via Caddy/Nginx.
 - PHP isolation: `use` sets **global** default; `isolate` writes **project.yaml** override.
+- PHP shims are **project-aware**: the `php` command automatically detects project context and uses appropriate PHP version (project isolation + global default fallback).
 - `chauf link` generates `~/.chauffeur/projects/<slug>/project.yaml` (slug from directory name) and prepares runtime/log directories; `--force` must be supplied to overwrite an existing registration.
 - `chauf unlink` removes project registrations and their directories; when run without flags and inside a registered project directory, it unlinks that project by default; explicit flags include `--slug <slug>` to unlink by project slug, `--site <domain>` to unlink by site domain, `--project <path>` to unlink by absolute path, and `--all` to unlink all projects; requires confirmation unless `--force` is provided.
 - `chauf php isolate <version>` validates that the requested runtime is installed and the current directory is linked before updating the project configuration.
@@ -842,6 +853,7 @@ func TestRemove_MultipleServices(t *testing.T) {
 5. `chauf php isolate 7.4` updates the linked project's `project.yaml` with the per-project PHP override.
 6. `chauf self-update` fast-forwards the workspace git clone and rebuilds the CLI binary in-place.
 7. `chauf start` in project directory boots required services; `stop` halts them cleanly.
+8. **Project-aware PHP shim**: `php -v` inside linked project uses isolated version; `php -v` outside uses global default.
 
 ---
 

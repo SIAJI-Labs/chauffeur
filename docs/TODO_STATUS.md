@@ -20,6 +20,7 @@ This document tracks the current status of features and improvements for the Cha
 - [x] **Configuration Management**: Automatic config file creation and updates
 - [x] **Legacy PHP Support**: PHP 7.4 with OpenSSL 1.1.1w vendor
 - [x] **Per-Project Override**: `chauf php isolate <version>` command for project-local defaults
+- [x] **Project-Aware PHP Shims**: Automatic PHP version detection based on project context for both `php` and `chauf php` commands
 
 ### CLI Infrastructure
 - [x] **Command Structure**: Modular Go packages in `cli/commands/*`
@@ -183,6 +184,7 @@ This document tracks the current status of features and improvements for the Cha
 - ✅ **Priority 2**: Complete project linking system (`chauf link`/`chauf links`/`chauf unlink`)
 - ✅ **Testing Standards**: Comprehensive testing framework with operation-based structure and 80% coverage requirements
 - ✅ **Priority 3**: Enhanced logging framework implementation (fully tested and verified)
+- ✅ **Priority 1**: Project-aware PHP shims with automatic context detection
 - 🎯 **Priority 1**: Service orchestration implementation (`chauf start`/`chauf stop`)
 - 🚧 Service orchestration foundation (in progress)
 
@@ -198,5 +200,5 @@ This document tracks the current status of features and improvements for the Cha
 
 ---
 
-*Last Updated: 2025-11-04*
-*Status reflects current development progress and priorities with completed project registration system and testing framework*
+*Last Updated: 2025-11-05*
+*Status reflects current development progress and priorities with completed project registration system, project-aware PHP shims, and testing framework*
