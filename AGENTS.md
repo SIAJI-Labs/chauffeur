@@ -157,6 +157,9 @@ Ensure information consistency across all three documentation files:
   bin/
     chauf                   # the installed CLI (if self-managed)
     shims/                  # wrapper scripts exposed on PATH (php-8.3, nginx, caddy)
+  cli/
+    templates/
+      nginx/                # nginx template files (laravel.conf, wordpress.conf, general.conf)
 ```
 
 ### `chauffeur.yaml` (global)
@@ -202,7 +205,12 @@ created_at: 2025-10-30T12:00:00+07:00
 - Services must **not conflict** with host services or ports; prefer per‑project Unix sockets and reverse proxy fan‑out via Caddy/Nginx.
 - PHP isolation: `use` sets **global** default; `isolate` writes **project.yaml** override.
 - PHP shims are **project-aware**: the `php` command automatically detects project context and uses appropriate PHP version (project isolation + global default fallback).
-- `chauf link` generates `~/.chauffeur/projects/<slug>/project.yaml` (slug from directory name) and prepares runtime/log directories; `--force` must be supplied to overwrite an existing registration.
+- `chauf link` generates `~/.chauffeur/projects/<slug>/project.yaml` (slug from directory name) and prepares runtime/log directories; `--force` must be supplied to overwrite an existing registration. The command also **automatically generates nginx configurations** based on detected project type:
+- **Laravel**: Detects `artisan` and `composer.json` with Laravel structure; nginx config routes to `/public` with Laravel-specific optimizations
+- **WordPress**: Detects `wp-config.php`, `wp-admin`, and `wp-includes`; nginx config includes WordPress-specific security and routing rules  
+- **General**: Fallback template for standard PHP applications with security headers and proper PHP-FPM integration
+
+Templates are stored under `cli/templates/nginx/` with variable substitution using `{{PROJECT_SLUG}}`, `{{SERVER_NAME}}`, `{{PROJECT_ROOT}}`, `{{PHP_FPM_SOCKET}}`, `{{LOGS_DIR}}`, and conditional SSL blocks with `{{#SSL}}...{{/SSL}}`. All configurations use **user-space ports** (HTTP: 8080, HTTPS: 8443) to avoid conflicts with system services. Generated nginx configs are placed in `~/.chauffeur/nginx/sites-available/` and symlinked to `~/.chauffeur/nginx/sites-enabled/`.
 - `chauf unlink` removes project registrations and their directories; when run without flags and inside a registered project directory, it unlinks that project by default; explicit flags include `--slug <slug>` to unlink by project slug, `--site <domain>` to unlink by site domain, `--project <path>` to unlink by absolute path, and `--all` to unlink all projects; requires confirmation unless `--force` is provided.
 - `chauf php isolate <version>` validates that the requested runtime is installed and the current directory is linked before updating the project configuration.
 - `chauf remove` removes installed services from the Chauffeur workspace. By default, prompts for confirmation before deletion. With `--force`, removes without prompts. For PHP, can remove specific versions (`chauf remove php 8.3`) or all versions (`chauf remove php`). Automatically removes corresponding shims and updates default PHP if removed version was the default.
@@ -850,11 +858,12 @@ func TestRemove_MultipleServices(t *testing.T) {
 1. `chauf init` creates workspace; re‑running is no‑op.
 2. `chauf php install 8.3` creates `~/.chauffeur/php/8.3/bin/php`.
 3. `chauf php use 8.3` updates `chauffeur.yaml` default.
-4. `chauf link --site myproj.test --ssl --php 8.2` creates project folder structure and `project.yaml` metadata (Caddy/Nginx assets pending).
-5. `chauf php isolate 7.4` updates the linked project's `project.yaml` with the per-project PHP override.
+4. `chauf link --site myproj.test --ssl --php 8.2` creates project folder structure, `project.yaml` metadata, and **automatically generates nginx configuration** based on detected project type (Laravel/WordPress/general).
+5. `chauf php isolate 7.4` updates the linked project's `project.yaml` with the per-project PHP override **and regenerates the nginx configuration** for the new PHP-FPM socket.
 6. `chauf self-update` fast-forwards the workspace git clone and rebuilds the CLI binary in-place.
 7. `chauf start` in project directory boots required services; `stop` halts them cleanly.
 8. **Project-aware PHP shim**: `php -v` inside linked project uses isolated version; `php -v` outside uses global default.
+9. **Template workflow**: `chauf unlink` removes the project registration **and** the associated nginx configuration.
 
 ---
 

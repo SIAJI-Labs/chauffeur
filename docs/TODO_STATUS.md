@@ -42,13 +42,20 @@ This document tracks the current status of features and improvements for the Cha
 - [x] **Intuitive Unlink**: `chauf unlink` defaults to current directory with confirmation
 - [x] **PHP Validation**: Link command validates specified PHP version is installed
 - [x] **Project Removal**: `chauf unlink` command with smart defaults (current directory when no flags) and multiple ways to remove projects (by slug, domain, path, or all) with proper confirmation
+- [x] **Nginx Template System**: Automatic nginx configuration generation with Laravel, WordPress, and general templates
+- [x] **Template Detection Engine**: Smart project type detection for optimal nginx configuration
+- [x] **Template Update Integration**: Automatic nginx config updates on PHP version changes via `chauf php isolate`
+- [x] **Template Removal**: Automatic nginx configuration removal on project unlink
+- [x] **Enhanced Link Output**: Link command now displays detected template type in output
+- [x] **Template Testing**: Comprehensive tests for nginx template functionality including detection, generation, and updates
+- [x] **Fallback Support**: Basic nginx configuration generation when templates are unavailable (testing environments)
+- [x] **User-Space Ports**: All nginx configurations use non-privileged ports (HTTP: 8080, HTTPS: 8443) to avoid system service conflicts
 
 ## 🎯 Current Focus Areas
 
 ### Priority 1: Complete Service Orchestration
 - [ ] **Service Lifecycle**: Complete `chauf start/stop/restart` commands for service management
 - [ ] **Process Management**: Service monitoring and automatic restarts (Nginx, PHP-FPM, Caddy)
-- [ ] **Service Templates**: Generate nginx/caddy configs for linked projects
 - [ ] **Health Monitoring**: Service status tracking and startup coordination
 
 ### Priority 2: Site Accessibility Implementation
@@ -67,7 +74,6 @@ This document tracks the current status of features and improvements for the Cha
 ### Service Orchestration  
 - [ ] **Service Lifecycle**: `chauf start/stop/restart` commands for service management (in progress)
 - [ ] **Process Management**: Service monitoring and automatic restarts  
-- [ ] **Configuration Templates**: Generate nginx/caddy configs for linked projects
 - [ ] **Automated Shims**: Path management for installed services
 
 ### Foundation Components

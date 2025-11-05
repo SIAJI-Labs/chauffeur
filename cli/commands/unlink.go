@@ -9,6 +9,7 @@ import (
 
 	"github.com/siaji/chauffeur/cli/internal/config"
 	"github.com/siaji/chauffeur/cli/internal/projects"
+	"github.com/siaji/chauffeur/cli/internal/templates"
 )
 
 // RunUnlink handles `chauf unlink` command invocations.
@@ -283,6 +284,17 @@ func RunUnlink(args []string) error {
 		}
 	}
 
+	// Remove nginx configuration
+	templateEngine, err := templates.NewTemplateEngine()
+	if err != nil {
+		return fmt.Errorf("initialize template engine: %w", err)
+	}
+	
+	if err := templateEngine.RemoveNginxConfig(projectSlug); err != nil {
+		fmt.Printf("Warning: failed to remove nginx configuration: %v\n", err)
+		// Continue with unlink even if nginx removal fails
+	}
+
 	// Remove the project directory
 	projectDir := layout.Root
 	if err := os.RemoveAll(projectDir); err != nil {
@@ -361,6 +373,20 @@ func unlinkAllProjects(cfg config.Config, force bool) error {
 		if strings.ToLower(response) != "y" && strings.ToLower(response) != "yes" {
 			fmt.Println("Cancelled.")
 			return nil
+		}
+	}
+
+	// Remove nginx configurations first
+	templateEngine, err := templates.NewTemplateEngine()
+	if err != nil {
+		fmt.Printf("Warning: failed to initialize template engine: %v\n", err)
+		// Continue with unlink even if template engine fails
+	} else {
+		for _, proj := range allProjectsInfo {
+			if err := templateEngine.RemoveNginxConfig(proj.Slug); err != nil {
+				fmt.Printf("Warning: failed to remove nginx configuration for %s: %v\n", proj.Slug, err)
+				// Continue even if nginx removal fails
+			}
 		}
 	}
 

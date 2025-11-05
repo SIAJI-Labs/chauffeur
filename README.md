@@ -12,10 +12,13 @@ Chauffeur is a host-based CLI for managing per-project PHP development services 
 - ✅ **Dev Mode**: `chauf self-update --dev` rebuilds CLI from current directory for development  
 - ✅ **Shell Integration**: Clean PATH management with no whitespace pollution  
 - ✅ **Enhanced Logging**: Structured CLI output with color-coded status, progress indicators, and detailed timing information - fully implemented and tested  
-- ✅ **Project Registration**: Complete `chauf link`, `chauf links`, and `chauf unlink` commands with comprehensive project management  
+- ✅ **Project Registration**: Complete `chauf link`, `chauf links`, and `chauf unlink` commands with comprehensive project management
+- ✅ **Nginx Template System**: Automatic nginx configuration generation with Laravel, WordPress, and general templates  
+- ✅ **Template Detection**: Smart project type detection for optimal nginx configuration  
+- ✅ **Template Updates**: Automatic nginx config updates on PHP version changes  
 - ✅ **Comprehensive Testing**: Full test suite with operation-based structure and 80% coverage standards  
 - 🚧 **Service Orchestration**: `chauf start/stop` (in progress)  
-- 🚧 **Site Accessibility**: Nginx/Caddy integration for domain routing (in progress)  
+- 🚧 **Site Accessibility**: Caddy integration for local domain routing (in progress)  
 - Linux-focused workflow (Arch/Ubuntu/Debian friendly); other OS targets are not yet supported
 
 ## Background & Inspiration
@@ -226,6 +229,9 @@ The uninstaller cleanly removes PATH entries without leaving whitespace pollutio
 - Development mode rebuild via `chauf self-update --dev` for testing local changes
 - Complete project registration system with `chauf links` and `chauf unlink` commands
 - Project-aware PHP shims that automatically detect and use appropriate PHP versions
+- **Nginx Template System**: Automatic configuration generation for Laravel, WordPress, and general PHP applications
+- **Template Detection**: Smart project type identification for optimal nginx configurations
+- **Template Updates**: Automatic nginx config regeneration on PHP version changes
 - Comprehensive testing framework with operation-based structure
 - Enhanced CLI logging specification with visual feedback standards
 
@@ -247,8 +253,8 @@ The uninstaller cleanly removes PATH entries without leaving whitespace pollutio
 
 ### In Progress 🚧
 - Service orchestration (`chauf start`, `chauf stop`) for Nginx, PHP-FPM, and Caddy
-- Automated shim generation and log handling
-- Nginx/Caddy template generation for linked projects
+- Caddy integration for local domain resolution (no `/etc/hosts` editing)
+- Service process monitoring and health checks
 
 ### Planned 📋
 - `chauf init` explicit workspace initialization
@@ -262,12 +268,18 @@ See [TODO_STATUS.md](docs/TODO_STATUS.md) for comprehensive project status and r
 
 - Run `chauf link --site myproj.test --ssl` inside a project directory to create `~/.chauffeur/projects/<slug>/project.yaml`.
 - The command records the absolute project path, PHP version (defaults to global), optional domain metadata, and prepares runtime/log directories.
+- **Automatic Nginx Templates**: Chauffeur automatically generates nginx configurations based on project type:
+  - **Laravel**: Detects `artisan` and `composer.json` with Laravel structure for optimized routing
+  - **WordPress**: Detects `wp-config.php`, `wp-admin`, and `wp-includes` for WordPress-specific settings
+  - **General**: Fallback for standard PHP applications with security headers and proper PHP-FPM integration
+- **SSL Support**: When `--ssl` is provided with `--site`, templates include HTTPS configuration with internal TLS on port 8443
+- **User-Space Ports**: All configurations use non-privileged ports (HTTP: 8080, HTTPS: 8443) to avoid conflicts with system services
 - Use `--php <version>` to pin a per-project PHP version without touching global defaults.
-- Run `chauf php isolate <version>` in the project directory to switch the linked PHP runtime (requires the version to be installed).
+- Run `chauf php isolate <version>` in the project directory to switch the linked PHP runtime (requires the version to be installed). This automatically updates the nginx configuration to use the new PHP-FPM socket.
 - Re-run with `--force` when intentionally overwriting an existing project registration.
-- Run `chauf unlink` to remove a project registration (defaults to current directory when no flags provided).
+- Run `chauf unlink` to remove a project registration (defaults to current directory when no flags provided). This also removes the associated nginx configuration.
 - Run `chauf links` to list all registered projects and their configurations in a formatted table with domains, SSL status, PHP versions, and creation timestamps.
-- Upcoming work: emit Nginx/Caddy templates and integrate with service orchestration.
+- Nginx configurations are stored in `~/.chauffeur/nginx/sites-available/` and `~/.chauffeur/nginx/sites-enabled/` with proper symlinks for easy management.
 
 ## Development Notes
 

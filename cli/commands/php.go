@@ -9,6 +9,7 @@ import (
 	"github.com/siaji/chauffeur/cli/installers"
 	"github.com/siaji/chauffeur/cli/internal/config"
 	"github.com/siaji/chauffeur/cli/internal/projects"
+	"github.com/siaji/chauffeur/cli/internal/templates"
 	"github.com/siaji/chauffeur/cli/internal/workspace"
 )
 
@@ -130,7 +131,22 @@ func runPHPIsolate(version string) error {
 		return fmt.Errorf("update project configuration: %w", err)
 	}
 
+	// Update nginx template to reflect new PHP version
+	templateEngine, err := templates.NewTemplateEngine()
+	if err != nil {
+		return fmt.Errorf("initialize template engine: %w", err)
+	}
+
+	// Detect template type based on project structure
+	templateType := templateEngine.DetectTemplateType(projectCfg.Path)
+	
+	// Update nginx configuration with new PHP version
+	if err := templateEngine.WriteNginxConfig(projectCfg, layout, templateType); err != nil {
+		return fmt.Errorf("update nginx configuration: %w", err)
+	}
+
 	fmt.Printf("Project PHP version pinned to %s (config: %s)\n", version, layout.ConfigPath)
+	fmt.Printf("Nginx configuration updated for new PHP version %s\n", version)
 	return nil
 }
 
