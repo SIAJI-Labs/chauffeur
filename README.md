@@ -266,7 +266,7 @@ See [TODO_STATUS.md](docs/TODO_STATUS.md) for comprehensive project status and r
 
 ## Project Registration Flow
 
-- Run `chauf link --site myproj.test --ssl` inside a project directory to create `~/.chauffeur/projects/<slug>/project.yaml`.
+- Run `chauf link` inside a project directory to automatically assign `<project-name>.test` as domain, or use `chauf link --site myproj.test --ssl` for custom domains. Both create `~/.chauffeur/projects/<slug>/project.yaml`.
 - The command records the absolute project path, PHP version (defaults to global), optional domain metadata, and prepares runtime/log directories.
 - **Automatic Nginx Templates**: Chauffeur automatically generates nginx configurations based on project type:
   - **Laravel**: Detects `artisan` and `composer.json` with Laravel structure for optimized routing

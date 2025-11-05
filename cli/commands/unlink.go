@@ -295,6 +295,11 @@ func RunUnlink(args []string) error {
 		// Continue with unlink even if nginx removal fails
 	}
 
+	if err := templateEngine.RemoveCaddyConfig(projectSlug); err != nil {
+		fmt.Printf("Warning: failed to remove Caddy configuration: %v\n", err)
+		// Continue with unlink even if Caddy removal fails
+	}
+
 	// Remove the project directory
 	projectDir := layout.Root
 	if err := os.RemoveAll(projectDir); err != nil {
@@ -386,6 +391,11 @@ func unlinkAllProjects(cfg config.Config, force bool) error {
 			if err := templateEngine.RemoveNginxConfig(proj.Slug); err != nil {
 				fmt.Printf("Warning: failed to remove nginx configuration for %s: %v\n", proj.Slug, err)
 				// Continue even if nginx removal fails
+			}
+
+			if err := templateEngine.RemoveCaddyConfig(proj.Slug); err != nil {
+				fmt.Printf("Warning: failed to remove Caddy configuration for %s: %v\n", proj.Slug, err)
+				// Continue even if Caddy removal fails
 			}
 		}
 	}

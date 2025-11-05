@@ -147,6 +147,25 @@ func runPHPIsolate(version string) error {
 
 	fmt.Printf("Project PHP version pinned to %s (config: %s)\n", version, layout.ConfigPath)
 	fmt.Printf("Nginx configuration updated for new PHP version %s\n", version)
+	
+	// Update Caddy template to reflect new PHP version
+	if err := templateEngine.WriteCaddyConfig(projectCfg, layout, templateEngine.DetectTemplateType(projectCfg.Path)); err != nil {
+		fmt.Printf("Warning: Failed to update Caddy configuration: %v\n", err)
+		// Continue even if Caddy generation fails
+	}
+	
+	fmt.Printf("Caddy configuration updated for new PHP version %s\n", version)
+	
+	// Show access URLs for the isolated project
+	if projectCfg.Site != nil && projectCfg.Site.Domain != "" {
+		fmt.Printf("  Access: http://%s:8080\n", projectCfg.Site.Domain)
+		if projectCfg.Site.SSL {
+			fmt.Printf("Access Secure: https://%s:8443\n", projectCfg.Site.Domain)
+		}
+	} else {
+		fmt.Printf("Access: http://localhost:8080\n")
+	}
+	
 	return nil
 }
 

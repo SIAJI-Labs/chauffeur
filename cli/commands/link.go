@@ -53,9 +53,7 @@ func RunLink(args []string) error {
 		}
 	}
 
-	if ssl && domain == "" {
-		return fmt.Errorf("--ssl requires --site <domain>")
-	}
+	// SSL now works with both explicit and default .test domains
 
 	cfg, err := config.Load()
 	if err != nil {
@@ -90,6 +88,11 @@ func RunLink(args []string) error {
 		return err
 	}
 
+	// Set default domain if none provided
+	if domain == "" {
+		domain = slug + ".test"
+	}
+
 	proj := projects.Config{
 		Version: projects.ConfigVersion,
 		Path:    cwd,
@@ -100,11 +103,9 @@ func RunLink(args []string) error {
 		CreatedAt: time.Now().UTC(),
 	}
 
-	if domain != "" {
-		proj.Site = &projects.Site{
-			Domain: domain,
-			SSL:    ssl,
-		}
+	proj.Site = &projects.Site{
+		Domain: domain,
+		SSL:    ssl,
 	}
 
 	if err := projects.WriteConfig(proj, layout.ConfigPath, force); err != nil {
@@ -122,7 +123,14 @@ func RunLink(args []string) error {
 	
 	// Generate and write nginx configuration
 	if err := templateEngine.WriteNginxConfig(proj, layout, templateType); err != nil {
-		return fmt.Errorf("generate nginx configuration: %w", err)
+		fmt.Printf("Warning: Failed to generate nginx configuration: %v\n", err)
+		// Continue even if nginx generation fails
+	}
+
+	// Generate and write Caddy configuration
+	if err := templateEngine.WriteCaddyConfig(proj, layout, templateType); err != nil {
+		fmt.Printf("Warning: Failed to generate Caddy configuration: %v\n", err)
+		// Continue even if Caddy generation fails
 	}
 
 	fmt.Printf("Project linked as %s\n", slug)
@@ -130,8 +138,19 @@ func RunLink(args []string) error {
 	fmt.Printf("  Config: %s\n", layout.ConfigPath)
 	fmt.Printf("  PHP: %s\n", phpVer)
 	fmt.Printf("  Template: %s\n", templateType)
-	if proj.Site != nil {
-		fmt.Printf("  Domain: %s (ssl=%t)\n", proj.Site.Domain, proj.Site.SSL)
+	
+	// Access URLs - always show domain (now default to <slug>.test)
+	if proj.Site != nil && proj.Site.Domain != "" {
+		if strings.Contains(proj.Site.Domain, ".test") {
+			fmt.Printf("  Domain: %s (default .test domain)\n", proj.Site.Domain)
+		} else {
+			fmt.Printf("  Domain: %s (custom domain)\n", proj.Site.Domain)
+		}
+		fmt.Printf("  Access: http://%s\n", proj.Site.Domain)
+		if proj.Site.SSL {
+			fmt.Printf("  Access Secure: https://%s\n", proj.Site.Domain)
+		}
+		fmt.Printf("  Note: Use --site <custom-domain> to override default domain\n")
 	}
 
 	return nil
@@ -144,9 +163,13 @@ Usage:
   chauf link [--site <domain>] [--ssl] [--php <version>] [--force]
 
 Flags:
-  --site <domain>   Register a local domain for the project.
-  --ssl             Enable internal TLS for the domain (requires --site).
+  --site <domain>   Register a local domain for the project (default: <slug>.test).
+  --ssl             Enable internal TLS for the domain.
   --php <version>   Override the PHP version for this project (default: global default).
   --force           Overwrite existing project configuration.
+
+Note:
+  When --site is not specified, the project is automatically assigned a .test domain
+  based on the project directory name (e.g., "my-project" -> "my-project.test").
 `)
 }

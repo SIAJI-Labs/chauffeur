@@ -50,6 +50,7 @@ This document tracks the current status of features and improvements for the Cha
 - [x] **Template Testing**: Comprehensive tests for nginx template functionality including detection, generation, and updates
 - [x] **Fallback Support**: Basic nginx configuration generation when templates are unavailable (testing environments)
 - [x] **User-Space Ports**: All nginx configurations use non-privileged ports (HTTP: 8080, HTTPS: 8443) to avoid system service conflicts
+- [x] **Default Domain Assignment**: `chauf link` automatically assigns `<slug>.test` domain when `--site` flag is omitted, simplifying project setup for local development
 
 ## 🎯 Current Focus Areas
 
@@ -62,6 +63,8 @@ This document tracks the current status of features and improvements for the Cha
 - [ ] **Nginx Virtual Hosts**: Automatic configuration for registered project domains
 - [ ] **Caddy Integration**: Local domain resolution (no `/etc/hosts` editing required)
 - [ ] **SSL Certificate Management**: Local SSL setup for development domains
+- [ ] **Domain Routing**: Ensure projects are accessible via configured domains
+- [ ] **Port Consistency**: Consistent port usage across nginx (8080) and Caddy (8080/8443) for seamless integration
 - [ ] **Domain Routing**: Ensure projects are accessible via configured domains
 
 ### Priority 4: Log File Management
