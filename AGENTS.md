@@ -100,7 +100,7 @@ Ensure information consistency across all three documentation files:
 | `chauf stop` | `--project <path?>`, `--all`, `--dry-run` | Stop services. |
 | `chauf remove` | `--force`, `<service>`, `[<version>]` | Remove installed service (php, nginx, caddy). Use `--force` to skip confirmation prompts. PHP version can be specified for per-version removal. |
 | `chauf uninstall` | `--purge` | Remove Chauffeur workspace. `--purge` also deletes caches and installed runtimes. |
-| `chauf link` | `--site <domain>`, `--ssl`, `--php <version>`, `--force` | Register **PWD** as a project. Creates `project.yaml`, prepares runtime/log dirs, optionally map local domain via Caddy, set default PHP for this project. Validates specified PHP version is installed. |
+| `chauf link` | `--site <domain>`, `--ssl`, `--php <version>`, `--force` | Register **PWD** as a project. Creates `project.yaml`, prepares runtime/log dirs, automatically assigns `<slug>.test` domain unless `--site` specified, map local domain via Caddy, set default PHP for this project. Validates specified PHP version is installed. |
 | `chauf links` | _none_ | List all registered projects and their metadata. |
 | `chauf unlink` | `--force`, `--slug <slug>`, `--site <domain>`, `--project <path>`, `--all` | Remove a registered project. Can unlink by slug, domain, path, all projects with proper confirmation unless --force is used. |
 | `chauf self-update` | `--dev` | Pull latest Chauffeur git changes via SSH and rebuild the CLI binary in-place (services unaffected; requires git & go). With --dev, rebuild from current directory if it's a valid chauffeur repository. |
@@ -200,7 +200,7 @@ created_at: 2025-10-30T12:00:00+07:00
 - **No external env managers**: Chauffeur runs binaries directly on the host from the workspace prefix.
 - **No system prefix writes**: Never touch `/usr/bin`, `/usr/local`, or system service units by default.
 - **Development Update Workflow**: During development phase, use incremental rebuilds instead of full reinstalls. Navigate to the local git repository and run `chauf self-update --dev` to rebuild the binary in-place. Only perform fresh installation when dealing with breaking changes. For service removal, use the built-in `chauf remove <service>` command (e.g., `chauf remove nginx`).
-- `chauf link` registers **PWD** unless `--project` explicitly provided elsewhere.
+- `chauf link` registers **PWD** unless `--project` explicitly provided elsewhere. Automatically assigns `<slug>.test` as default domain when `--site` flag is not specified.
 - Using **Caddy** avoids editing `/etc/hosts`; Codex should generate Caddyfile entries that route `site.test` → local upstream.
 - Services must **not conflict** with host services or ports; prefer per‑project Unix sockets and reverse proxy fan‑out via Caddy/Nginx.
 - PHP isolation: `use` sets **global** default; `isolate` writes **project.yaml** override.
@@ -858,11 +858,13 @@ func TestRemove_MultipleServices(t *testing.T) {
 1. `chauf init` creates workspace; re‑running is no‑op.
 2. `chauf php install 8.3` creates `~/.chauffeur/php/8.3/bin/php`.
 3. `chauf php use 8.3` updates `chauffeur.yaml` default.
-4. `chauf link --site myproj.test --ssl --php 8.2` creates project folder structure, `project.yaml` metadata, and **automatically generates nginx configuration** based on detected project type (Laravel/WordPress/general).
+4. `chauf link --site myproj.test --ssl --php 8.2` creates project folder structure, `project.yaml` metadata, and **automatically generates nginx configuration** based on detected project type (Laravel/WordPress/general). When `--site` is omitted, automatically assigns `<slug>.test` domain.
+4a. `chauf link` in directory `/path/to/my-project` automatically assigns `my-project.test` domain and generates configuration for that domain.
 5. `chauf php isolate 7.4` updates the linked project's `project.yaml` with the per-project PHP override **and regenerates the nginx configuration** for the new PHP-FPM socket.
 6. `chauf self-update` fast-forwards the workspace git clone and rebuilds the CLI binary in-place.
 7. `chauf start` in project directory boots required services; `stop` halts them cleanly.
-8. **Project-aware PHP shim**: `php -v` inside linked project uses isolated version; `php -v` outside uses global default.
+8. **Project-aware PHP shim**: `php -v` inside linked project uses isolated version; `php -v` outside uses global default.  
+9. **Template Workflow**: `chauf unlink` removes the project registration AND the associated nginx and Caddy configurations.
 9. **Template workflow**: `chauf unlink` removes the project registration **and** the associated nginx configuration.
 
 ---
