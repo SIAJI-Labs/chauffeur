@@ -9,6 +9,7 @@ import (
 
 	"github.com/siaji/chauffeur/cli/internal/config"
 	"github.com/siaji/chauffeur/cli/internal/projects"
+	"github.com/siaji/chauffeur/cli/internal/templates"
 )
 
 // RunLink handles `chauf link` command invocations.
@@ -110,10 +111,25 @@ func RunLink(args []string) error {
 		return err
 	}
 
+	// Generate nginx template
+	templateEngine, err := templates.NewTemplateEngine()
+	if err != nil {
+		return fmt.Errorf("initialize template engine: %w", err)
+	}
+
+	// Detect template type based on project structure
+	templateType := templateEngine.DetectTemplateType(cwd)
+	
+	// Generate and write nginx configuration
+	if err := templateEngine.WriteNginxConfig(proj, layout, templateType); err != nil {
+		return fmt.Errorf("generate nginx configuration: %w", err)
+	}
+
 	fmt.Printf("Project linked as %s\n", slug)
 	fmt.Printf("  Path: %s\n", cwd)
 	fmt.Printf("  Config: %s\n", layout.ConfigPath)
 	fmt.Printf("  PHP: %s\n", phpVer)
+	fmt.Printf("  Template: %s\n", templateType)
 	if proj.Site != nil {
 		fmt.Printf("  Domain: %s (ssl=%t)\n", proj.Site.Domain, proj.Site.SSL)
 	}
