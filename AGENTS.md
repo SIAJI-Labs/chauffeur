@@ -196,6 +196,7 @@ created_at: 2025-10-30T12:00:00+07:00
 
 - **No external env managers**: Chauffeur runs binaries directly on the host from the workspace prefix.
 - **No system prefix writes**: Never touch `/usr/bin`, `/usr/local`, or system service units by default.
+- **Development Update Workflow**: During development phase, use incremental rebuilds instead of full reinstalls. Navigate to the local git repository and run `chauf self-update --dev` to rebuild the binary in-place. Only perform fresh installation when dealing with breaking changes. For service removal, use the built-in `chauf remove <service>` command (e.g., `chauf remove nginx`).
 - `chauf link` registers **PWD** unless `--project` explicitly provided elsewhere.
 - Using **Caddy** avoids editing `/etc/hosts`; Codex should generate Caddyfile entries that route `site.test` → local upstream.
 - Services must **not conflict** with host services or ports; prefer per‑project Unix sockets and reverse proxy fan‑out via Caddy/Nginx.
