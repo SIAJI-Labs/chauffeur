@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -208,6 +209,14 @@ func runRemoveService(spec serviceSpec, force bool, logger *logging.CommandLogge
 		return nil
 	}
 
+	// Special handling for caddy with dnsmasq validation
+	if spec.name == "caddy" {
+		if err := handleCaddyRemoval(spec, force, logger); err != nil {
+			return err
+		}
+		return nil
+	}
+
 	if !force {
 		fmt.Printf("Remove %s? This will delete %s. Continue? (y/N): ", spec.name, spec.binaryPath)
 		var response string
@@ -218,7 +227,7 @@ func runRemoveService(spec serviceSpec, force bool, logger *logging.CommandLogge
 		}
 	}
 
-	// For nginx and caddy, remove their entire directories
+	// For nginx and other services, remove their entire directories
 	serviceDir := filepath.Dir(filepath.Dir(spec.binaryPath)) // Go up two levels from bin/caddy to caddy/
 	if err := os.RemoveAll(serviceDir); err != nil {
 		return logger.Fail(fmt.Sprintf("Remove %s", spec.name), err.Error())
@@ -230,6 +239,145 @@ func runRemoveService(spec serviceSpec, force bool, logger *logging.CommandLogge
 	shimPath := filepath.Join(filepath.Dir(filepath.Dir(spec.binaryPath)), "..", "bin", "shims", spec.name)
 	if err := os.Remove(shimPath); err != nil && !os.IsNotExist(err) {
 		logger.Warn("Failed to remove shim", shimPath)
+	}
+
+	return nil
+}
+
+// handleCaddyRemoval handles caddy removal with dnsmasq validation
+func handleCaddyRemoval(spec serviceSpec, force bool, logger *logging.CommandLogger) error {
+	if !force {
+		fmt.Printf("Remove %s? This will delete %s. Continue? (y/N): ", spec.name, spec.binaryPath)
+		var response string
+		fmt.Scanln(&response)
+		if strings.ToLower(response) != "y" && strings.ToLower(response) != "yes" {
+			logger.Success("Operation cancelled", "")
+			return nil
+		}
+	}
+
+	// Check for dnsmasq and assess removal risk
+	hasDnsmasq := system.IsCommandAvailable("dnsmasq")
+	removeDNS := false
+	
+	if hasDnsmasq {
+		logger.Info("Checking dnsmasq usage...")
+		dnsLogger := logger.NewChildLogger("dns")
+		
+		dnsLogger.Warn("dnsmasq is installed on the system", "other tools may depend on it")
+		
+		fmt.Printf("⚠  WARNING: dnsmasq is installed and may be required by other applications.\n")
+		fmt.Printf("   Removing Caddy will also offer to remove dnsmasq from the system.\n")
+		fmt.Printf("   This could break other tools that rely on local DNS resolution.\n")
+		fmt.Printf("\n")
+		
+		// Second confirmation for dnsmasq removal
+		fmt.Printf("Do you also want to remove dnsmasq from the system? (NOT RECOMMENDED) [y/N]: ")
+		var removeDNSResponse string
+		fmt.Scanln(&removeDNSResponse)
+		removeDNS = strings.ToLower(removeDNSResponse) == "y" || strings.ToLower(removeDNSResponse) == "yes"
+		
+		if removeDNS {
+			// Double confirmation for dnsmasq removal
+			fmt.Printf("⚠  FINAL WARNING: You are about to remove dnsmasq completely.\n")
+			fmt.Printf("   This will affect local DNS resolution for all applications.\n")
+			fmt.Printf("   Other tools that depend on dnsmasq may stop working.\n")
+			fmt.Printf("\n")
+			fmt.Printf("Are you absolutely sure you want to remove dnsmasq? Type 'REMOVE' to confirm: ")
+			var finalConfirm string
+			fmt.Scanln(&finalConfirm)
+			
+			if finalConfirm != "REMOVE" {
+				dnsLogger.Success("dnsmasq removal cancelled", "keeping system package intact")
+				removeDNS = false
+			} else {
+				dnsLogger.Info("Double confirmation received - proceeding with dnsmasq removal")
+			}
+		}
+		
+		if removeDNS {
+			// Remove dnsmasq using the system package manager
+			pm := system.DetectPackageManager()
+			if pm == system.Unknown {
+				return dnsLogger.Fail("remove dnsmasq", "unsupported package manager")
+			}
+			
+			dnsLogger.Info(fmt.Sprintf("Removing dnsmasq using %s...", pm))
+			
+			// Determine the package name based on package manager
+			var dnsmasqPackage string
+			switch pm {
+			case system.Pacman:
+				dnsmasqPackage = "dnsmasq"
+			case system.Apt:
+				dnsmasqPackage = "dnsmasq"
+			case system.Yum, system.Dnf:
+				dnsmasqPackage = "dnsmasq"
+			case system.Zypper:
+				dnsmasqPackage = "dnsmasq"
+			default:
+				dnsmasqPackage = "dnsmasq"
+			}
+			
+			// Check for AUR helpers for Arch Linux
+			useSudo := true
+			if pm == system.Pacman {
+				archPm := system.DetectArchPackageManager()
+				if archPm == "yay" || archPm == "paru" {
+					useSudo = false // AUR helpers handle sudo internally
+				}
+			}
+			
+			// Create the removal command
+			var removeCmd *exec.Cmd
+			switch pm {
+			case system.Pacman:
+				if useSudo {
+					removeCmd = exec.Command("sudo", "pacman", "-R", "--noconfirm", dnsmasqPackage)
+				} else {
+					// Use AUR helper (yay/paru) without sudo
+					archPm := system.DetectArchPackageManager()
+					removeCmd = exec.Command(archPm, "-R", "--noconfirm", dnsmasqPackage)
+				}
+			case system.Apt:
+				removeCmd = exec.Command("sudo", "apt", "remove", "-y", dnsmasqPackage)
+			case system.Yum:
+				removeCmd = exec.Command("sudo", "yum", "remove", "-y", dnsmasqPackage)
+			case system.Dnf:
+				removeCmd = exec.Command("sudo", "dnf", "remove", "-y", dnsmasqPackage)
+			case system.Zypper:
+				removeCmd = exec.Command("sudo", "zypper", "remove", "-y", dnsmasqPackage)
+			default:
+				return dnsLogger.Fail("remove dnsmasq", fmt.Sprintf("unsupported package manager: %s", pm))
+			}
+			
+			// Execute the removal command
+			if err := removeCmd.Run(); err != nil {
+				return dnsLogger.Fail("remove dnsmasq", err.Error())
+			}
+			
+			dnsLogger.Success("Removed dnsmasq package", "system DNS resolution may be affected")
+		} else {
+			dnsLogger.Info("Keeping dnsmasq installed - local DNS resolution will remain functional")
+		}
+	}
+
+	// Remove caddy directory
+	serviceDir := filepath.Dir(filepath.Dir(spec.binaryPath)) // Go up two levels from bin/caddy to caddy/
+	if err := os.RemoveAll(serviceDir); err != nil {
+		return logger.Fail("Remove Caddy directory", err.Error())
+	}
+
+	logger.Success("Removed Caddy service", fmt.Sprintf("%s (%s)", spec.name, serviceDir))
+
+	// Remove the caddy shim
+	shimPath := filepath.Join(filepath.Dir(filepath.Dir(spec.binaryPath)), "..", "bin", "shims", spec.name)
+	if err := os.Remove(shimPath); err != nil && !os.IsNotExist(err) {
+		logger.Warn("Failed to remove shim", shimPath)
+	}
+
+	if hasDnsmasq && !removeDNS {
+		logger.Info("Reminder: dnsmasq remains installed for other applications")
 	}
 
 	return nil
@@ -294,8 +442,17 @@ Options:
 
 Services:
   caddy      Remove installed Caddy web server.
+              NOTE: Will check for dnsmasq and offer optional removal with
+              double confirmation to prevent breaking other applications.
   nginx      Remove installed Nginx web server.
   php        Remove installed PHP runtime(s).
+  
+Caddy Removal:
+  chauf remove caddy        Remove Caddy with interactive prompts.
+                            If dnsmasq is installed, offers optional removal
+                            with double confirmation to prevent system damage.
+                            Streamlined flow goes directly to dnsmasq prompt after initial caddy confirmation.
+  chauf remove caddy --force Remove Caddy without prompts (does not remove dnsmasq).
   
 PHP Removal:
   chauf remove php           Remove all installed PHP versions (with confirmation).

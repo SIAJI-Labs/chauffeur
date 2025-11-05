@@ -7,7 +7,8 @@ Chauffeur is a host-based CLI for managing per-project PHP development services 
 - ✅ **Installer & Configuration**: Smart installer with Go requirement checking, existing installation detection, and PATH management  
 - ✅ **PHP Management**: `chauf php install/use/isolate` with version switching and workspace setup
 - ✅ **Project-Aware PHP Shims**: Automatic PHP version detection based on project context  
-- ✅ **CLI Bootstrap**: Both repository cloning and curl-based installation methods  
+- ✅ **CLI Bootstrap**: Both repository cloning and curl-based installation methods
+- ✅ **Safe Caddy Removal**: dnsmasq validation with double confirmation to prevent system damage  
 - ✅ **Self-Update**: `chauf self-update` pulls latest git changes and rebuilds the CLI binary (services untouched)  
 - ✅ **Dev Mode**: `chauf self-update --dev` rebuilds CLI from current directory for development  
 - ✅ **Shell Integration**: Clean PATH management with no whitespace pollution  
@@ -143,10 +144,28 @@ chauf install caddy
 chauf remove php 8.3        # Remove specific PHP version
 chauf remove php           # Remove all PHP versions
 chauf remove nginx         # Remove nginx
-chauf remove caddy         # Remove caddy
+chauf remove caddy         # Remove caddy (with dnsmasq validation)
 
 # Remove without confirmation
 chauf remove nginx --force
+```
+
+#### Safe Caddy Removal with dnsmasq Validation
+
+When removing Caddy, Chauffeur now includes safety validation for `dnsmasq`:
+
+```bash
+chauf remove caddy           # Interactive removal with dnsmasq warnings
+chauf remove caddy --force    # Remove caddy only (without touching dnsmasq)
+```
+
+**Safety Features:**
+- **dnsmasq Detection**: Automatically checks if dnsmasq is installed on the system
+- **Risk Warning**: Warns users that removing dnsmasq may break other applications
+- **Double Confirmation**: Requires typing "REMOVE" to confirm dnsmasq deletion
+- **Streamlined Flow**: After initial caddy confirmation, goes directly to dnsmasq prompt without redundant intermediate step
+- **Safe Default**: `--force` flag only removes Caddy, never touches system packages
+- **User Choice**: Users can keep dnsmasq while removing Caddy
 ```
 
 ### PHP Management

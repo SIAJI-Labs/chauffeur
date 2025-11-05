@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -39,6 +40,11 @@ func InstallCaddyTarball(opts InstallOptions) error {
 	
 	if opts.Prefix == "" {
 		return caddyLogger.Fail("install prefix is required", "")
+	}
+
+	// Check for DNS resolution dependencies
+	if err := checkDNSResolution(caddyLogger); err != nil {
+		return err
 	}
 
 	client := opts.Client
@@ -328,5 +334,136 @@ func fetchCaddyChecksum(client *http.Client, url, assetName string, fromList boo
 	}
 	return lib.ChecksumFromContent(content, assetName)
 }
+
+/**
+ * checkDNSResolution checks for available DNS resolution packages and provides guidance.
+ *
+ * @param logger Command logger for status reporting.
+ * @return error for critical issues, but continues installation if packages are missing.
+ */
+func checkDNSResolution(logger *logging.CommandLogger) error {
+	logger.Info("Checking DNS resolution dependencies...")
+	
+	dnsLogger := logger.NewChildLogger("dns")
+	
+	// Check if required commands are available
+	hasDnsmasq := system.IsCommandAvailable("dnsmasq")
+	hasResolvectl := system.IsCommandAvailable("resolvectl")
+	pm := system.DetectPackageManager()
+	
+	if hasDnsmasq && hasResolvectl {
+		dnsLogger.Success("DNS resolution dependencies are satisfied", "dnsmasq and resolvectl available")
+		return nil
+	}
+	
+	if !hasResolvectl {
+		dnsLogger.Warn("resolvectl not found", "systemd-resolved may not be available")
+	}
+	
+	if !hasDnsmasq {
+		dnsLogger.Warn("dnsmasq not found", "local .test domains may not resolve")
+		
+		// Get missing packages list
+		missing := system.GetMissingPackages()
+		
+		if len(missing) > 0 {
+			// Handle Arch Linux specifically
+			if pm == system.Pacman {
+				archPm := system.DetectArchPackageManager()
+				if archPm == "" {
+					return dnsLogger.Fail("no arch package manager found", "Neither pacman, yay, nor paru found")
+				}
+				
+				for _, pkg := range missing {
+					dnsLogger.Info(fmt.Sprintf("Package %s (%s) is required for local domain resolution", pkg.Name, pkg.PackageName))
+					dnsLogger.Info(fmt.Sprintf("Description: %s", pkg.Description))
+					
+					var response string
+					if archPm == "pacman" {
+						dnsLogger.Info(fmt.Sprintf("Do you want to install it via %s? [y/N]:", archPm))
+					} else {
+						dnsLogger.Info(fmt.Sprintf("Do you want to install it via %s? [y/N]:", archPm))
+					}
+					
+					fmt.Scanln(&response)
+					response = strings.ToLower(strings.TrimSpace(response))
+					
+					if response == "y" || response == "yes" {
+						// Install the package
+						dnsLogger.Info(fmt.Sprintf("Installing %s via %s...", pkg.PackageName, archPm))
+						
+						var installCmd string
+						if archPm == "pacman" {
+							installCmd = fmt.Sprintf("sudo pacman -S --noconfirm %s", pkg.PackageName)
+						} else {
+							// yay/paru - these AUR helpers handle sudo internally
+							installCmd = fmt.Sprintf("%s -S --noconfirm %s", archPm, pkg.PackageName)
+						}
+						
+						cmd := exec.Command("sh", "-c", installCmd)
+						cmd.Stdin = os.Stdin
+						cmd.Stdout = os.Stdout
+						cmd.Stderr = os.Stderr
+						
+						if err := cmd.Run(); err != nil {
+							return dnsLogger.Fail(fmt.Sprintf("install %s via %s", pkg.PackageName, archPm), err.Error())
+						}
+						
+						dnsLogger.Success(fmt.Sprintf("Installed %s", pkg.PackageName), "")
+					} else {
+						return dnsLogger.Fail("package installation declined", fmt.Sprintf("Caddy installation cancelled - %s is required for local domain resolution", pkg.Name))
+					}
+				}
+			} else {
+				// Non-Arch distributions
+				dnsLogger.Info("For proper local domain resolution, you may need:")
+				for _, pkg := range missing {
+					dnsLogger.Info(fmt.Sprintf("  - %s (%s): %s", pkg.Name, pkg.PackageName, pkg.Description))
+				}
+				
+				if pm == system.Unknown {
+					dnsLogger.Info("Work in progress: Automatic installation is not supported for this distribution")
+					dnsLogger.Info("Work in progress: Please install dnsmasq manually and try again in the next version")
+				} else {
+					dnsLogger.Info(fmt.Sprintf("Work in progress: Automatic installation is not yet supported for %s", pm))
+					dnsLogger.Info("Work in progress: Please install dnsmasq manually and try again in the next version")
+				}
+				
+				// For non-Arch, continue with installation but provide guidance
+				dnsLogger.Info("Current Caddy installation will continue for basic functionality")
+			}
+		}
+	} else {
+		dnsLogger.Success("DNS resolution partially available", "resolvectl found")
+	}
+	
+	return nil
+}
+
+/**
+ * getInstallationCommand returns the appropriate installation command for a package.
+ *
+ * @param pm Package manager to use
+ * @param pkg Package to install
+ * @return Command string for manual installation
+ */
+func getInstallationCommand(pm system.PackageManager, pkg system.Package) string {
+	switch pm {
+	case system.Pacman:
+		return fmt.Sprintf("sudo pacman -S %s", pkg.PackageName)
+	case system.Apt:
+		return fmt.Sprintf("sudo apt install %s", pkg.PackageName)
+	case system.Yum:
+		return fmt.Sprintf("sudo yum install %s", pkg.PackageName)
+	case system.Dnf:
+		return fmt.Sprintf("sudo dnf install %s", pkg.PackageName)
+	case system.Zypper:
+		return fmt.Sprintf("sudo zypper install %s", pkg.PackageName)
+	default:
+		return fmt.Sprintf("# Install %s using your system package manager", pkg.PackageName)
+	}
+}
+
+
 
 

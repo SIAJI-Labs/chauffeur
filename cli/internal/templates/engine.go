@@ -229,7 +229,16 @@ func (e *TemplateEngine) GenerateCaddyConfig(config projects.Config, layout proj
 		templateName = "general.conf"
 	}
 	
-	return e.RenderCaddyTemplate(templateName, data)
+	content, err := e.RenderCaddyTemplate(templateName, data)
+	if err != nil {
+		return "", err
+	}
+	
+	// Update to use custom ports (8789 for HTTP, 9879 for HTTPS)
+	content = strings.ReplaceAll(content, ":8080", ":8789")
+	content = strings.ReplaceAll(content, ":8443", ":9879")
+	
+	return content, nil
 }
 
 // WriteNginxConfig writes the generated nginx configuration to the workspace
@@ -258,7 +267,12 @@ func (e *TemplateEngine) WriteNginxConfig(config projects.Config, layout project
 		}
 	}
 	
-	// Write the config file
+	// Write the config file with updated ports (8789 for HTTP, 9879 for HTTPS)
+	content = strings.ReplaceAll(content, "listen 8080", "listen 8789")
+	content = strings.ReplaceAll(content, "listen [::]:8080", "listen [::]:8789")
+	content = strings.ReplaceAll(content, "listen 8443", "listen 9879")
+	content = strings.ReplaceAll(content, "listen [::]:8443", "listen [::]:9879")
+	
 	configPath := filepath.Join(sitesAvailable, filepath.Base(layout.Root)+".conf")
 	if err := os.WriteFile(configPath, []byte(content), 0o644); err != nil {
 		return fmt.Errorf("write nginx config to %s: %w", configPath, err)
@@ -287,6 +301,10 @@ func (e *TemplateEngine) WriteCaddyConfig(config projects.Config, layout project
 		content = e.generateBasicCaddyConfig(config, layout)
 	}
 	
+	// Update to use custom ports (8789 for HTTP, 9879 for HTTPS)
+	content = strings.ReplaceAll(content, ":8080", ":8789")
+	content = strings.ReplaceAll(content, ":8443", ":9879")
+	
 	// Determine Caddy directory
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -300,7 +318,7 @@ func (e *TemplateEngine) WriteCaddyConfig(config projects.Config, layout project
 		return fmt.Errorf("create caddy directory %s: %w", caddyDir, err)
 	}
 	
-	// Read the current Caddyfile
+	// Read the current Caddyfile for appending new content
 	caddyfilePath := filepath.Join(caddyDir, "Caddyfile")
 	currentContent, err := os.ReadFile(caddyfilePath)
 	if err != nil && !os.IsNotExist(err) {
@@ -474,7 +492,7 @@ upstream %s_php {
 }
 
 server {
-    listen 8080;
+    listen 8789;
     server_name %s;
     root %s;
     index index.php index.html;
@@ -515,7 +533,7 @@ server {
 		basicConfig += fmt.Sprintf(`
 
 server {
-    listen 8443 ssl http2;
+    listen 9879 ssl http2;
     server_name %s;
     root %s;
     index index.php index.html;
@@ -617,7 +635,7 @@ func (e *TemplateEngine) generateBasicCaddyConfig(config projects.Config, layout
 	}
 
 	basicConfig := fmt.Sprintf(`# Start of %s configuration
-%s:8080 {
+%s:8789 {
 	root %s
 	php_fastcgi unix:%s {
 		root %s
@@ -672,7 +690,7 @@ func (e *TemplateEngine) generateBasicCaddyConfig(config projects.Config, layout
 	if config.Site != nil && config.Site.SSL {
 	sslSection := fmt.Sprintf(`
 
-%s:8443 {
+%s:9879 {
 	root %s
 	php_fastcgi unix:%s {
 			root %s
