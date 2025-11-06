@@ -11,9 +11,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
-	"github.com/siaji/chauffeur/cli/internal/logging"
+	"github.com/siaji/chauffeur/cli/lib"
 )
 
 /**
@@ -155,40 +154,7 @@ exec "$PHP_BINARY" "$@"
  * @return Number of bytes written and an error, if any.
  */
 func downloadToFile(client *http.Client, url, dest, label string) (int64, error) {
-	resp, err := client.Get(url)
-	if err != nil {
-		return 0, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return 0, fmt.Errorf("unexpected status %s from %s", resp.Status, url)
-	}
-
-	out, err := os.Create(dest)
-	if err != nil {
-		return 0, err
-	}
-	defer out.Close()
-
-	var writer io.Writer = out
-	var progress *progressPrinter
-	if label != "" {
-		progress = newProgressPrinter(label, resp.ContentLength)
-		defer progress.Finish()
-		writer = io.MultiWriter(out, progress)
-	}
-
-	written, err := io.Copy(writer, resp.Body)
-	if err != nil {
-		return written, err
-	}
-
-	if err := out.Sync(); err != nil {
-		return written, err
-	}
-
-	return written, nil
+	return lib.DownloadToFile(client, url, dest, label)
 }
 
 /**
@@ -199,22 +165,7 @@ func downloadToFile(client *http.Client, url, dest, label string) (int64, error)
  * @return Trimmed textual contents of the response body.
  */
 func downloadText(client *http.Client, url string) (string, error) {
-	resp, err := client.Get(url)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", fmt.Errorf("unexpected status %s from %s", resp.Status, url)
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-
-	return strings.TrimSpace(string(body)), nil
+	return lib.DownloadText(client, url)
 }
 
 /**
@@ -226,11 +177,7 @@ func downloadText(client *http.Client, url string) (string, error) {
  * @return Matching checksum string for the asset.
  */
 func checksumFromList(client *http.Client, url, assetName string) (string, error) {
-	content, err := downloadText(client, url)
-	if err != nil {
-		return "", err
-	}
-	return checksumFromContent(content, assetName)
+	return lib.ChecksumFromList(client, url, assetName)
 }
 
 /**
@@ -241,38 +188,7 @@ func checksumFromList(client *http.Client, url, assetName string) (string, error
  * @return Checksum string matching assetName.
  */
 func checksumFromContent(content, assetName string) (string, error) {
-	lines := strings.Split(content, "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-
-		fields := strings.Fields(line)
-		if len(fields) == 0 {
-			continue
-		}
-
-		fieldCount := len(fields)
-
-		var sum, name string
-		if fieldCount == 1 {
-			sum = fields[0]
-			name = ""
-		} else {
-			sum = fields[0]
-			name = strings.TrimPrefix(fields[len(fields)-1], "*")
-		}
-
-		if assetName == "" || name == assetName || fieldCount == 1 {
-			return sum, nil
-		}
-	}
-
-	if assetName == "" {
-		return "", fmt.Errorf("checksum not found in provided content")
-	}
-	return "", fmt.Errorf("checksum for %s not found in provided content", assetName)
+	return lib.ChecksumFromContent(content, assetName)
 }
 
 /**
@@ -356,83 +272,4 @@ func computeFileHash(path string, hasher hash.Hash) (string, error) {
 	return hex.EncodeToString(hasher.Sum(nil)), nil
 }
 
-type progressPrinter struct {
-	logger     *logging.CommandLogger
-	label      string
-	total      int64
-	current    int64
-	width      int
-	lastPrint  time.Time
-	done       bool
-}
 
-func newProgressPrinter(label string, total int64) *progressPrinter {
-	logger := logging.NewCommandLogger("install")
-	return &progressPrinter{
-		logger:    logger,
-		label:     label,
-		total:     total,
-		width:     32,
-		lastPrint: time.Time{},
-	}
-}
-
-func (p *progressPrinter) Write(b []byte) (int, error) {
-	n := len(b)
-	p.current += int64(n)
-	if time.Since(p.lastPrint) >= 120*time.Millisecond || p.current == p.total {
-		p.render()
-	}
-	return n, nil
-}
-
-func (p *progressPrinter) Finish() {
-	if p == nil || p.done {
-		return
-	}
-	p.renderFinal()
-	p.done = true
-}
-
-func (p *progressPrinter) render() {
-	if p.total > 0 {
-		ratio := float64(p.current) / float64(p.total)
-		if ratio > 1 {
-			ratio = 1
-		}
-		filled := int(ratio * float64(p.width))
-		if filled > p.width {
-			filled = p.width
-		}
-		bar := strings.Repeat("#", filled) + strings.Repeat(".", p.width-filled)
-		// Use command logger prefix format and clear line
-		fmt.Printf("\r\033[K%s %s... [%s] %3.0f%%", p.logger.Prefix(), p.label, bar, ratio*100)
-	} else {
-		fmt.Printf("\r\033[K%s %s... %s", p.logger.Prefix(), p.label, humanBytes(p.current))
-	}
-	// Ensure the output is flushed immediately
-	fmt.Print("")
-	p.lastPrint = time.Now()
-}
-
-func (p *progressPrinter) renderFinal() {
-	if p.total > 0 {
-		fmt.Printf("\r\033[K%s %s... [%s] 100%% (%s)\n", p.logger.Prefix(), p.label, strings.Repeat("#", p.width), humanBytes(p.current))
-	} else {
-		fmt.Printf("\r\033[K%s %s... %s\n", p.logger.Prefix(), p.label, humanBytes(p.current))
-	}
-}
-
-func humanBytes(n int64) string {
-	units := []string{"B", "KiB", "MiB", "GiB", "TiB"}
-	value := float64(n)
-	idx := 0
-	for value >= 1024 && idx < len(units)-1 {
-		value /= 1024
-		idx++
-	}
-	if idx == 0 {
-		return fmt.Sprintf("%d %s", n, units[idx])
-	}
-	return fmt.Sprintf("%.1f %s", value, units[idx])
-}

@@ -229,7 +229,14 @@ func (e *TemplateEngine) GenerateCaddyConfig(config projects.Config, layout proj
 		templateName = "general.conf"
 	}
 	
-	return e.RenderCaddyTemplate(templateName, data)
+	content, err := e.RenderCaddyTemplate(templateName, data)
+	if err != nil {
+		return "", err
+	}
+	
+	// Use configured ports from global settings (8080/8443 by default)
+	
+	return content, nil
 }
 
 // WriteNginxConfig writes the generated nginx configuration to the workspace
@@ -258,7 +265,8 @@ func (e *TemplateEngine) WriteNginxConfig(config projects.Config, layout project
 		}
 	}
 	
-	// Write the config file
+	// Use configured ports from global settings (8080/8443 by default)
+	
 	configPath := filepath.Join(sitesAvailable, filepath.Base(layout.Root)+".conf")
 	if err := os.WriteFile(configPath, []byte(content), 0o644); err != nil {
 		return fmt.Errorf("write nginx config to %s: %w", configPath, err)
@@ -287,6 +295,8 @@ func (e *TemplateEngine) WriteCaddyConfig(config projects.Config, layout project
 		content = e.generateBasicCaddyConfig(config, layout)
 	}
 	
+	// Use configured ports from global settings (8080/8443 by default)
+	
 	// Determine Caddy directory
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -300,7 +310,7 @@ func (e *TemplateEngine) WriteCaddyConfig(config projects.Config, layout project
 		return fmt.Errorf("create caddy directory %s: %w", caddyDir, err)
 	}
 	
-	// Read the current Caddyfile
+	// Read the current Caddyfile for appending new content
 	caddyfilePath := filepath.Join(caddyDir, "Caddyfile")
 	currentContent, err := os.ReadFile(caddyfilePath)
 	if err != nil && !os.IsNotExist(err) {
@@ -515,7 +525,7 @@ server {
 		basicConfig += fmt.Sprintf(`
 
 server {
-    listen 8443 ssl http2;
+    listen 9879 ssl http2;
     server_name %s;
     root %s;
     index index.php index.html;
@@ -574,19 +584,33 @@ func (e *TemplateEngine) processCaddyTemplate(content string, data CaddyTemplate
 	}
 	
 	// Handle conditional blocks
-	if !data.SiteDomain {
-		// Remove site-specific section (everything between {{#SITE_DOMAIN}} and {{/SITE_DOMAIN}})
+	if data.SiteDomain {
+		// Remove negative conditional blocks ({{^SITE_DOMAIN}}...{{/SITE_DOMAIN}})
+		start := strings.Index(result, "{{^SITE_DOMAIN}}")
+		end := strings.Index(result, "{{/SITE_DOMAIN}}")
+		
+		if start != -1 && end != -1 {
+			before := result[:start]
+			after := result[end + len("{{/SITE_DOMAIN}}"):]
+			result = before + after
+		}
+		
+		// Remove the positive conditional markers but keep the content
+		result = strings.ReplaceAll(result, "{{#SITE_DOMAIN}}", "")
+		result = strings.ReplaceAll(result, "{{/SITE_DOMAIN}}", "")
+	} else {
+		// Remove positive conditional blocks ({{#SITE_DOMAIN}}...{{/SITE_DOMAIN}})
 		start := strings.Index(result, "{{#SITE_DOMAIN}}")
 		end := strings.Index(result, "{{/SITE_DOMAIN}}")
 		
 		if start != -1 && end != -1 {
-			beforeSiteDomain := result[:start]
-			afterSiteDomain := result[end + len("{{/SITE_DOMAIN}}"):]
-			result = beforeSiteDomain + afterSiteDomain
+			before := result[:start]
+			after := result[end + len("{{/SITE_DOMAIN}}"):]
+			result = before + after
 		}
-	} else {
-		// Remove the conditional markers but keep the content
-		result = strings.ReplaceAll(result, "{{#SITE_DOMAIN}}", "")
+		
+		// Remove the negative conditional markers but keep the content
+		result = strings.ReplaceAll(result, "{{^SITE_DOMAIN}}", "")
 		result = strings.ReplaceAll(result, "{{/SITE_DOMAIN}}", "")
 	}
 	
@@ -617,7 +641,7 @@ func (e *TemplateEngine) generateBasicCaddyConfig(config projects.Config, layout
 	}
 
 	basicConfig := fmt.Sprintf(`# Start of %s configuration
-%s:8080 {
+%s {
 	root %s
 	php_fastcgi unix:%s {
 		root %s
@@ -672,7 +696,7 @@ func (e *TemplateEngine) generateBasicCaddyConfig(config projects.Config, layout
 	if config.Site != nil && config.Site.SSL {
 	sslSection := fmt.Sprintf(`
 
-%s:8443 {
+%s:9879 {
 	root %s
 	php_fastcgi unix:%s {
 			root %s

@@ -24,7 +24,9 @@ Usage:
   chauf self-update      Update the Chauffeur CLI to the latest release.
   chauf nginx [args...]  Run the managed nginx binary with passthrough args.
   chauf caddy [args...]  Run the managed caddy binary with passthrough args.
-  chauf start            Check service prerequisites before starting Chauffeur.
+  chauf start            Start Chauffeur services with chauf- prefix.
+  chauf stop             Stop Chauffeur services with chauf- prefix.
+  chauf status           Show status of Chauffeur services.
   chauf link             Register current directory as a project.
   chauf links            List all registered projects.
   chauf unlink           Unlink a registered project (by slug, domain, path, or all).
@@ -85,6 +87,16 @@ func main() {
 		}
 	case "start":
 		if err := commands.RunStart(args[1:]); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+	case "stop":
+		if err := commands.RunStop(args[1:]); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+	case "status":
+		if err := commands.RunStatus(args[1:]); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}

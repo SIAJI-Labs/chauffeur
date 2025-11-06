@@ -7,7 +7,8 @@ Chauffeur is a host-based CLI for managing per-project PHP development services 
 - ✅ **Installer & Configuration**: Smart installer with Go requirement checking, existing installation detection, and PATH management  
 - ✅ **PHP Management**: `chauf php install/use/isolate` with version switching and workspace setup
 - ✅ **Project-Aware PHP Shims**: Automatic PHP version detection based on project context  
-- ✅ **CLI Bootstrap**: Both repository cloning and curl-based installation methods  
+- ✅ **CLI Bootstrap**: Both repository cloning and curl-based installation methods
+- ✅ **Safe Caddy Removal**: dnsmasq validation with double confirmation to prevent system damage  
 - ✅ **Self-Update**: `chauf self-update` pulls latest git changes and rebuilds the CLI binary (services untouched)  
 - ✅ **Dev Mode**: `chauf self-update --dev` rebuilds CLI from current directory for development  
 - ✅ **Shell Integration**: Clean PATH management with no whitespace pollution  
@@ -16,9 +17,12 @@ Chauffeur is a host-based CLI for managing per-project PHP development services 
 - ✅ **Nginx Template System**: Automatic nginx configuration generation with Laravel, WordPress, and general templates  
 - ✅ **Template Detection**: Smart project type detection for optimal nginx configuration  
 - ✅ **Template Updates**: Automatic nginx config updates on PHP version changes  
+- ✅ **DNS Management**: dnsmasq integration for local .test domain resolution with configuration validation
+- ✅ **Safe Removal**: Comprehensive service removal with dnsmasq safety checks and user confirmation  
 - ✅ **Comprehensive Testing**: Full test suite with operation-based structure and 80% coverage standards  
-- 🚧 **Service Orchestration**: `chauf start/stop` (in progress)  
-- 🚧 **Site Accessibility**: Caddy integration for local domain routing (in progress)  
+- ✅ **Service Orchestration**: `chauf start/stop` with dnsmasq validation  
+- ✅ **Site Accessibility**: Caddy integration for local domain routing with port 80/8080 access
+- 🚧 **Port Forwarding Automation**: Port 80 to 8080 redirection setup (manual implementation complete)
 - Linux-focused workflow (Arch/Ubuntu/Debian friendly); other OS targets are not yet supported
 
 ## Background & Inspiration
@@ -143,10 +147,95 @@ chauf install caddy
 chauf remove php 8.3        # Remove specific PHP version
 chauf remove php           # Remove all PHP versions
 chauf remove nginx         # Remove nginx
-chauf remove caddy         # Remove caddy
+chauf remove caddy         # Remove caddy (with dnsmasq validation)
 
 # Remove without confirmation
 chauf remove nginx --force
+```
+
+#### dnsmasq Integration for Local DNS Resolution
+
+Chauffeur requires dnsmasq configuration to resolve local `.test` domains:
+
+```bash
+# Manual dnsmasq setup (if not using Chauffeur's automated prompts)
+sudo install -d -m 755 /etc/dnsmasq.d
+sudo tee /etc/dnsmasq.d/chauffeur.conf >/dev/null <<'EOF'
+# Chauffeur local development resolver
+# Redirect all *.test domains to localhost
+address=/.test/127.0.0.1
+
+# Only listen locally
+listen-address=127.0.0.1
+bind-interfaces
+EOF
+
+sudo systemctl restart dnsmasq
+```
+
+**Automated Setup Features:**
+- **Configuration Validation**: Checks for dnsmasq setup during `chauf start` and `chauf install caddy`
+- **Interactive Prompts**: Offers to automatically install dnsmasq configuration when missing
+- **Service Restart**: Automatically restarts dnsmasq to apply configuration changes
+- **Domain Resolution**: Ensures `.test` domains resolve to localhost for local development
+
+### Site Accessibility & Domain Routing
+
+Once you have services installed and dnsmasq configured, you can access your projects:
+
+```bash
+# Link your project (automatically assigns <project-name>.test domain)
+cd /path/to/my-laravel-project
+chauf link
+
+# With custom domain
+chauf link --site myapp.test --ssl
+
+# Start services
+chauf start
+
+# Access your site
+curl http://my-project.test  # Works via port 80
+curl http://my-project.test:8080  # Direct access to Caddy
+```
+
+#### Site Access Features
+
+- **Standard Port Access**: `http://project-name.test` (port 80) - works automatically
+- **Direct Port Access**: `http://project-name.test:8080` (port 8080) - for debugging
+- **DNS Resolution**: All `.test` domains resolve to `127.0.0.1` via NetworkManager dnsmasq
+- **Port Forwarding**: Port 80 traffic is transparently redirected to port 8080
+- **PHP Processing**: Full PHP-FPM integration with per-project isolation
+- **Static Files**: Automatic static file serving with proper headers
+
+#### Port Forwarding Setup
+
+For the best user experience, Chauffeur includes port forwarding from port 80 to 8080:
+
+```bash
+# Manual setup (if not automated in your installation)
+sudo iptables -t nat -A OUTPUT -p tcp --dport 80 -d 127.0.0.1 -j REDIRECT --to-port 8080
+```
+
+This allows you to access sites using natural URLs without port specifications while keeping Caddy running on the non-privileged port 8080 for security and compatibility.
+
+#### Safe Caddy Removal with dnsmasq Validation
+
+When removing Caddy, Chauffeur includes safety validation for `dnsmasq`:
+
+```bash
+chauf remove caddy           # Interactive removal with dnsmasq warnings
+chauf remove caddy --force    # Remove caddy only (without touching dnsmasq)
+```
+
+**Safety Features:**
+- **dnsmasq Detection**: Automatically checks if dnsmasq is installed on the system
+- **Risk Warning**: Warns users that removing dnsmasq may break other applications
+- **Double Confirmation**: Requires typing "REMOVE" to confirm dnsmasq deletion
+- **Streamlined Flow**: After initial caddy confirmation, goes directly to dnsmasq prompt without redundant intermediate step
+- **Safe Default**: `--force` flag only removes Caddy, never touches system packages
+- **User Choice**: Users can keep dnsmasq while removing Caddy
+- **Configuration Cleanup**: Offers to remove chauffeur dnsmasq configuration file
 ```
 
 ### PHP Management
@@ -237,14 +326,15 @@ The uninstaller cleanly removes PATH entries without leaving whitespace pollutio
 
 ### Current Focus 🎯
 **Priority 1: Complete Service Orchestration**
-- `chauf start` and `chauf stop` commands for managing services
-- Integration with Nginx, PHP-FPM, and Caddy processes
-- Service process monitoring and health checks
+- ✅ `chauf start` and `chauf stop` commands for managing services
+- ✅ Integration with Nginx, PHP-FPM, and Caddy processes
+- ✅ Service process monitoring and health checks
 
 **Priority 2: Site Accessibility Implementation**
-- Nginx virtual host configuration for registered domains
-- Caddy integration for local domain resolution (no `/etc/hosts` editing)
-- SSL certificate management for local development domains
+- ✅ Caddy integration for local domain resolution with port 80/8080 access
+- ✅ Nginx virtual host configuration for registered domains
+- ✅ DNS resolution via NetworkManager dnsmasq for `.test` domains
+- 🚧 Port forwarding automation (port 80 to 8080 redirection)
 
 **Priority 4: Log File Management**
 - Implement detailed failure logging with structured log files

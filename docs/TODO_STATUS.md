@@ -12,6 +12,7 @@ This document tracks the current status of features and improvements for the Cha
 - [x] **Clean PATH Management**: No whitespace pollution in shell config files
 - [x] **Idempotent Installation**: Safe to run multiple times
 - [x] **Service Removal**: `chauf remove` command for uninstalling individual services with version support and confirmation prompts
+- [x] **Safe Caddy Removal**: dnsmasq validation with double confirmation and user choice to prevent system damage
 
 ### PHP Management
 - [x] **PHP Installation**: `chauf php install <version>` for building from source
@@ -47,6 +48,9 @@ This document tracks the current status of features and improvements for the Cha
 - [x] **Template Update Integration**: Automatic nginx config updates on PHP version changes via `chauf php isolate`
 - [x] **Template Removal**: Automatic nginx configuration removal on project unlink
 - [x] **Enhanced Link Output**: Link command now displays detected template type in output
+- [x] **DNS Resolution Integration**: dnsmasq configuration validation and automated setup for local .test domains
+- [x] **Service Start DNS Validation**: dnsmasq configuration check during `chauf start` with interactive setup
+- [x] **Enhanced Service Removal**: Comprehensive dnsmasq safety checks and configuration cleanup during service removal
 - [x] **Template Testing**: Comprehensive tests for nginx template functionality including detection, generation, and updates
 - [x] **Fallback Support**: Basic nginx configuration generation when templates are unavailable (testing environments)
 - [x] **User-Space Ports**: All nginx configurations use non-privileged ports (HTTP: 8080, HTTPS: 8443) to avoid system service conflicts
@@ -139,19 +143,32 @@ This document tracks the current status of features and improvements for the Cha
 
 ## Priority Queue
 
-### High Priority (Next Sprint - Service Focus)
-1. **Priority 1**: Complete service orchestration implementation (`chauf start`/`chauf stop`)
-2. **Priority 1**: Service process monitoring and automatic restarts for Nginx, PHP-FPM, Caddy
-3. **Priority 2**: Automatic configuration template generation for linked projects
-4. **Priority 2**: Nginx virtual host configuration for registered project domains
-5. **Priority 4**: Implement detailed failure logging with structured log files
-6. **Testing Coverage**: Continue expanding test coverage for new features
+### High Priority (Next Sprint - Code Quality & Automation)
+1. **Priority 1**: Code refactoring for better structure and organization
+2. **Priority 2**: Automate port 80 to 8080 forwarding setup in installer
+3. **Priority 2**: Improve error messages and user feedback during service startup
+4. **Priority 3**: Add comprehensive logging for troubleshooting connectivity issues
+5. **Priority 4**: Continue expanding test coverage for new features
+6. **Priority 4**: Add service health checks and startup coordination
 
-### Medium Priority (Following Sprint - Access Focus)
-1. **Priority 3**: Add Nginx virtual host generation for projects
-2. **Priority 3**: Implement Caddy integration for local domain resolution
-3. **Priority 3**: Create SSL certificate management for local domains
-4. Add service health checks and startup coordination
+### Medium Priority (Following Sprint - User Experience)
+1. **Priority 1**: Automated port forwarding setup for seamless port 80 access
+2. **Priority 2**: Create SSL certificate management for local domains
+3. **Priority 3**: Refactor duplicate code for improved maintainability
+4. **Priority 3**: Add comprehensive error recovery and guidance
+5. **Priority 4**: Complete uninstallation cleanup utilities
+
+### Recently Completed ✅ (Site Accessibility Focus)
+1. **✅ Complete service orchestration implementation (`chauf start`/`chauf stop`)**
+2. **✅ Service process monitoring and status reporting for Nginx, PHP-FPM, Caddy**
+3. **✅ Automatic configuration template generation for linked projects**
+4. **✅ Nginx virtual host configuration for registered project domains**
+5. **✅ Implement Caddy integration for local domain resolution**
+6. **✅ Progress bar cleanup - fixed duplicate implementations and output spam**
+7. **✅ Port forwarding setup - port 80 redirects to port 8080 for natural URLs**
+8. **✅ DNS resolution via NetworkManager dnsmasq for .test domains**
+9. **✅ PHP-FPM integration with proper FastCGI socket connectivity**
+10. **✅ Build system fixes for successful `chauf self-update --dev` functionality**
 
 ### Low Priority (Infrastructure & Polish)
 1. Complete service orchestration framework (`chauf start/stop`)
@@ -186,6 +203,7 @@ This document tracks the current status of features and improvements for the Cha
 - ✅ Enhanced CLI logging specification with visual feedback standards
 - ✅ Comprehensive testing framework standards with 80% coverage requirements
 - ✅ Service Removal Command: `chauf remove` with version support and confirmation prompts
+- ✅ Safe Caddy Removal: dnsmasq validation with risk warnings and double confirmation
 
 ### v0.1.1 (Planned - Project Focus)
 - ✅ **Priority 1**: Per-project PHP isolation (`chauf php isolate`)
@@ -194,8 +212,9 @@ This document tracks the current status of features and improvements for the Cha
 - ✅ **Testing Standards**: Comprehensive testing framework with operation-based structure and 80% coverage requirements
 - ✅ **Priority 3**: Enhanced logging framework implementation (fully tested and verified)
 - ✅ **Priority 1**: Project-aware PHP shims with automatic context detection
-- 🎯 **Priority 1**: Service orchestration implementation (`chauf start`/`chauf stop`)
-- 🚧 Service orchestration foundation (in progress)
+- ✅ **Priority 1**: Service orchestration implementation (`chauf start`/`chauf stop`)
+- ✅ **DNS Integration**: dnsmasq configuration validation and automated setup for local .test domains
+- ✅ **Enhanced Safety**: Comprehensive dnsmasq validation during service removal and startup
 
 ### v0.1.2 (Planned - Access Focus)
 - 🎯 **Priority 2**: Site accessibility with Nginx & Caddy
@@ -206,6 +225,13 @@ This document tracks the current status of features and improvements for the Cha
 - 📋 Complete service management and monitoring
 - 📋 Advanced project features and multi-project support
 - 📋 Performance monitoring and optimization tools
+
+### Future
+- Add support for custom port via chauf config file
+- Refactor existing code, make it more direct and robust
+- Apply new rule in AGENTS.md, put `// SENSITIVE: {reason}` such during password promt, etc
+- Refactor code, to apply newly added `// SENSITIVE: {reason}` rule
+- Scan which planned command that not yet exists
 
 ---
 
