@@ -853,6 +853,83 @@ func TestRemove_MultipleServices(t *testing.T) {
 - Configuration access via a single `config` package with typed structs and defaults.
 - Command parsing via `spf13/cobra` (or stdlib `flag` if minimal). Provide `--help` autogen.
 
+### 5.3) Progress and Logging Standardization
+
+**Mandatory Progress Helpers**: All repetitive operations must use standardized progress helpers from `cli/lib/progress.go`. No manual progress printing or duplicate implementations allowed.
+
+**Required Usage Patterns**:
+```go
+// For indeterminate operations (compilation, configuration, etc.)
+spin := lib.NewSpinner("command-name", "Describing operation")
+// ... perform operation ...
+spin.Success("completed with context")
+
+// For determinate operations (downloads, file transfers, etc.)
+logger := logging.NewCommandLogger("command-name") 
+progress := lib.NewProgressPrinterWithLogger("Downloading file.zip", totalBytes, logger)
+writer = io.MultiWriter(file, progress)
+// ... perform download/copy ...
+progress.Finish()
+```
+
+**Standard Helper Functions (cli/lib/progress.go)**:
+```go
+// Progress bars for downloads/file operations
+func NewProgressPrinter(label string, total int64) *progressPrinter
+func NewProgressPrinterWithLogger(label string, total int64, logger *logging.CommandLogger) *progressPrinter
+func (p *progressPrinter) Write(b []byte) (int, error)
+func (p *progressPrinter) Finish()
+func HumanBytes(n int64) string
+
+// Spinners for indeterminate operations (unified animated implementation)
+func NewSpinner(command, message string) *progressSpinner
+func (spin *progressSpinner) Success(summary string)
+func (spin *progressSpinner) Fail(summary string)
+```
+
+**Progress Template Requirements**:
+- Always use `io.MultiWriter(file, progress)` for file operations
+- Follow logging prefix format: `[ command-name ]`  
+- Include timing information: `(2.3s)`
+- Show human-readable byte sizes: `15.2 MiB`
+- Use clear success/failure indicators: `✓`/`✗`
+- **NO SPAM**: Progress bars update on single line only (e.g., `[##########........] 65%`)
+- **Throttled Updates**: Minimum 250ms between progress updates to prevent output spam
+
+**Anti-Patterns (PROHIBITED)**:
+```go
+// ❌ DO NOT: Manual progress printing
+fmt.Printf("Download progress: %d%%\n", percent)
+
+// ❌ DO NOT: Spamming progress updates (creates line-by-line spam)
+fmt.Printf(".... 10%%\n")
+fmt.Printf(".......... 20%%\n")  // This is what we're preventing!
+
+// ❌ DO NOT: Duplicate progress implementations
+type myProgressPrinter struct { ... } // Use lib.NewProgressPrinter instead
+
+// ❌ DO NOT: Custom spinner logic  
+fmt.Printf("\rWorking..%s", dots[i%len(dots)]) // Use lib.NewSpinner instead
+```
+
+**Usage Examples**:
+```go
+// Download with progress bar - ALWAYS use this pattern
+logger := logging.NewCommandLogger("install")
+progress := lib.NewProgressPrinterWithLogger("Downloading nginx.tar.gz", totalBytes, logger)
+writer = io.MultiWriter(destinationFile, progress)
+defer progress.Finish()
+written, err := io.Copy(writer, response.Body)
+
+// Long-running operation - ALWAYS use this pattern  
+spin := lib.NewSpinner("compile", "Configuring and compiling PHP")
+if err := compilePHP(); err != nil {
+    spin.Fail("compilation failed")
+    return err
+}
+spin.Success("binary installed to /path/to/php")
+```
+
 ### 5.2) Sensitive Code Marking
 
 **Sensitive Code Comments**: All code that handles sensitive operations, secrets, passwords, or security-critical functionality must be marked with `// SENSITIVE: {reason}` comments.

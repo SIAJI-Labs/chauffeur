@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/siaji/chauffeur/cli/internal/workspace"
+	"github.com/siaji/chauffeur/cli/lib"
 )
 
 const (
@@ -37,6 +38,15 @@ func colorize(color, text string) string {
 		return text
 	}
 	return color + text + colorReset
+}
+
+// isTerminal checks if the output is a terminal
+func isTerminal(f *os.File) bool {
+	info, err := f.Stat()
+	if err != nil {
+		return false
+	}
+	return (info.Mode() & os.ModeCharDevice) != 0
 }
 
 func green(text string) string {
@@ -72,7 +82,7 @@ var (
 // runDevUpdate rebuilds the CLI binary from the current working directory
 func runDevUpdate() error {
 	// Verify we're in a valid git repository
-	spin := newSpinner("Verifying chauffeur repository")
+	spin := lib.NewSpinner("self-update", "Verifying chauffeur repository")
 	repoDir, err := os.Getwd()
 	if err != nil {
 		spin.Fail("get working directory")
@@ -103,7 +113,7 @@ func runDevUpdate() error {
 	spin.Success("validated chauf repo structure")
 	
 	// Get the current working directory info
-	spin = newSpinner("Preparing rebuild environment")
+	spin = lib.NewSpinner("self-update", "Preparing rebuild environment")
 	start := time.Now()
 	
 	// Get current git HEAD for reference
@@ -161,7 +171,7 @@ func buildFromSource(repoDir, target, commitSHA string) error {
 	_ = tmpFile.Close()
 	defer func() { _ = os.Remove(tmpPath) }()
 	
-	spin := newSpinner(fmt.Sprintf("Building from source (@%s)", shortSHA(commitSHA)))
+	spin := lib.NewSpinner("self-update", fmt.Sprintf("Building from source (@%s)", shortSHA(commitSHA)))
 	start := time.Now()
 	
 	// Build the binary
@@ -355,7 +365,7 @@ func (su *gitSelfUpdater) Execute() error {
 
 func (su *gitSelfUpdater) ensureRepository() (bool, error) {
 	if _, err := os.Stat(su.repoDir); errors.Is(err, os.ErrNotExist) {
-		spin := newSpinner("Cloning Chauffeur sources")
+		spin := lib.NewSpinner("self-update", "Cloning Chauffeur sources")
 		start := time.Now()
 		if _, err := runCommand("", "git", "clone", "--branch", su.branch, su.repoURL, su.repoDir); err != nil {
 			spin.Fail("clone failed")
@@ -395,7 +405,7 @@ func (su *gitSelfUpdater) currentRevision() (string, error) {
 }
 
 func (su *gitSelfUpdater) updateRepository(before string) (bool, string, error) {
-	spin := newSpinner(fmt.Sprintf("Updating branch %s", su.branch))
+	spin := lib.NewSpinner("self-update", fmt.Sprintf("Updating branch %s", su.branch))
 	start := time.Now()
 	if _, err := runCommand(su.repoDir, "git", "fetch", "--tags", "--prune"); err != nil {
 		spin.Fail("fetch failed")
@@ -445,7 +455,7 @@ func (su *gitSelfUpdater) buildAndInstall() error {
 	_ = tmpFile.Close()
 	defer func() { _ = os.Remove(tmpPath) }()
 
-	spin := newSpinner("Building Chauffeur CLI")
+	spin := lib.NewSpinner("self-update", "Building Chauffeur CLI")
 	start := time.Now()
 
 	if err := goBuild(su.repoDir, tmpPath); err != nil {
@@ -525,127 +535,7 @@ func formatDuration(d time.Duration) string {
 	return d.Round(time.Millisecond).String()
 }
 
-type progressSpinner struct {
-	message    string
-	enabled    bool
-	stop       chan struct{}
-	done       chan struct{}
-	startTime  time.Time
-	dotCounter int
-}
 
-func newSpinner(message string) *progressSpinner {
-	s := &progressSpinner{
-		message:   message,
-		enabled:   isTerminal(os.Stdout),
-		startTime: time.Now(),
-	}
-	if s.enabled {
-		s.stop = make(chan struct{})
-		s.done = make(chan struct{})
-		fmt.Printf("\r%s %s %s%s", blue(statusPrefix), s.message, blue(string(spinnerFrames[0])), gray(""))
-		go s.loop(1)
-	} else {
-		fmt.Printf("%s %s...\n", statusPrefix, s.message)
-	}
-	return s
-}
-
-func (s *progressSpinner) loop(startIndex int) {
-	ticker := time.NewTicker(100 * time.Millisecond)
-	defer ticker.Stop()
-	i := startIndex
-	for {
-		select {
-		case <-ticker.C:
-			elapsed := time.Since(s.startTime)
-			dots := s.getEllipsis()
-			fmt.Printf("\r%s %s %s %s", blue(statusPrefix), s.message, blue(string(spinnerFrames[i%len(spinnerFrames)])), gray(formatDuration(elapsed)+dots))
-			i++
-			s.dotCounter = (s.dotCounter + 1) % 4
-		case <-s.stop:
-			fmt.Print("\r")
-			close(s.done)
-			return
-		}
-	}
-}
-
-func (s *progressSpinner) getEllipsis() string {
-	dots := ""
-	for i := 0; i < s.dotCounter; i++ {
-		dots += "."
-	}
-	for len(dots) < 3 {
-		dots += " "
-	}
-	return dots
-}
-
-func (s *progressSpinner) stopSpinner() {
-	if !s.enabled {
-		return
-	}
-	select {
-	case <-s.done:
-		return
-	default:
-	}
-	close(s.stop)
-	<-s.done
-}
-
-func (s *progressSpinner) Success(summary string) {
-	if s == nil {
-		return
-	}
-	elapsed := time.Since(s.startTime)
-	s.stopSpinner()
-	if s.enabled {
-		if summary != "" {
-			fmt.Printf("\r%s %s %s %s (%s)\n", blue(statusPrefix), s.message, green("✓"), summary, gray(formatDuration(elapsed)))
-		} else {
-			fmt.Printf("\r%s %s %s (%s)\n", blue(statusPrefix), s.message, green("✓"), gray(formatDuration(elapsed)))
-		}
-	} else {
-		if summary != "" {
-			fmt.Printf("%s %s ✓ %s (%s)\n", statusPrefix, s.message, summary, formatDuration(elapsed))
-		} else {
-			fmt.Printf("%s %s ✓ (%s)\n", statusPrefix, s.message, formatDuration(elapsed))
-		}
-	}
-}
-
-func (s *progressSpinner) Fail(summary string) {
-	if s == nil {
-		return
-	}
-	elapsed := time.Since(s.startTime)
-	s.stopSpinner()
-	if s.enabled {
-		if summary != "" {
-			fmt.Printf("\r%s %s %s %s (%s)\n", blue(statusPrefix), s.message, red("✗"), summary, gray(formatDuration(elapsed)))
-		} else {
-			fmt.Printf("\r%s %s %s (%s)\n", blue(statusPrefix), s.message, red("✗"), gray(formatDuration(elapsed)))
-		}
-	} else {
-		if summary != "" {
-			fmt.Printf("%s %s ✗ %s (%s)\n", statusPrefix, s.message, summary, formatDuration(elapsed))
-		} else {
-			fmt.Printf("%s %s ✗ (%s)\n", statusPrefix, s.message, formatDuration(elapsed))
-		}
-	}
-}
-
-func isTerminal(f *os.File) bool {
-	info, err := f.Stat()
-	if err != nil {
-		return false
-	}
-	return (info.Mode() & os.ModeCharDevice) != 0
-}
-
-var spinnerFrames = []rune{'⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'}
 
 func printSelfUpdateUsage() {
 	fmt.Print(`Chauffeur Self-Update

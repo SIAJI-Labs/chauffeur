@@ -234,7 +234,7 @@ This document tracks the current status of features and improvements for the Cha
 - Enfore agent to follow this rules
 - > Repetitive step such as download progress bar, should use lib helper instead making their own print log
 - > So it'll be a standard
-- There's a spinner animation beside yours Thinking... right? can I apply that to my process? so user know that there's active process
+- There's a spinner animation beside yours Thinking... right? can I apply that to my process? so user know that there's active process -> already implemented in `[ self-update ] Building from source (@d140f41)`. When they finish, it's changing the spinner to checkmark
 
 ---
 

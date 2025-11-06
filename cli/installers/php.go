@@ -253,7 +253,7 @@ func InstallPHPSource(version string, opts InstallOptions) (err error) {
 		return phpLogger.Fail("apply compatibility patches", err.Error())
 	}
 
-	spin := buildLogger.NewSpinner("Configuring and compiling PHP")
+	spin := lib.NewSpinner("install", "Configuring and compiling PHP")
 	if err := buildAndInstallPHP(opts, version, sourceDir, buildLogger); err != nil {
 		spin.Fail("compilation failed")
 		return phpLogger.Fail("configure and compile PHP", err.Error())
