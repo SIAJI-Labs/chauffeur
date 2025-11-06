@@ -8,9 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/siaji/chauffeur/cli/internal/logging"
 	"github.com/siaji/chauffeur/cli/internal/system"
 	"github.com/siaji/chauffeur/cli/internal/workspace"
+	"github.com/siaji/chauffeur/cli/lib"
 )
 
 // RunRemove handles `chauf remove <service>` logic for removing installed services.
@@ -67,7 +67,7 @@ func RunRemove(args []string) error {
 	}
 
 	// Initialize logger
-	logger := logging.NewCommandLogger("remove")
+	logger := lib.NewCommandLogger("remove")
 
 	// Validate each service
 	for _, name := range services {
@@ -130,7 +130,7 @@ func RunRemove(args []string) error {
 }
 
 // runRemovePHP handles PHP version-specific removal
-func runRemovePHP(version string, force bool, logger *logging.CommandLogger) error {
+func runRemovePHP(version string, force bool, logger *lib.Logger) error {
 	prefix, err := workspace.Dir()
 	if err != nil {
 		return err
@@ -201,7 +201,7 @@ func runRemovePHP(version string, force bool, logger *logging.CommandLogger) err
 }
 
 // runRemoveService handles removal of nginx and caddy
-func runRemoveService(spec serviceSpec, force bool, logger *logging.CommandLogger) error {
+func runRemoveService(spec serviceSpec, force bool, logger *lib.Logger) error {
 	ok, err := spec.available()
 	if err != nil {
 		return err
@@ -248,7 +248,7 @@ func runRemoveService(spec serviceSpec, force bool, logger *logging.CommandLogge
 }
 
 // handleCaddyRemoval handles caddy removal with dnsmasq validation
-func handleCaddyRemoval(spec serviceSpec, force bool, logger *logging.CommandLogger) error {
+func handleCaddyRemoval(spec serviceSpec, force bool, logger *lib.Logger) error {
 	if !force {
 		// SENSITIVE: Destructive operation - user confirmation for removing caddy service
 		fmt.Printf("Remove %s? This will delete %s. Continue? (y/N): ", spec.name, spec.binaryPath)
@@ -448,7 +448,7 @@ func updateDefaultPHPAfterRemoval(prefix, removedVersion string) {
 }
 
 // removeDnsmasqConfigurationBeforeRemoval removes the chauffeur dnsmasq configuration before package removal.
-func removeDnsmasqConfigurationBeforeRemoval(logger *logging.CommandLogger) error {
+func removeDnsmasqConfigurationBeforeRemoval(logger *lib.Logger) error {
 	logger.Info("Checking for Chauffeur dnsmasq configuration...")
 	
 	dnsLogger := logger.NewChildLogger("dns")
@@ -512,7 +512,7 @@ func removeDnsmasqConfigurationBeforeRemoval(logger *logging.CommandLogger) erro
 }
 
 // removeDnsmasqConfiguration removes the chauffeur dnsmasq configuration.
-func removeDnsmasqConfiguration(logger *logging.CommandLogger) error {
+func removeDnsmasqConfiguration(logger *lib.Logger) error {
 	logger.Info("Checking for Chauffeur dnsmasq configuration...")
 	
 	dnsLogger := logger.NewChildLogger("dns")

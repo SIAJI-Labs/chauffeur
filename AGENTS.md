@@ -408,23 +408,50 @@ func colorize(color, text string) string {
 
 ### 5.1.7) Logging Implementation Requirements
 
-**New Helper Functions (create in cli/internal/logging):**
+**New Helper Functions (create in cli/lib):**
 ```go
-// Command logger with consistent formatting
-type CommandLogger struct {
-    command string
-    colors  bool
+// Logger provides flexible logging with command context and hierarchical output
+type Logger struct {
+    name       string
+    command    string
+    colors     bool
+    level      LogLevel
+    parent     bool  // Whether this is a parent logger (for nested output)
+    timestamps bool  // Include timestamps
+}
+
+// Configuration options
+type LoggerConfig struct {
+    Name       string    // Logger name (optional, overrides command)
+    Command    string    // Command name for prefix
+    Level      LogLevel  // Minimum log level to output
+    Colors     bool      // Enable color output (auto-detected if not set)
+    Timestamps bool      // Include timestamps
+    Parent     bool      // Is this a parent logger
 }
 
 // Methods to implement:
-- NewCommandLogger(command string) *CommandLogger
+- NewLogger(command string) *Logger
+- NewLoggerWithConfig(LoggerConfig) *Logger
+- NewCommandLogger(command string) *Logger  // Backward compatibility
+- NewChildLogger(childCommand string) *Logger
+- WithLevel(LogLevel) *Logger
+- WithColors(bool) *Logger
+- WithTimestamps(bool) *Logger
 - Info(message string)
+- Debug(message string)
 - Success(message, context string)
-- Fail(message, error string) 
+- Error(message, details string) error
 - Warn(message, context string)
-- StartSpinner(message string) *Spinner
-- StartProgress(label string, total int64) *ProgressPrinter
+- Fail(message, error string) error  // Backward compatibility
+- PrintSection(title string)
 - PrintSummary(items []SummaryItem)
+- PrintList(items []string, bullet string)
+- PrintTable(headers []string, rows [][]string)
+- LogOperationStart(operation string)
+- LogOperationEnd(operation string, duration time.Duration, success bool)
+- LogFileOperation(operation, filePath string, success bool)
+- LogNetworkOperation(operation, url string, size int64, success bool)
 ```
 
 **Integration Points:**
@@ -876,7 +903,8 @@ progress.Finish()
 ```go
 // Progress bars for downloads/file operations
 func NewProgressPrinter(label string, total int64) *progressPrinter
-func NewProgressPrinterWithLogger(label string, total int64, logger *logging.CommandLogger) *progressPrinter
+func NewProgressPrinterWithLogger(label string, total int64, logger *lib.Logger) *progressPrinter
+func NewProgressPrinterWithLoggerAndCommand(label string, total int64, logger *lib.Logger, command string) *progressPrinter
 func (p *progressPrinter) Write(b []byte) (int, error)
 func (p *progressPrinter) Finish()
 func HumanBytes(n int64) string
@@ -915,7 +943,7 @@ fmt.Printf("\rWorking..%s", dots[i%len(dots)]) // Use lib.NewSpinner instead
 **Usage Examples**:
 ```go
 // Download with progress bar - ALWAYS use this pattern
-logger := logging.NewCommandLogger("install")
+logger := lib.NewCommandLogger("install")
 progress := lib.NewProgressPrinterWithLogger("Downloading nginx.tar.gz", totalBytes, logger)
 writer = io.MultiWriter(destinationFile, progress)
 defer progress.Finish()
@@ -928,6 +956,15 @@ if err := compilePHP(); err != nil {
     return err
 }
 spin.Success("binary installed to /path/to/php")
+
+// Advanced logging with configuration and child loggers
+mainLogger := lib.NewLoggerWithConfig(lib.LoggerConfig{
+    Command: "install",
+    Level: lib.InfoLevel,
+    Timestamps: true,
+})
+childLogger := mainLogger.NewChildLogger("php")
+childLogger.Info("Starting PHP compilation...")
 ```
 
 ### 5.2) Sensitive Code Marking

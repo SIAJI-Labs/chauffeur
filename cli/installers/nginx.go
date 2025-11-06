@@ -15,7 +15,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/siaji/chauffeur/cli/internal/logging"
 	"github.com/siaji/chauffeur/cli/internal/releases"
 	"github.com/siaji/chauffeur/cli/lib"
 )
@@ -78,7 +77,7 @@ var nginxSigningKeys = []nginxSigningKey{
  * @return error when installation cannot complete successfully.
  */
 func InstallNginxSource(opts InstallOptions) error {
-	nginxLogger := logging.NewCommandLogger("nginx")
+	nginxLogger := lib.NewCommandLogger("nginx")
 	
 	if opts.Prefix == "" {
 		return nginxLogger.Fail("install prefix is required", "")
@@ -285,7 +284,7 @@ func fetchNginxChecksum(client *http.Client, release releases.GitHubRelease, tag
  * @param workDir     Workspace directory for temporary signature/key storage.
  * @return error when signature verification fails.
  */
-func verifyNginxSignature(client *http.Client, tarballPath, tarballName, workDir string, parentLogger *logging.CommandLogger) error {
+func verifyNginxSignature(client *http.Client, tarballPath, tarballName, workDir string, parentLogger *lib.Logger) error {
 	logger := parentLogger.NewChildLogger("verifying")
 	
 	if _, err := exec.LookPath("gpg"); err != nil {
@@ -342,7 +341,7 @@ func verifyNginxSignature(client *http.Client, tarballPath, tarballName, workDir
  * @return error when fingerprint mismatches for mandatory keys or import fails.
  */
 func importNginxKey(gpgHome, keyPath, fingerprint string, optional bool, name string) error {
-	logger := logging.NewCommandLogger("install")
+	logger := lib.NewCommandLogger("install")
 	
 	fp, err := readKeyFingerprint(gpgHome, keyPath)
 	if err != nil {
@@ -457,7 +456,7 @@ func readFingerprintFallback(gpgHome, keyPath string) (string, error) {
  * @return Tuple (shouldImport, error). When optional mismatches occur, returns false and nil.
  */
 func evaluateFingerprint(actual, expected, name string, optional bool) (bool, error) {
-	logger := logging.NewCommandLogger("install")
+	logger := lib.NewCommandLogger("install")
 	
 	if strings.EqualFold(actual, expected) {
 		return true, nil
@@ -581,7 +580,7 @@ func algorithmFromChecksum(sum, defaultAlgo string) string {
 	}
 }
 
-func handleChecksum(tarballPath, sum, algo string, logger *logging.CommandLogger) error {
+func handleChecksum(tarballPath, sum, algo string, logger *lib.Logger) error {
 	sum = strings.ToLower(strings.TrimSpace(sum))
 	algo = strings.ToLower(strings.TrimSpace(algo))
 
@@ -625,7 +624,7 @@ func handleChecksum(tarballPath, sum, algo string, logger *logging.CommandLogger
 	if algo == "" {
 		algo = algorithmFromChecksum(sum, "sha512")
 	}
-	installLogger := logging.NewCommandLogger("install")
+	installLogger := lib.NewCommandLogger("install")
 	installLogger.Info(fmt.Sprintf("Upstream checksum verified (%s).", algo))
 	return nil
 }

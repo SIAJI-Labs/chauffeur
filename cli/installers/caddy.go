@@ -13,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/siaji/chauffeur/cli/internal/logging"
 	"github.com/siaji/chauffeur/cli/internal/releases"
 	"github.com/siaji/chauffeur/cli/internal/system"
 	"github.com/siaji/chauffeur/cli/lib"
@@ -46,7 +45,7 @@ type InstallOptions struct {
  * @return error when the installation fails at any step.
  */
 func InstallCaddyTarball(opts InstallOptions) error {
-	caddyLogger := logging.NewCommandLogger("caddy")
+	caddyLogger := lib.NewCommandLogger("caddy")
 	
 	if opts.Prefix == "" {
 		return caddyLogger.Fail("install prefix is required", "")
@@ -378,7 +377,7 @@ func fetchCaddyChecksum(client *http.Client, url, assetName string, fromList boo
  * @param logger Command logger for status reporting.
  * @return error if dnsmasq is not configured and user declines to configure it.
  */
-func checkDnsmasqConfiguration(logger *logging.CommandLogger) error {
+func checkDnsmasqConfiguration(logger *lib.Logger) error {
 	logger.Info("Checking dnsmasq configuration for local domain resolution...")
 	
 	dnsLogger := logger.NewChildLogger("dns")
@@ -452,7 +451,7 @@ func checkDnsmasqConfiguration(logger *logging.CommandLogger) error {
  * @param logger Command logger for status reporting.
  * @return error for critical issues, but continues installation if packages are missing.
  */
-func checkDNSResolution(logger *logging.CommandLogger) error {
+func checkDNSResolution(logger *lib.Logger) error {
 	logger.Info("Checking DNS resolution dependencies...")
 	
 	dnsLogger := logger.NewChildLogger("dns")
