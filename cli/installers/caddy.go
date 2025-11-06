@@ -110,7 +110,7 @@ func InstallCaddyTarball(opts InstallOptions) error {
 	defer os.RemoveAll(tmpDir)
 
 	tarballPath := filepath.Join(tmpDir, assetName)
-	size, err := lib.DownloadToFileWithLogger(client, tarballURL, tarballPath, fmt.Sprintf("- Download %s", assetName), downloadLogger)
+	size, err := lib.DownloadToFileWithLogger(client, tarballURL, tarballPath, fmt.Sprintf("Download %s", assetName), downloadLogger)
 	if err != nil {
 		return caddyLogger.Fail("download caddy tarball", err.Error())
 	}
