@@ -62,6 +62,7 @@ func checkDnsmasqConfiguration(logger *logging.CommandLogger) error {
 	fmt.Printf("EOF\n")
 	
 	fmt.Printf("\n%s", colorize(colorYellow, "Do you want to add this configuration now? [y/N]: "))
+	// SENSITIVE: User input confirmation - system configuration consent
 	var response string
 	fmt.Scanln(&response)
 	

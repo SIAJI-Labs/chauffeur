@@ -169,6 +169,7 @@ This document tracks the current status of features and improvements for the Cha
 8. **✅ DNS resolution via NetworkManager dnsmasq for .test domains**
 9. **✅ PHP-FPM integration with proper FastCGI socket connectivity**
 10. **✅ Build system fixes for successful `chauf self-update --dev` functionality**
+11. **✅ Sensitive code marking - implemented `// SENSITIVE: {reason}` comment structure throughout codebase**
 
 ### Low Priority (Infrastructure & Polish)
 1. Complete service orchestration framework (`chauf start/stop`)
@@ -229,9 +230,11 @@ This document tracks the current status of features and improvements for the Cha
 ### Future
 - Add support for custom port via chauf config file
 - Refactor existing code, make it more direct and robust
-- Apply new rule in AGENTS.md, put `// SENSITIVE: {reason}` such during password promt, etc
-- Refactor code, to apply newly added `// SENSITIVE: {reason}` rule
 - Scan which planned command that not yet exists
+- Enfore agent to follow this rules
+- > Repetitive step such as download progress bar, should use lib helper instead making their own print log
+- > So it'll be a standard
+- There's a spinner animation beside yours Thinking... right? can I apply that to my process? so user know that there's active process
 
 ---
 

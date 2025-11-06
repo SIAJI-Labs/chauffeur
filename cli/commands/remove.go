@@ -146,6 +146,7 @@ func runRemovePHP(version string, force bool, logger *logging.CommandLogger) err
 
 		if !force {
 			logger.Warn("Removing all PHP versions", "this will remove ~/.chauffeur/php/ directory")
+			// SENSITIVE: Destructive operation - user confirmation for removing all PHP installations
 			fmt.Printf("This will remove all installed PHP versions. Continue? (y/N): ")
 			var response string
 			fmt.Scanln(&response)
@@ -171,6 +172,7 @@ func runRemovePHP(version string, force bool, logger *logging.CommandLogger) err
 	}
 
 	if !force {
+		// SENSITIVE: Destructive operation - user confirmation for removing specific PHP version
 		fmt.Printf("Remove PHP %s? This will delete %s. Continue? (y/N): ", version, phpVersionDir)
 		var response string
 		fmt.Scanln(&response)
@@ -218,6 +220,7 @@ func runRemoveService(spec serviceSpec, force bool, logger *logging.CommandLogge
 	}
 
 	if !force {
+		// SENSITIVE: Destructive operation - user confirmation for removing service (nginx/caddy)
 		fmt.Printf("Remove %s? This will delete %s. Continue? (y/N): ", spec.name, spec.binaryPath)
 		var response string
 		fmt.Scanln(&response)
@@ -247,6 +250,7 @@ func runRemoveService(spec serviceSpec, force bool, logger *logging.CommandLogge
 // handleCaddyRemoval handles caddy removal with dnsmasq validation
 func handleCaddyRemoval(spec serviceSpec, force bool, logger *logging.CommandLogger) error {
 	if !force {
+		// SENSITIVE: Destructive operation - user confirmation for removing caddy service
 		fmt.Printf("Remove %s? This will delete %s. Continue? (y/N): ", spec.name, spec.binaryPath)
 		var response string
 		fmt.Scanln(&response)
@@ -272,6 +276,7 @@ func handleCaddyRemoval(spec serviceSpec, force bool, logger *logging.CommandLog
 		fmt.Printf("\n")
 		
 		// Second confirmation for dnsmasq removal
+		// SENSITIVE: Destructive operation - system package removal confirmation for dnsmasq
 		fmt.Printf("Do you also want to remove dnsmasq from the system? (NOT RECOMMENDED) [y/N]: ")
 		var removeDNSResponse string
 		fmt.Scanln(&removeDNSResponse)
@@ -279,6 +284,7 @@ func handleCaddyRemoval(spec serviceSpec, force bool, logger *logging.CommandLog
 		
 		if removeDNS {
 			// Double confirmation for dnsmasq removal
+			// SENSITIVE: Destructive operation - double confirmation for critical system package removal
 			fmt.Printf("⚠  FINAL WARNING: You are about to remove dnsmasq completely.\n")
 			fmt.Printf("   This will affect local DNS resolution for all applications.\n")
 			fmt.Printf("   Other tools that depend on dnsmasq may stop working.\n")
@@ -357,6 +363,7 @@ func handleCaddyRemoval(spec serviceSpec, force bool, logger *logging.CommandLog
 			}
 			
 			// Execute the removal command
+			// SENSITIVE: Process execution - running system package manager with elevated privileges
 			if err := removeCmd.Run(); err != nil {
 				return dnsLogger.Fail("remove dnsmasq", err.Error())
 			}
@@ -465,6 +472,7 @@ func removeDnsmasqConfigurationBeforeRemoval(logger *logging.CommandLogger) erro
 	
 	dnsLogger.Info("Removing dnsmasq configuration...")
 	
+	// SENSITIVE: System file modification - removing system configuration file with elevated privileges
 	if err := exec.Command("sudo", "rm", "-f", "/etc/dnsmasq.d/chauffeur.conf").Run(); err != nil {
 		return dnsLogger.Fail("remove dnsmasq configuration", err.Error())
 	}
@@ -479,12 +487,14 @@ func removeDnsmasqConfigurationBeforeRemoval(logger *logging.CommandLogger) erro
 	if strings.ToLower(restartResponse) == "y" || strings.ToLower(restartResponse) == "yes" {
 		if system.IsNetworkManagerDnsmasqRunning() {
 			dnsLogger.Info("NetworkManager is managing dnsmasq - reloading NetworkManager to apply changes...")
+			// SENSITIVE: Process execution - restarting system service with elevated privileges
 			if err := exec.Command("sudo", "systemctl", "reload", "NetworkManager").Run(); err != nil {
 				return dnsLogger.Fail("reload NetworkManager service", err.Error())
 			}
 			dnsLogger.Success("NetworkManager reloaded", "Configuration changes applied via NetworkManager")
 		} else {
 			dnsLogger.Info("Restarting dnsmasq service to apply configuration changes...")
+			// SENSITIVE: Process execution - restarting system service with elevated privileges
 			if err := exec.Command("sudo", "systemctl", "restart", "dnsmasq").Run(); err != nil {
 				return dnsLogger.Fail("restart dnsmasq service", err.Error())
 			}
@@ -526,6 +536,7 @@ func removeDnsmasqConfiguration(logger *logging.CommandLogger) error {
 	
 	dnsLogger.Info("Removing dnsmasq configuration...")
 	
+	// SENSITIVE: System file modification - removing system configuration file with elevated privileges
 	if err := exec.Command("sudo", "rm", "-f", "/etc/dnsmasq.d/chauffeur.conf").Run(); err != nil {
 		return dnsLogger.Fail("remove dnsmasq configuration", err.Error())
 	}
