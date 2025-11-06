@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/siaji/chauffeur/cli/internal/config"
-	"github.com/siaji/chauffeur/cli/internal/logging"
 	"github.com/siaji/chauffeur/cli/lib"
 )
 
@@ -145,7 +144,7 @@ func GetSupportedVersionsList() string {
  * @return error when installation cannot complete successfully.
  */
 func InstallPHPSource(version string, opts InstallOptions) (err error) {
-	phpLogger := logging.NewCommandLogger("php")
+	phpLogger := lib.NewCommandLogger("php")
 	
 	if opts.Prefix == "" {
 		return phpLogger.Fail("install prefix is required", "")
@@ -354,7 +353,7 @@ func getLatestPHPPatchVersion(client *http.Client, version string) (string, erro
  * @param workDir     Workspace directory for temporary signature/key storage.
  * @return error when signature verification fails.
  */
-func verifyPHPSignature(logger *logging.CommandLogger, client *http.Client, tarballPath, tarballName, workDir string) error {
+func verifyPHPSignature(logger *lib.Logger, client *http.Client, tarballPath, tarballName, workDir string) error {
 	if _, err := exec.LookPath("gpg"); err != nil {
 		return fmt.Errorf("gpg not found in PATH: %w", err)
 	}
@@ -415,9 +414,9 @@ func verifyPHPSignature(logger *logging.CommandLogger, client *http.Client, tarb
  * @param sigPath     Path to the detached signature file.
  * @return error when signature validation fails.
  */
-func verifyPHPSignatureWithGPG(gpgHome, tarballPath, sigPath string, logger *logging.CommandLogger) error {
+func verifyPHPSignatureWithGPG(gpgHome, tarballPath, sigPath string, logger *lib.Logger) error {
 	if logger == nil {
-		logger = logging.NewCommandLogger("install")
+		logger = lib.NewCommandLogger("install")
 	}
 	cmd := exec.Command("gpg",
 		"--homedir", gpgHome,
@@ -443,9 +442,9 @@ func verifyPHPSignatureWithGPG(gpgHome, tarballPath, sigPath string, logger *log
  * @param sourceDir Directory containing the extracted PHP sources.
  * @return error when configure/build/install steps fail.
  */
-func buildAndInstallPHP(opts InstallOptions, version, sourceDir string, logger *logging.CommandLogger) error {
+func buildAndInstallPHP(opts InstallOptions, version, sourceDir string, logger *lib.Logger) error {
 	if logger == nil {
-		logger = logging.NewCommandLogger("install")
+		logger = lib.NewCommandLogger("install")
 	}
 	prefix := opts.Prefix
 	installDir := filepath.Join(prefix, "php", version)
@@ -548,9 +547,9 @@ func buildAndInstallPHP(opts InstallOptions, version, sourceDir string, logger *
 	return nil
 }
 
-func ensureOpenSSL111(workspacePrefix, vendorPrefix string, client *http.Client, logf func(string, ...interface{}), logger *logging.CommandLogger) error {
+func ensureOpenSSL111(workspacePrefix, vendorPrefix string, client *http.Client, logf func(string, ...interface{}), logger *lib.Logger) error {
 	if logger == nil {
-		logger = logging.NewCommandLogger("install")
+		logger = lib.NewCommandLogger("install")
 	}
 	
 	// Safe log function that handles nil logf
@@ -886,29 +885,29 @@ func getPHPUser() string {
 	return "www-data" // fallback
 }
 
-func startPHPLogSection(logger *logging.CommandLogger, title string) {
+func startPHPLogSection(logger *lib.Logger, title string) {
 	logger.Info(strings.ToUpper(title))
 }
 
-func logPHPInfo(logger *logging.CommandLogger, format string, args ...interface{}) {
+func logPHPInfo(logger *lib.Logger, format string, args ...interface{}) {
 	logger.Info(fmt.Sprintf(format, args...))
 }
 
-func logPHPSuccess(logger *logging.CommandLogger, format string, args ...interface{}) {
+func logPHPSuccess(logger *lib.Logger, format string, args ...interface{}) {
 	logger.Success(fmt.Sprintf(format, args...), "")
 }
 
-func logPHPWarn(logger *logging.CommandLogger, format string, args ...interface{}) {
+func logPHPWarn(logger *lib.Logger, format string, args ...interface{}) {
 	logger.Warn(fmt.Sprintf(format, args...), "")
 }
 
-func logPHPError(logger *logging.CommandLogger, format string, args ...interface{}) {
+func logPHPError(logger *lib.Logger, format string, args ...interface{}) {
 	logger.Info(fmt.Sprintf("ERROR: %s", fmt.Sprintf(format, args...)))
 }
 
-func logCommandFailure(err error, logger *logging.CommandLogger) {
+func logCommandFailure(err error, logger *lib.Logger) {
 	if logger == nil {
-		logger = logging.NewCommandLogger("install")
+		logger = lib.NewCommandLogger("install")
 	}
 	var detail detailedError
 	if errors.As(err, &detail) {

@@ -7,10 +7,10 @@ import (
 	"strings"
 
 	"github.com/siaji/chauffeur/cli/internal/config"
-	"github.com/siaji/chauffeur/cli/internal/logging"
 	"github.com/siaji/chauffeur/cli/internal/services"
 	"github.com/siaji/chauffeur/cli/internal/system"
 	"github.com/siaji/chauffeur/cli/internal/workspace"
+	"github.com/siaji/chauffeur/cli/lib"
 )
 
 /**
@@ -19,7 +19,7 @@ import (
  * @param logger Command logger for status reporting.
  * @return error if dnsmasq is not configured and user declines to configure it.
  */
-func checkDnsmasqConfiguration(logger *logging.CommandLogger) error {
+func checkDnsmasqConfiguration(logger *lib.Logger) error {
 	logger.Info("Checking dnsmasq configuration for local domain resolution...")
 	
 	dnsLogger := logger.NewChildLogger("dns")
@@ -139,7 +139,7 @@ func RunStart(args []string) error {
 	}
 
 	// Create command logger
-	logger := logging.NewCommandLogger("start")
+	logger := lib.NewCommandLogger("start")
 
 	// Check dnsmasq configuration before starting services
 	if err := checkDnsmasqConfiguration(logger); err != nil {

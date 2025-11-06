@@ -1,6 +1,6 @@
 package installers
 
-import "github.com/siaji/chauffeur/cli/internal/logging"
+import "github.com/siaji/chauffeur/cli/lib"
 
 // TestSigningKey mirrors minimal signing key metadata for tests.
 type TestSigningKey struct {
@@ -11,7 +11,7 @@ type TestSigningKey struct {
 
 // TestHandleChecksum exposes handleChecksum for external tests.
 func TestHandleChecksum(path, sum, algo string) error {
-	return handleChecksum(path, sum, algo, logging.NewCommandLogger("test"))
+	return handleChecksum(path, sum, algo, lib.NewCommandLogger("test"))
 }
 
 // TestAlgorithmFromChecksum exposes algorithmFromChecksum for external tests.

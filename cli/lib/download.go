@@ -6,8 +6,6 @@ import (
 	"net/http"
 	"os"
 	"strings"
-
-	"github.com/siaji/chauffeur/cli/internal/logging"
 )
 
 // DownloadToFile streams a remote file down to dest and returns the byte count.
@@ -31,7 +29,7 @@ func DownloadToFile(client *http.Client, url, dest, label string) (int64, error)
 // @param label  Optional label for progress rendering; leave empty to disable.
 // @param logger Optional logger for progress bar prefix; if nil, uses default "install" logger.
 // @return Number of bytes written and an error, if any.
-func DownloadToFileWithLogger(client *http.Client, url, dest, label string, logger *logging.CommandLogger) (int64, error) {
+func DownloadToFileWithLogger(client *http.Client, url, dest, label string, logger *Logger) (int64, error) {
 	resp, err := client.Get(url)
 	if err != nil {
 		return 0, err

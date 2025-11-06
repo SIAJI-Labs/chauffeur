@@ -6,19 +6,19 @@ import (
 	"os"
 	"path/filepath"
 	
-	"github.com/siaji/chauffeur/cli/internal/logging"
+	"github.com/siaji/chauffeur/cli/lib"
 )
 
 // applyLegacyPHPSourcePatches injects compatibility shims for legacy PHP releases
 // that no longer build cleanly against modern system dependencies.
-func applyLegacyPHPSourcePatches(version, sourceDir string, logger *logging.CommandLogger) error {
+func applyLegacyPHPSourcePatches(version, sourceDir string, logger *lib.Logger) error {
 	needsCompat := version == "7.4" || version == "8.0"
 	if !needsCompat {
 		return nil
 	}
 
 	if logger == nil {
-		logger = logging.NewCommandLogger("install")
+		logger = lib.NewCommandLogger("install")
 	}
 	logPHPInfo(logger, "Applying compatibility patches for legacy PHP %s in directory %s", version, sourceDir)
 
@@ -36,7 +36,7 @@ func applyLegacyPHPSourcePatches(version, sourceDir string, logger *logging.Comm
 	return nil
 }
 
-func patchLegacyLibxml(logger *logging.CommandLogger, sourceDir string) error {
+func patchLegacyLibxml(logger *lib.Logger, sourceDir string) error {
 	target := filepath.Join(sourceDir, "ext", "libxml", "libxml.c")
 	data, err := os.ReadFile(target)
 	if err != nil {
@@ -90,7 +90,7 @@ func patchLegacyLibxml(logger *logging.CommandLogger, sourceDir string) error {
 	return nil
 }
 
-func patchLegacyOpenSSL(logger *logging.CommandLogger, sourceDir string) error {
+func patchLegacyOpenSSL(logger *lib.Logger, sourceDir string) error {
 	target := filepath.Join(sourceDir, "ext", "openssl", "openssl.c")
 	logPHPInfo(logger, "Patching OpenSSL file: %s", target)
 	logPHPInfo(logger, "Adjusting EVP_PKEY RSA accessor for OpenSSL 3.x const correctness")
@@ -292,7 +292,7 @@ func insertSnippet(data []byte, snippet []byte, pos int) []byte {
 	return builder.Bytes()
 }
 
-func patchLegacyScanf(logger *logging.CommandLogger, sourceDir string) error {
+func patchLegacyScanf(logger *lib.Logger, sourceDir string) error {
 	target := filepath.Join(sourceDir, "ext", "standard", "scanf.c")
 	data, err := os.ReadFile(target)
 	if err != nil {

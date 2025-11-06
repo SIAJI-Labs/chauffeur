@@ -5,13 +5,11 @@ import (
 	"os"
 	"strings"
 	"time"
-
-	"github.com/siaji/chauffeur/cli/internal/logging"
 )
 
 // progressPrinter provides real-time progress tracking for downloads and file operations
 type progressPrinter struct {
-	logger     *logging.CommandLogger
+	logger     *Logger
 	command    string
 	label      string
 	total      int64
@@ -128,37 +126,22 @@ func (s *progressSpinner) stopSpinner() {
 	<-s.done
 }
 
-func isTerminal(f *os.File) bool {
-	info, err := f.Stat()
-	if err != nil {
-		return false
-	}
-	return (info.Mode() & os.ModeCharDevice) != 0
-}
 
-func formatDuration(d time.Duration) string {
-	d = d.Round(time.Millisecond)
-	if d < time.Second {
-		return fmt.Sprintf("%.1fs", d.Seconds())
-	} else if d < time.Minute {
-		return fmt.Sprintf("%.1fs", d.Seconds())
-	} else {
-		minutes := int(d.Minutes())
-		seconds := int(d.Seconds()) % 60
-		return fmt.Sprintf("%dm%ds", minutes, seconds)
-	}
-}
 
-// ANSI color helpers
+// color helpers using logger - these create temporary loggers for color formatting
 func green(text string) string {
-	return "\033[32m" + text + "\033[0m"
+	logger := NewLogger("temp")
+	return logger.green(text)
 }
 
 func red(text string) string {
-	return "\033[31m" + text + "\033[0m"
+	logger := NewLogger("temp")
+	return logger.red(text)
 }
+
 func gray(text string) string {
-	return "\033[90m" + text + "\033[0m"
+	logger := NewLogger("temp")
+	return logger.gray(text)
 }
 
 // progressStep provides step-by-step progress for multi-stage operations
@@ -199,7 +182,7 @@ func (ps *progressStep) Complete(summary string) {
 
 // NewProgressPrinter creates a new progress printer with command logger integration
 func NewProgressPrinter(label string, total int64) *progressPrinter {
-	logger := logging.NewCommandLogger("install")
+	logger := NewCommandLogger("install")
 	return &progressPrinter{
 		logger:    logger,
 		command:   "install",
@@ -211,7 +194,7 @@ func NewProgressPrinter(label string, total int64) *progressPrinter {
 }
 
 // NewProgressPrinterWithLogger creates a new progress printer with a specific logger and command
-func NewProgressPrinterWithLoggerAndCommand(label string, total int64, logger *logging.CommandLogger, command string) *progressPrinter {
+func NewProgressPrinterWithLoggerAndCommand(label string, total int64, logger *Logger, command string) *progressPrinter {
 	if command == "" {
 		command = "install" // fallback
 	}
@@ -227,7 +210,7 @@ func NewProgressPrinterWithLoggerAndCommand(label string, total int64, logger *l
 }
 
 // NewProgressPrinterWithLogger creates a new progress printer with a specific logger
-func NewProgressPrinterWithLogger(label string, total int64, logger *logging.CommandLogger) *progressPrinter {
+func NewProgressPrinterWithLogger(label string, total int64, logger *Logger) *progressPrinter {
 	// Detect command from context of the download operation
 	command := "download" // For download operations, use "download" as the command
 	if strings.Contains(label, "caddy") {
