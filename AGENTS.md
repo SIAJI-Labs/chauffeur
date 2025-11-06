@@ -853,6 +853,56 @@ func TestRemove_MultipleServices(t *testing.T) {
 - Configuration access via a single `config` package with typed structs and defaults.
 - Command parsing via `spf13/cobra` (or stdlib `flag` if minimal). Provide `--help` autogen.
 
+### 5.2) Sensitive Code Marking
+
+**Sensitive Code Comments**: All code that handles sensitive operations, secrets, passwords, or security-critical functionality must be marked with `// SENSITIVE: {reason}` comments.
+
+**Required Usage Scenarios**:
+```go
+// SENSITIVE: Password prompt - user input captured without masking
+password := promptPassword("Enter password: ")
+
+// SENSITIVE: Secret key generation for SSL certificates  
+privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+
+// SENSITIVE: System file modification - requires elevated privileges
+err = os.WriteFile("/etc/dnsmasq.d/chauffeur.conf", config, 0644)
+
+// SENSITIVE: Network request to external API with authentication
+resp, err := http.NewRequest("POST", apiURL, body)
+
+// SENSITIVE: User input confirmation for destructive operations
+confirm := prompt.Confirm("This will permanently delete all PHP installations. Continue?")
+```
+
+**Reason Categories**:
+- `"Password prompt"` - Password or passphrase input handling
+- `"Secret generation"` - Cryptographic key/certificate generation  
+- `"System file modification"` - Writing to privileged system locations
+- `"External API request"` - Network requests with authentication tokens
+- `"Destructive operation"` - Operations requiring explicit user confirmation
+- `"Credential storage"` - Saving or retrieving passwords/tokens
+- `"Environment access"` - Accessing sensitive environment variables
+- `"Process execution"` - Running external commands with elevated permissions
+
+**Implementation Rules**:
+1. **Mandatory**: All code sections matching the scenarios above must include the comment
+2. **Placement**: Place the comment immediately before the sensitive operation
+3. **Specificity**: Use standardized reason categories from the list above
+4. **Documentation**: Brief explanation of what makes the operation sensitive
+5. **Review Threshold**: Code marked as sensitive requires additional security review
+
+**Examples of Security-Sensitive Operations**:
+- Password prompts or secret input
+- Cryptographic key generation and storage
+- System configuration file modifications
+- Requests to external APIs with authentication
+- File system operations requiring sudo/root access
+- Environment variable access for secrets
+- Process execution with elevated permissions
+- User confirmation for destructive operations
+- Private key handling for SSL/TLS
+
 ---
 
 ## 10) Acceptance Tests (high‑level)

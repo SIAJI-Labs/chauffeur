@@ -152,6 +152,7 @@ func InstallPackage(pkg Package) error {
 	
 	switch pm {
 	case Pacman:
+		// SENSITIVE: Process execution - running system package manager with elevated privileges
 		cmd := exec.Command("sudo", "pacman", "-S", "--noconfirm", pkg.PackageName)
 		cmd.Stdin = os.Stdin
 		cmd.Stdout = os.Stdout
@@ -159,6 +160,7 @@ func InstallPackage(pkg Package) error {
 		return cmd.Run()
 		
 	case Apt:
+		// SENSITIVE: Process execution - running system package manager with elevated privileges
 		cmd := exec.Command("sudo", "apt", "install", "-y", pkg.PackageName)
 		cmd.Stdin = os.Stdin
 		cmd.Stdout = os.Stdout
@@ -166,6 +168,7 @@ func InstallPackage(pkg Package) error {
 		return cmd.Run()
 		
 	case Yum:
+		// SENSITIVE: Process execution - running system package manager with elevated privileges
 		cmd := exec.Command("sudo", "yum", "install", "-y", pkg.PackageName)
 		cmd.Stdin = os.Stdin
 		cmd.Stdout = os.Stdout
@@ -173,6 +176,7 @@ func InstallPackage(pkg Package) error {
 		return cmd.Run()
 		
 	case Dnf:
+		// SENSITIVE: Process execution - running system package manager with elevated privileges
 		cmd := exec.Command("sudo", "dnf", "install", "-y", pkg.PackageName)
 		cmd.Stdin = os.Stdin
 		cmd.Stdout = os.Stdout
@@ -180,6 +184,7 @@ func InstallPackage(pkg Package) error {
 		return cmd.Run()
 		
 	case Zypper:
+		// SENSITIVE: Process execution - running system package manager with elevated privileges
 		cmd := exec.Command("sudo", "zypper", "install", "-y", pkg.PackageName)
 		cmd.Stdin = os.Stdin
 		cmd.Stdout = os.Stdout
@@ -229,6 +234,7 @@ func PromptUserForPackages(missing []Package) bool {
 	
 	fmt.Printf("\nWould you like to install these packages? [y/N]: ")
 	
+	// SENSITIVE: User input confirmation - package installation consent
 	var response string
 	fmt.Scanln(&response)
 	
@@ -330,6 +336,7 @@ bind-interfaces
 `
 	
 	// Write configuration using tee
+	// SENSITIVE: System file modification - writing system configuration with elevated privileges
 	cmd := exec.Command("sudo", "tee", configPath)
 	cmd.Stdin = strings.NewReader(configContent)
 	if err := cmd.Run(); err != nil {
@@ -337,6 +344,7 @@ bind-interfaces
 	}
 	
 	// Restart the appropriate service
+	// SENSITIVE: Process execution - restarting system service with elevated privileges
 	if err := restartCmd.Run(); err != nil {
 		// For standalone dnsmasq, don't fail hard on restart errors
 		// as it might conflict with NetworkManager's dnsmasq

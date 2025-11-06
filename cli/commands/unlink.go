@@ -276,6 +276,7 @@ func RunUnlink(args []string) error {
 		fmt.Printf("Use --force to proceed without confirmation.\n")
 		fmt.Print("Continue? [y/N] ")
 		
+		// SENSITIVE: Destructive operation - user confirmation for unlinking projects
 		var response string
 		fmt.Scanln(&response)
 		if strings.ToLower(response) != "y" && strings.ToLower(response) != "yes" {
@@ -373,6 +374,7 @@ func unlinkAllProjects(cfg config.Config, force bool) error {
 		fmt.Printf("Use --force to proceed without confirmation.\n")
 		fmt.Print("Continue? [y/N] ")
 
+		// SENSITIVE: Destructive operation - user confirmation for removing all projects
 		var response string
 		fmt.Scanln(&response)
 		if strings.ToLower(response) != "y" && strings.ToLower(response) != "yes" {
