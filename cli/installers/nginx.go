@@ -136,7 +136,7 @@ func InstallNginxSource(opts InstallOptions) error {
 	if err != nil {
 		return nginxLogger.Fail("download nginx source", err.Error())
 	}
-	downloadLogger.Success(fmt.Sprintf("Downloaded %s", tarballName), humanBytes(size))
+	downloadLogger.Success(fmt.Sprintf("Downloaded %s", tarballName), lib.HumanBytes(size))
 
 	nginxLogger.Info("Verifying")
 	verificationLogger := nginxLogger.NewChildLogger("verifying")

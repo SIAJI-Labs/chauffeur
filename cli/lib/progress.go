@@ -17,6 +17,7 @@ type progressPrinter struct {
 	width      int
 	lastPrint  time.Time
 	done       bool
+	callCount  int
 }
 
 // NewProgressPrinter creates a new progress printer with command logger integration
@@ -63,6 +64,15 @@ func (p *progressPrinter) Finish() {
 
 // render updates the progress display on the current line
 func (p *progressPrinter) render() {
+	// Only render if enough time has passed to avoid spamming
+	now := time.Now()
+	p.callCount++
+	
+	// Throttle updates significantly to reduce spam
+	if now.Sub(p.lastPrint) < 200*time.Millisecond && p.callCount%10 != 0 {
+		return
+	}
+	
 	if p.total > 0 {
 		ratio := float64(p.current) / float64(p.total)
 		if ratio > 1 {
@@ -74,21 +84,21 @@ func (p *progressPrinter) render() {
 		}
 		bar := strings.Repeat("#", filled) + strings.Repeat(".", p.width-filled)
 		// Use command logger prefix format and clear line
-		fmt.Printf("\r\033[K%s %s... [%s] %3.0f%%", p.logger.Prefix(), p.label, bar, ratio*100)
+		fmt.Printf("\r\033[K    - %s... [%s] %3.0f%%", p.label, bar, ratio*100)
 	} else {
-		fmt.Printf("\r\033[K%s %s... %s", p.logger.Prefix(), p.label, HumanBytes(p.current))
+		fmt.Printf("\r\033[K    - %s... %s", p.label, HumanBytes(p.current))
 	}
 	// Ensure the output is flushed immediately
 	fmt.Print("")
-	p.lastPrint = time.Now()
+	p.lastPrint = now
 }
 
 // renderFinal displays the final completed progress with newline
 func (p *progressPrinter) renderFinal() {
 	if p.total > 0 {
-		fmt.Printf("\r\033[K%s %s... [%s] 100%% (%s)\n", p.logger.Prefix(), p.label, strings.Repeat("#", p.width), HumanBytes(p.current))
+		fmt.Printf("\r\033[K    - %s... [%s] 100%% (%s)\n", p.label, strings.Repeat("#", p.width), HumanBytes(p.current))
 	} else {
-		fmt.Printf("\r\033[K%s %s... %s\n", p.logger.Prefix(), p.label, HumanBytes(p.current))
+		fmt.Printf("\r\033[K    - %s... %s\n", p.label, HumanBytes(p.current))
 	}
 }
 

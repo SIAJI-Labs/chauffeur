@@ -451,7 +451,7 @@ func (sm *ServiceManager) generateCaddyfile() error {
 }
 
 # HTTP server on custom port (outside global block)
-:8789 {
+:8080 {
 	# Default response for root requests
 	respond "Chauffeur Caddy Server is running!" 200
 

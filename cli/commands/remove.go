@@ -296,6 +296,11 @@ func handleCaddyRemoval(spec serviceSpec, force bool, logger *logging.CommandLog
 		}
 		
 		if removeDNS {
+			// Before removing dnsmasq, ask about chauffeur config
+			if err := removeDnsmasqConfigurationBeforeRemoval(logger); err != nil {
+				return err
+			}
+			
 			// Remove dnsmasq using the system package manager
 			pm := system.DetectPackageManager()
 			if pm == system.Unknown {
@@ -359,6 +364,10 @@ func handleCaddyRemoval(spec serviceSpec, force bool, logger *logging.CommandLog
 			dnsLogger.Success("Removed dnsmasq package", "system DNS resolution may be affected")
 		} else {
 			dnsLogger.Info("Keeping dnsmasq installed - local DNS resolution will remain functional")
+			// Still offer to remove configuration even if keeping dnsmasq
+			if err := removeDnsmasqConfiguration(logger); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -429,6 +438,134 @@ func updateDefaultPHPAfterRemoval(prefix, removedVersion string) {
 			}
 		}
 	}
+}
+
+// removeDnsmasqConfigurationBeforeRemoval removes the chauffeur dnsmasq configuration before package removal.
+func removeDnsmasqConfigurationBeforeRemoval(logger *logging.CommandLogger) error {
+	logger.Info("Checking for Chauffeur dnsmasq configuration...")
+	
+	dnsLogger := logger.NewChildLogger("dns")
+	
+	// Check if configuration exists
+	if _, err := os.Stat("/etc/dnsmasq.d/chauffeur.conf"); os.IsNotExist(err) {
+		dnsLogger.Info("No Chauffeur dnsmasq configuration found - no cleanup needed")
+		return nil
+	}
+	
+	dnsLogger.Info("Found Chauffeur dnsmasq configuration at /etc/dnsmasq.d/chauffeur.conf")
+	
+	fmt.Printf("\n%s", "Do you want to remove the Chauffeur dnsmasq configuration before removing dnsmasq? [y/N]: ")
+	var response string
+	fmt.Scanln(&response)
+	
+	if strings.ToLower(response) != "y" && strings.ToLower(response) != "yes" {
+		dnsLogger.Info("Keeping dnsmasq configuration - file will be removed with package")
+		return nil
+	}
+	
+	dnsLogger.Info("Removing dnsmasq configuration...")
+	
+	if err := exec.Command("sudo", "rm", "-f", "/etc/dnsmasq.d/chauffeur.conf").Run(); err != nil {
+		return dnsLogger.Fail("remove dnsmasq configuration", err.Error())
+	}
+	
+	dnsLogger.Success("dnsmasq configuration removed", "Configuration file deleted")
+	
+	// Offer to restart dnsmasq to apply changes before package removal
+	fmt.Printf("\n%s", "Do you want to restart dnsmasq to apply configuration changes before removing it? [y/N]: ")
+	var restartResponse string
+	fmt.Scanln(&restartResponse)
+	
+	if strings.ToLower(restartResponse) == "y" || strings.ToLower(restartResponse) == "yes" {
+		if system.IsNetworkManagerDnsmasqRunning() {
+			dnsLogger.Info("NetworkManager is managing dnsmasq - reloading NetworkManager to apply changes...")
+			if err := exec.Command("sudo", "systemctl", "reload", "NetworkManager").Run(); err != nil {
+				return dnsLogger.Fail("reload NetworkManager service", err.Error())
+			}
+			dnsLogger.Success("NetworkManager reloaded", "Configuration changes applied via NetworkManager")
+		} else {
+			dnsLogger.Info("Restarting dnsmasq service to apply configuration changes...")
+			if err := exec.Command("sudo", "systemctl", "restart", "dnsmasq").Run(); err != nil {
+				return dnsLogger.Fail("restart dnsmasq service", err.Error())
+			}
+			dnsLogger.Success("dnsmasq restarted", "Configuration changes applied")
+		}
+	} else {
+		if system.IsNetworkManagerDnsmasqRunning() {
+			dnsLogger.Info("NetworkManager not reloaded - configuration changes will apply when NetworkManager restarts")
+		} else {
+			dnsLogger.Info("dnsmasq not restarted - continuing with package removal")
+		}
+	}
+	
+	return nil
+}
+
+// removeDnsmasqConfiguration removes the chauffeur dnsmasq configuration.
+func removeDnsmasqConfiguration(logger *logging.CommandLogger) error {
+	logger.Info("Checking for Chauffeur dnsmasq configuration...")
+	
+	dnsLogger := logger.NewChildLogger("dns")
+	
+	// Check if configuration exists
+	if _, err := os.Stat("/etc/dnsmasq.d/chauffeur.conf"); os.IsNotExist(err) {
+		dnsLogger.Info("No Chauffeur dnsmasq configuration found - no cleanup needed")
+		return nil
+	}
+	
+	dnsLogger.Info("Found Chauffeur dnsmasq configuration at /etc/dnsmasq.d/chauffeur.conf")
+	
+	fmt.Printf("\n%s", "Do you want to remove the Chauffeur dnsmasq configuration? [y/N]: ")
+	var response string
+	fmt.Scanln(&response)
+	
+	if strings.ToLower(response) != "y" && strings.ToLower(response) != "yes" {
+		dnsLogger.Info("Keeping dnsmasq configuration - file remains")
+		return nil
+	}
+	
+	dnsLogger.Info("Removing dnsmasq configuration...")
+	
+	if err := exec.Command("sudo", "rm", "-f", "/etc/dnsmasq.d/chauffeur.conf").Run(); err != nil {
+		return dnsLogger.Fail("remove dnsmasq configuration", err.Error())
+	}
+	
+	dnsLogger.Success("dnsmasq configuration removed", "Configuration file deleted")
+	
+	// Optionally restart dnsmasq (only if dnsmasq is still installed)
+	fmt.Printf("\n%s", "Do you want to restart dnsmasq to apply changes? [y/N]: ")
+	var restartResponse string
+	fmt.Scanln(&restartResponse)
+	
+	if strings.ToLower(restartResponse) == "y" || strings.ToLower(restartResponse) == "yes" {
+		if system.IsNetworkManagerDnsmasqRunning() {
+			dnsLogger.Info("NetworkManager is managing dnsmasq - reloading NetworkManager to apply changes...")
+			if err := exec.Command("sudo", "systemctl", "reload", "NetworkManager").Run(); err != nil {
+				dnsLogger.Fail("reload NetworkManager service", err.Error())
+			} else {
+				dnsLogger.Success("NetworkManager reloaded", "Changes applied via NetworkManager")
+			}
+		} else {
+			// Check if dnsmasq is still installed before trying to restart
+			if system.IsCommandAvailable("dnsmasq") {
+				dnsLogger.Info("Restarting dnsmasq...")
+				if err := exec.Command("sudo", "systemctl", "restart", "dnsmasq").Run(); err != nil {
+					return dnsLogger.Fail("restart dnsmasq service", err.Error())
+				}
+				dnsLogger.Success("dnsmasq restarted", "Changes applied")
+			} else {
+				dnsLogger.Info("dnsmasq package not found - skipping restart (Changes will apply when dnsmasq is reinstalled)")
+			}
+		}
+	} else {
+		if system.IsNetworkManagerDnsmasqRunning() {
+			dnsLogger.Info("NetworkManager not reloaded - changes will apply when NetworkManager restarts")
+		} else {
+			dnsLogger.Info("dnsmasq not restarted - changes will apply on next service restart")
+		}
+	}
+	
+	return nil
 }
 
 func printRemoveUsage() {

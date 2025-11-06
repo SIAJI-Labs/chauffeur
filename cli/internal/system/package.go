@@ -246,3 +246,105 @@ func IsCommandAvailable(cmd string) bool {
 	_, err := exec.LookPath(cmd)
 	return err == nil
 }
+
+/**
+ * IsNetworkManagerDnsmasqRunning checks if NetworkManager is running dnsmasq
+ *
+ * @return true if NetworkManager's dnsmasq is running and handling DNS resolution
+ */
+func IsNetworkManagerDnsmasqRunning() bool {
+	// Check if NetworkManager's dnsmasq is running by looking for the process
+	cmd := exec.Command("pgrep", "-f", "dnsmasq.*NetworkManager")
+	err := cmd.Run()
+	return err == nil
+}
+
+/**
+ * IsDnsmasqAvailable checks if dnsmasq is available for local DNS resolution
+ * This checks both standalone dnsmasq and NetworkManager's dnsmasq
+ *
+ * @return true if dnsmasq is available for resolving local domains
+ */
+func IsDnsmasqAvailable() bool {
+	// Check if NetworkManager's dnsmasq is running
+	if IsNetworkManagerDnsmasqRunning() {
+		return true
+	}
+	
+	// Check if standalone dnsmasq command is available
+	return IsCommandAvailable("dnsmasq")
+}
+
+/**
+ * SetupLocalDNSResolution configures dnsmasq for local .test domains
+ * Works with both NetworkManager's dnsmasq and standalone dnsmasq
+ *
+ * @return error if configuration fails
+ */
+func SetupLocalDNSResolution() error {
+	// First check if dnsmasq is available (NetworkManager or standalone)
+	if !IsDnsmasqAvailable() {
+		return fmt.Errorf("dnsmasq is not available on this system")
+	}
+	
+	// Check if configuration already exists in either location
+	configPaths := []string{
+		"/etc/dnsmasq.d/chauffeur.conf",
+		"/etc/NetworkManager/dnsmasq.d/chauffeur.conf",
+	}
+	
+	for _, configPath := range configPaths {
+		if _, err := os.Stat(configPath); err == nil {
+			// Configuration exists, restart the appropriate service
+			if IsNetworkManagerDnsmasqRunning() {
+				return exec.Command("sudo", "systemctl", "reload", "NetworkManager").Run()
+			} else {
+				return exec.Command("sudo", "systemctl", "restart", "dnsmasq").Run()
+			}
+		}
+	}
+	
+	// Install configuration in the appropriate location
+	var configPath string
+	var restartCmd *exec.Cmd
+	
+	if IsNetworkManagerDnsmasqRunning() {
+		configPath = "/etc/NetworkManager/dnsmasq.d/chauffeur.conf"
+		restartCmd = exec.Command("sudo", "systemctl", "reload", "NetworkManager")
+	} else {
+		// Create dnsmasq.d directory if it doesn't exist for standalone dnsmasq
+		if err := exec.Command("sudo", "install", "-d", "-m", "755", "/etc/dnsmasq.d").Run(); err != nil {
+			return fmt.Errorf("failed to create dnsmasq.d directory: %w", err)
+		}
+		configPath = "/etc/dnsmasq.d/chauffeur.conf"
+		restartCmd = exec.Command("sudo", "systemctl", "restart", "dnsmasq")
+	}
+	
+	// Create the configuration file
+	configContent := `# Chauffeur local development resolver
+# Redirect all *.test domains to localhost
+address=/.test/127.0.0.1
+# Only listen locally
+listen-address=127.0.0.1
+bind-interfaces
+`
+	
+	// Write configuration using tee
+	cmd := exec.Command("sudo", "tee", configPath)
+	cmd.Stdin = strings.NewReader(configContent)
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to write dnsmasq configuration: %w", err)
+	}
+	
+	// Restart the appropriate service
+	if err := restartCmd.Run(); err != nil {
+		// For standalone dnsmasq, don't fail hard on restart errors
+		// as it might conflict with NetworkManager's dnsmasq
+		if !IsNetworkManagerDnsmasqRunning() {
+			return fmt.Errorf("failed to restart dnsmasq service: %w", err)
+		}
+		// If NetworkManager is handling dnsmasq, the reload is sufficient
+	}
+	
+	return nil
+}

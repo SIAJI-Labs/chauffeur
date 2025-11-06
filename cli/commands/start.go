@@ -7,9 +7,83 @@ import (
 	"strings"
 
 	"github.com/siaji/chauffeur/cli/internal/config"
+	"github.com/siaji/chauffeur/cli/internal/logging"
 	"github.com/siaji/chauffeur/cli/internal/services"
+	"github.com/siaji/chauffeur/cli/internal/system"
 	"github.com/siaji/chauffeur/cli/internal/workspace"
 )
+
+/**
+ * checkDnsmasqConfiguration validates if dnsmasq is configured for local domain resolution.
+ *
+ * @param logger Command logger for status reporting.
+ * @return error if dnsmasq is not configured and user declines to configure it.
+ */
+func checkDnsmasqConfiguration(logger *logging.CommandLogger) error {
+	logger.Info("Checking dnsmasq configuration for local domain resolution...")
+	
+	dnsLogger := logger.NewChildLogger("dns")
+	
+	// Check if dnsmasq is available (NetworkManager or standalone)
+	if !system.IsDnsmasqAvailable() {
+		return dnsLogger.Fail("dnsmasq not available", "Install dnsmasq first")
+	}
+	
+	// Check if chauffeur.conf exists in either location
+	configPaths := []string{
+		"/etc/dnsmasq.d/chauffeur.conf",
+		"/etc/NetworkManager/dnsmasq.d/chauffeur.conf",
+	}
+	
+	for _, configPath := range configPaths {
+		if _, err := os.Stat(configPath); err == nil {
+			if strings.Contains(configPath, "NetworkManager") {
+				dnsLogger.Success("dnsmasq configuration found", configPath+" (NetworkManager)")
+			} else {
+				dnsLogger.Success("dnsmasq configuration found", configPath+" (standalone)")
+			}
+			return nil
+		}
+	}
+	
+	dnsLogger.Warn("dnsmasq configuration not found", "Local .test domains won't resolve")
+	dnsLogger.Info("Chauffeur requires dnsmasq configuration to resolve .test domains")
+	dnsLogger.Info("Add this configuration to make .test domains resolve to localhost:")
+	
+	fmt.Printf("\n%s\n", colorize(colorYellow, "Required dnsmasq configuration:"))
+	fmt.Printf("sudo install -d -m 755 /etc/dnsmasq.d\n")
+	fmt.Printf("sudo tee /etc/dnsmasq.d/chauffeur.conf >/dev/null <<'EOF'\n")
+	fmt.Printf("# Chauffeur local development resolver\n")
+	fmt.Printf("# Redirect all *.test domains to localhost\n")
+	fmt.Printf("address=/.test/127.0.0.1\n")
+	fmt.Printf("# Only listen locally\n")
+	fmt.Printf("listen-address=127.0.0.1\n")
+	fmt.Printf("bind-interfaces\n")
+	fmt.Printf("EOF\n")
+	
+	fmt.Printf("\n%s", colorize(colorYellow, "Do you want to add this configuration now? [y/N]: "))
+	var response string
+	fmt.Scanln(&response)
+	
+	if strings.ToLower(response) != "y" && strings.ToLower(response) != "yes" {
+		return dnsLogger.Fail("configuration declined", "Local .test domains will not work without this configuration")
+	}
+	
+	// Use the new unified setup function
+	if err := system.SetupLocalDNSResolution(); err != nil {
+		if system.IsNetworkManagerDnsmasqRunning() {
+			// Don't fail hard for NetworkManager conflicts
+			dnsLogger.Warn("dnsmasq setup completed with warnings", "NetworkManager is managing DNS resolution")
+			dnsLogger.Info("Local .test domains should now resolve to localhost (Configuration updated via NetworkManager)")
+		} else {
+			return dnsLogger.Fail("setup dnsmasq configuration", err.Error())
+		}
+	} else {
+		dnsLogger.Success("dnsmasq configuration completed", "Local .test domains should now resolve to localhost")
+	}
+	
+	return nil
+}
 
 /**
  * RunStart starts Chauffeur services.
@@ -61,6 +135,14 @@ func RunStart(args []string) error {
 	// Ensure workspace exists
 	if err := workspace.Ensure(); err != nil {
 		return fmt.Errorf("ensure workspace: %w", err)
+	}
+
+	// Create command logger
+	logger := logging.NewCommandLogger("start")
+
+	// Check dnsmasq configuration before starting services
+	if err := checkDnsmasqConfiguration(logger); err != nil {
+		return err
 	}
 
 	// Create service manager

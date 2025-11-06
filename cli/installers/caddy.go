@@ -19,6 +19,16 @@ import (
 	"github.com/siaji/chauffeur/cli/lib"
 )
 
+const (
+	colorReset  = "\033[0m"
+	colorYellow = "\033[33m"
+)
+
+// Helper function for colored output
+func colorize(color, text string) string {
+	return color + text + colorReset
+}
+
 const caddyBinaryName = "caddy"
 
 // InstallOptions drives installer behavior.
@@ -44,6 +54,11 @@ func InstallCaddyTarball(opts InstallOptions) error {
 
 	// Check for DNS resolution dependencies
 	if err := checkDNSResolution(caddyLogger); err != nil {
+		return err
+	}
+
+	// Check dnsmasq configuration for local domains
+	if err := checkDnsmasqConfiguration(caddyLogger); err != nil {
 		return err
 	}
 
@@ -95,7 +110,7 @@ func InstallCaddyTarball(opts InstallOptions) error {
 	defer os.RemoveAll(tmpDir)
 
 	tarballPath := filepath.Join(tmpDir, assetName)
-	size, err := lib.DownloadToFile(client, tarballURL, tarballPath, fmt.Sprintf("Download %s", assetName))
+	size, err := lib.DownloadToFileWithLogger(client, tarballURL, tarballPath, fmt.Sprintf("- Download %s", assetName), downloadLogger)
 	if err != nil {
 		return caddyLogger.Fail("download caddy tarball", err.Error())
 	}
@@ -237,11 +252,33 @@ func writeDefaultCaddyfile(prefix string) error {
 		return fmt.Errorf("stat Caddyfile: %w", err)
 	}
 
-	content := `{
+	// Read global config to get correct port settings
+	configPath := filepath.Join(prefix, "config", "chauffeur.yaml")
+	httpPort := "8080"
+	httpsPort := "8443"
+	
+	if configData, err := os.ReadFile(configPath); err == nil {
+		configContent := string(configData)
+		// Simple parsing for port settings - in production you'd use a proper YAML parser
+		lines := strings.Split(configContent, "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if strings.HasPrefix(line, "http_port:") {
+				httpPort = strings.TrimSpace(strings.TrimPrefix(line, "http_port:"))
+			}
+			if strings.HasPrefix(line, "https_port:") {
+				httpsPort = strings.TrimSpace(strings.TrimPrefix(line, "https_port:"))
+			}
+		}
+	}
+
+	content := fmt.Sprintf(`{
 	auto_https off
+	http_port %s
+	https_port %s
 }
 # Project sites are appended by chauf link
-`
+`, httpPort, httpsPort)
 
 	if err := os.WriteFile(dest, []byte(content), 0o644); err != nil {
 		return fmt.Errorf("write default Caddyfile: %w", err)
@@ -336,6 +373,80 @@ func fetchCaddyChecksum(client *http.Client, url, assetName string, fromList boo
 }
 
 /**
+ * checkDnsmasqConfiguration validates if dnsmasq is configured for local domain resolution.
+ *
+ * @param logger Command logger for status reporting.
+ * @return error if dnsmasq is not configured and user declines to configure it.
+ */
+func checkDnsmasqConfiguration(logger *logging.CommandLogger) error {
+	logger.Info("Checking dnsmasq configuration for local domain resolution...")
+	
+	dnsLogger := logger.NewChildLogger("dns")
+	
+	// Check if dnsmasq is available (NetworkManager or standalone)
+	if !system.IsDnsmasqAvailable() {
+		return dnsLogger.Fail("dnsmasq not available", " Install dnsmasq first")
+	}
+	
+	// Check if chauffeur.conf exists in either location
+	configPaths := []string{
+		"/etc/dnsmasq.d/chauffeur.conf",
+		"/etc/NetworkManager/dnsmasq.d/chauffeur.conf",
+	}
+	
+	for _, configPath := range configPaths {
+		if _, err := os.Stat(configPath); err == nil {
+			if strings.Contains(configPath, "NetworkManager") {
+				dnsLogger.Success("dnsmasq configuration found", configPath+" (NetworkManager)")
+			} else {
+				dnsLogger.Success("dnsmasq configuration found", configPath+" (standalone)")
+			}
+			return nil
+		}
+	}
+	
+	dnsLogger.Warn("dnsmasq configuration not found", "Local .test domains won't resolve")
+	dnsLogger.Info("Chauffeur requires dnsmasq configuration to resolve .test domains")
+	dnsLogger.Info("Add this configuration to make .test domains resolve to localhost:")
+	
+	fmt.Printf("\n%s\n", colorize(colorYellow, "Required dnsmasq configuration:"))
+	fmt.Printf("sudo install -d -m 755 /etc/dnsmasq.d\n")
+	fmt.Printf("sudo tee /etc/dnsmasq.d/chauffeur.conf >/dev/null <<'EOF'\n")
+	fmt.Printf("# Chauffeur local development resolver\n")
+	fmt.Printf("# Redirect all *.test domains to localhost\n")
+	fmt.Printf("address=/.test/127.0.0.1\n")
+	fmt.Printf("# Only listen locally\n")
+	fmt.Printf("listen-address=127.0.0.1\n")
+	fmt.Printf("bind-interfaces\n")
+	fmt.Printf("EOF\n")
+	
+	fmt.Printf("\n%s", colorize(colorYellow, "Do you want to add this configuration now? [y/N]: "))
+	var response string
+	fmt.Scanln(&response)
+	
+	if strings.ToLower(response) != "y" && strings.ToLower(response) != "yes" {
+		return dnsLogger.Fail("configuration declined", "Local .test domains will not work without this configuration")
+	}
+	
+	// Use the new unified setup function
+	if err := system.SetupLocalDNSResolution(); err != nil {
+		if system.IsNetworkManagerDnsmasqRunning() {
+			// Don't fail hard for NetworkManager conflicts
+			dnsLogger.Warn("dnsmasq setup completed with warnings", "NetworkManager is managing DNS resolution")
+			dnsLogger.Info("Local .test domains should now resolve to localhost (Configuration updated via NetworkManager)")
+		} else {
+			return dnsLogger.Fail("setup dnsmasq configuration", err.Error())
+		}
+	} else {
+		dnsLogger.Success("dnsmasq configuration completed", "Local .test domains should now resolve to localhost")
+	}
+	
+	return nil
+}
+
+
+
+/**
  * checkDNSResolution checks for available DNS resolution packages and provides guidance.
  *
  * @param logger Command logger for status reporting.
@@ -347,12 +458,16 @@ func checkDNSResolution(logger *logging.CommandLogger) error {
 	dnsLogger := logger.NewChildLogger("dns")
 	
 	// Check if required commands are available
-	hasDnsmasq := system.IsCommandAvailable("dnsmasq")
+	hasDnsmasq := system.IsDnsmasqAvailable()
 	hasResolvectl := system.IsCommandAvailable("resolvectl")
 	pm := system.DetectPackageManager()
 	
 	if hasDnsmasq && hasResolvectl {
-		dnsLogger.Success("DNS resolution dependencies are satisfied", "dnsmasq and resolvectl available")
+		if system.IsNetworkManagerDnsmasqRunning() {
+			dnsLogger.Success("DNS resolution dependencies are satisfied", "NetworkManager dnsmasq and resolvectl available")
+		} else {
+			dnsLogger.Success("DNS resolution dependencies are satisfied", "standalone dnsmasq and resolvectl available")
+		}
 		return nil
 	}
 	
@@ -361,7 +476,11 @@ func checkDNSResolution(logger *logging.CommandLogger) error {
 	}
 	
 	if !hasDnsmasq {
-		dnsLogger.Warn("dnsmasq not found", "local .test domains may not resolve")
+		if system.IsNetworkManagerDnsmasqRunning() {
+			dnsLogger.Warn("NetworkManager dnsmasq not running", "local .test domains may not resolve")
+		} else {
+			dnsLogger.Warn("dnsmasq not available", "local .test domains may not resolve")
+		}
 		
 		// Get missing packages list
 		missing := system.GetMissingPackages()
