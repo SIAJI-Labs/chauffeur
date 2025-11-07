@@ -256,8 +256,7 @@ func RunStart(args []string) error {
 
 	// Start services
 	for _, service := range servicesToStart {
-		fmt.Printf("Starting %s...\n", service.Name)
-
+		// Check if service is already running
 		status, err := manager.GetStatus(service)
 		if err != nil {
 			fmt.Printf("Warning: Could not check status of %s: %v\n", service.Name, err)
@@ -266,7 +265,11 @@ func RunStart(args []string) error {
 			continue
 		}
 
+		// Start with spinner for active processes
+		spin := lib.NewSpinner("start", fmt.Sprintf("Starting %s", service.Name))
+		
 		if err := manager.Start(service); err != nil {
+			spin.Fail("failed to start")
 			fmt.Printf("  ✗ Failed to start %s: %v\n", service.Name, err)
 			continue
 		}
@@ -274,9 +277,10 @@ func RunStart(args []string) error {
 		// Verify it started successfully
 		status, err = manager.GetStatus(service)
 		if err != nil {
+			spin.Fail("started but verification failed")
 			fmt.Printf("  ⚠ Started %s but could not verify status\n", service.Name)
 		} else {
-			fmt.Printf("  ✓ %s started successfully (%s)\n", service.Name, status)
+			spin.Success(status + " started successfully")
 		}
 	}
 

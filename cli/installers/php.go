@@ -145,7 +145,7 @@ func GetSupportedVersionsList() string {
  */
 func InstallPHPSource(version string, opts InstallOptions) (err error) {
 	phpLogger := lib.NewCommandLogger("php")
-	
+
 	if opts.Prefix == "" {
 		return phpLogger.Fail("install prefix is required", "")
 	}
@@ -212,7 +212,7 @@ func InstallPHPSource(version string, opts InstallOptions) (err error) {
 	phpLogger.Info("Downloading")
 	downloadLogger := phpLogger.NewChildLogger("download")
 	downloadLogger.Info(fmt.Sprintf("Attempting download of %s", tarballName))
-	
+
 	for _, url := range tarballURLs {
 		tarballPath := filepath.Join(tmpDir, tarballName)
 		size, err := lib.DownloadToFileWithLogger(opts.Client, url, tarballPath, fmt.Sprintf("Download %s", tarballName), downloadLogger)
@@ -233,10 +233,13 @@ func InstallPHPSource(version string, opts InstallOptions) (err error) {
 
 	phpLogger.Info("Verifying")
 	verificationLogger := phpLogger.NewChildLogger("verifying")
-	verificationLogger.Info("Validating GPG signature...")
+	// Add spinner for GPG verification
+	verificationSpin := lib.NewSpinner("verify", "Validating GPG signature")
 	if err := verifyPHPSignature(verificationLogger, opts.Client, tarballPath, tarballName, tmpDir); err != nil {
+		verificationSpin.Fail("GPG signature verification failed")
 		return phpLogger.Fail("verify GPG signature", err.Error())
 	}
+	verificationSpin.Success("GPG validation complete")
 
 	phpLogger.Info("Building")
 	buildLogger := phpLogger.NewChildLogger("build")
@@ -551,14 +554,14 @@ func ensureOpenSSL111(workspacePrefix, vendorPrefix string, client *http.Client,
 	if logger == nil {
 		logger = lib.NewCommandLogger("install")
 	}
-	
+
 	// Safe log function that handles nil logf
 	safeLogf := func(format string, args ...interface{}) {
 		if logf != nil {
 			logf(format, args...)
 		}
 	}
-	
+
 	expected := strings.ToLower(openssl111wExpectedSHA256)
 	if len(expected) != 64 {
 		return fmt.Errorf("invalid expected SHA256 length: %d", len(expected))

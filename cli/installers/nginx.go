@@ -78,7 +78,7 @@ var nginxSigningKeys = []nginxSigningKey{
  */
 func InstallNginxSource(opts InstallOptions) error {
 	nginxLogger := lib.NewCommandLogger("nginx")
-	
+
 	if opts.Prefix == "" {
 		return nginxLogger.Fail("install prefix is required", "")
 	}
@@ -286,7 +286,7 @@ func fetchNginxChecksum(client *http.Client, release releases.GitHubRelease, tag
  */
 func verifyNginxSignature(client *http.Client, tarballPath, tarballName, workDir string, parentLogger *lib.Logger) error {
 	logger := parentLogger.NewChildLogger("verifying")
-	
+
 	if _, err := exec.LookPath("gpg"); err != nil {
 		return logger.Fail("gpg not found in PATH", err.Error())
 	}
@@ -342,7 +342,7 @@ func verifyNginxSignature(client *http.Client, tarballPath, tarballName, workDir
  */
 func importNginxKey(gpgHome, keyPath, fingerprint string, optional bool, name string) error {
 	logger := lib.NewCommandLogger("install")
-	
+
 	fp, err := readKeyFingerprint(gpgHome, keyPath)
 	if err != nil {
 		if optional {
@@ -457,7 +457,7 @@ func readFingerprintFallback(gpgHome, keyPath string) (string, error) {
  */
 func evaluateFingerprint(actual, expected, name string, optional bool) (bool, error) {
 	logger := lib.NewCommandLogger("install")
-	
+
 	if strings.EqualFold(actual, expected) {
 		return true, nil
 	}
@@ -698,6 +698,9 @@ func untar(tarball, dest string) error {
  * @return error when configure/build/install steps fail.
  */
 func buildAndInstallNginx(prefix, sourceDir string) error {
+	// Start spinner for nginx configuration and compilation
+	spin := lib.NewSpinner("nginx", "Configuring and compiling nginx")
+
 	confArgs := []string{
 		"--prefix=" + filepath.Join(prefix, "nginx"),
 		"--conf-path=" + filepath.Join(prefix, "nginx", "etc", "nginx.conf"),
@@ -710,6 +713,7 @@ func buildAndInstallNginx(prefix, sourceDir string) error {
 	}
 
 	if err := runCommand(sourceDir, "./configure", confArgs...); err != nil {
+		spin.Fail("configuration failed")
 		return fmt.Errorf("configure nginx: %w", err)
 	}
 
@@ -718,13 +722,16 @@ func buildAndInstallNginx(prefix, sourceDir string) error {
 		makeArgs = append(makeArgs, fmt.Sprintf("%d", n))
 	}
 	if err := runCommand(sourceDir, "make", makeArgs...); err != nil {
+		spin.Fail("compilation failed")
 		return fmt.Errorf("make nginx: %w", err)
 	}
 
 	if err := runCommand(sourceDir, "make", "install"); err != nil {
+		spin.Fail("installation failed")
 		return fmt.Errorf("make install nginx: %w", err)
 	}
 
+	spin.Success(filepath.Join(prefix, "nginx", "sbin", "nginx"))
 	return nil
 }
 

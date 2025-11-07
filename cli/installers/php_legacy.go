@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	
+
 	"github.com/siaji/chauffeur/cli/lib"
 )
 
@@ -57,7 +57,7 @@ func patchLegacyLibxml(logger *lib.Logger, sourceDir string) error {
 `)
 
 		logger.Info("Injecting ATTRIBUTE_UNUSED shim for libxml >= 2.12")
-			logger.Info("Adjusting libxml handler casting for legacy build")
+		logger.Info("Adjusting libxml handler casting for legacy build")
 		data = append(snippet, data...)
 		modified = true
 	}
@@ -95,7 +95,7 @@ func patchLegacyOpenSSL(logger *lib.Logger, sourceDir string) error {
 	logPHPInfo(logger, "Patching OpenSSL file: %s", target)
 	logPHPInfo(logger, "Adjusting EVP_PKEY RSA accessor for OpenSSL 3.x const correctness")
 	logPHPInfo(logger, "Injecting OpenSSL 3.x compatibility shims")
-			logPHPInfo(logger, "Patching OpenSSL shims in: %s", target)
+	logPHPInfo(logger, "Patching OpenSSL shims in: %s", target)
 
 	// Check if file exists before trying to read
 	if _, err := os.Stat(target); os.IsNotExist(err) {

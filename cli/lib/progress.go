@@ -9,15 +9,15 @@ import (
 
 // progressPrinter provides real-time progress tracking for downloads and file operations
 type progressPrinter struct {
-	logger     *Logger
-	command    string
-	label      string
-	total      int64
-	current    int64
-	width      int
-	lastPrint  time.Time
-	done       bool
-	callCount  int
+	logger    *Logger
+	command   string
+	label     string
+	total     int64
+	current   int64
+	width     int
+	lastPrint time.Time
+	done      bool
+	callCount int
 }
 
 // progressSpinner provides animated spinner for indeterminate operations
@@ -44,10 +44,10 @@ func NewSpinner(command, message string) *progressSpinner {
 	if s.enabled {
 		s.stop = make(chan struct{})
 		s.done = make(chan struct{})
-		fmt.Printf("\r[%s] %s %s%s", command, message, string(spinnerFrames[0]), gray(""))
+		fmt.Printf("\r[ %s ] %s %s%s", command, message, string(spinnerFrames[0]), gray(""))
 		go s.loop(1)
 	} else {
-		fmt.Printf("[%s] %s...\n", command, message)
+		fmt.Printf("[ %s ] %s...\n", command, message)
 	}
 	return s
 }
@@ -60,10 +60,11 @@ func (s *progressSpinner) Success(summary string) {
 	elapsed := time.Since(s.startTime)
 	s.stopSpinner()
 	if s.enabled {
+		durationStr := formatDuration(elapsed)
 		if summary != "" {
-			fmt.Printf("\r[%s] %s %s %s (%s)\n", s.command, s.message, green("✓"), summary, gray(formatDuration(elapsed)))
+			fmt.Printf("\r[ %s ] %s %s %s (%s)\n", s.command, s.message, green("✓"), summary, gray(durationStr))
 		} else {
-			fmt.Printf("\r[%s] %s %s (%s)\n", s.command, s.message, green("✓"), gray(formatDuration(elapsed)))
+			fmt.Printf("\r[ %s ] %s %s (%s)\n", s.command, s.message, green("✓"), gray(durationStr))
 		}
 	} else {
 		fmt.Printf("    %s %s (%s)\n", "→", summary, formatDuration(elapsed))
@@ -78,10 +79,11 @@ func (s *progressSpinner) Fail(summary string) {
 	elapsed := time.Since(s.startTime)
 	s.stopSpinner()
 	if s.enabled {
+		durationStr := formatDuration(elapsed)
 		if summary != "" {
-			fmt.Printf("\r[%s] %s %s %s (%s)\n", s.command, s.message, red("✗"), summary, gray(formatDuration(elapsed)))
+			fmt.Printf("\r[%s] %s %s %s (%s)\n", s.command, s.message, red("✗"), summary, gray(durationStr))
 		} else {
-			fmt.Printf("\r[%s] %s %s (%s)\n", s.command, s.message, red("✗"), gray(formatDuration(elapsed)))
+			fmt.Printf("\r[%s] %s %s (%s)\n", s.command, s.message, red("✗"), gray(durationStr))
 		}
 	} else {
 		fmt.Printf("    %s %s (%s)\n", "✗", summary, formatDuration(elapsed))
@@ -97,7 +99,9 @@ func (s *progressSpinner) loop(startIndex int) {
 		case <-ticker.C:
 			elapsed := time.Since(s.startTime)
 			dots := s.getEllipsis()
-			fmt.Printf("\r[%s] %s %s %s %s", s.command, s.message, string(spinnerFrames[i%len(spinnerFrames)]), gray(formatDuration(elapsed)+dots))
+			durationStr := formatDuration(elapsed)
+	// Use the same format as initialization: \r[ %s ] %s %s%s
+	fmt.Printf("\r[ %s ] %s %s%s", s.command, s.message, string(spinnerFrames[i%len(spinnerFrames)]), gray(durationStr+dots))
 			i++
 			s.dotCounter = (s.dotCounter + 1) % 4
 		case <-s.stop:
@@ -125,8 +129,6 @@ func (s *progressSpinner) stopSpinner() {
 	close(s.stop)
 	<-s.done
 }
-
-
 
 // color helpers using logger - these create temporary loggers for color formatting
 func green(text string) string {
@@ -198,7 +200,7 @@ func NewProgressPrinterWithLoggerAndCommand(label string, total int64, logger *L
 	if command == "" {
 		command = "install" // fallback
 	}
-	
+
 	return &progressPrinter{
 		logger:    logger,
 		command:   command,
@@ -220,7 +222,7 @@ func NewProgressPrinterWithLogger(label string, total int64, logger *Logger) *pr
 	} else if strings.Contains(label, "php") {
 		command = "php"
 	}
-	
+
 	return NewProgressPrinterWithLoggerAndCommand(label, total, logger, command)
 }
 
@@ -228,7 +230,7 @@ func NewProgressPrinterWithLogger(label string, total int64, logger *Logger) *pr
 func (p *progressPrinter) Write(b []byte) (int, error) {
 	n := len(b)
 	p.current += int64(n)
-	
+
 	// Throttle updates to prevent spam (max every 250ms)
 	// Also update on completion regardless of timing
 	if time.Since(p.lastPrint) >= 250*time.Millisecond || p.current == p.total {
@@ -258,17 +260,16 @@ func (p *progressPrinter) render() {
 			filled = p.width
 		}
 		bar := strings.Repeat("#", filled) + strings.Repeat(".", p.width-filled)
-		
+
 		// Adjust display for terminal width to prevent wrapping/spam
 		abbreviatedLabel := p.abbreviateLabel(p.label)
-		
+
 		// Update the same line (no spam - single line progress)
 		fmt.Printf("\r\033[K[%s] %s... [%s] %3.0f%%", p.command, abbreviatedLabel, bar, ratio*100)
 	} else {
 		fmt.Printf("\r\033[K[%s] %s... %s", p.command, p.label, HumanBytes(p.current))
 	}
 	// Flush output to ensure immediate display
-	fmt.Printf("")
 	p.lastPrint = time.Now()
 }
 
@@ -279,17 +280,17 @@ func (p *progressPrinter) abbreviateLabel(label string) string {
 	if width, err := getTerminalWidth(); err == nil && width > 0 {
 		termWidth = width
 	}
-	
+
 	// Calculate maximum safe length for the label part
 	// Format: [command] label... [bar] 100%
 	// More aggressive: assume tighter terminal widths
 	maxLabelLength := termWidth - 25 // command prefix + progress bar + percentage (more conservative)
-	
+
 	// Ensure minimum reasonable label length
 	if maxLabelLength < 10 {
 		maxLabelLength = 10
 	}
-	
+
 	abbreviated := label
 	// Always abbreviate long downloads to prevent wrapping regardless of terminal width
 	if len(label) > 25 || len(label) > maxLabelLength {
@@ -309,7 +310,7 @@ func (p *progressPrinter) abbreviateLabel(label string) string {
 			abbreviated = label[:maxLabelLength-3] + "..."
 		}
 	}
-	
+
 	return abbreviated
 }
 
@@ -325,7 +326,7 @@ func (p *progressPrinter) abbreviateFilename(filename string) string {
 			}
 		}
 	}
-	
+
 	// Compact filename: name + only version number
 	if strings.Contains(filename, ".tar.gz") {
 		// Extract just version number (e.g., "2.10.2") from the filename
@@ -340,12 +341,12 @@ func (p *progressPrinter) abbreviateFilename(filename string) string {
 			}
 		}
 	}
-	
+
 	// Aggressive truncation for very long names
 	if len(filename) > 25 {
 		return filename[:15] + "..." + filename[len(filename)-5:]
 	}
-	
+
 	return filename
 }
 
