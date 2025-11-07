@@ -98,6 +98,7 @@ Ensure information consistency across all three documentation files:
 | `chauf init` | `--force`, `--quiet` | Initialize Chauffeur workspace in `~/.chauffeur/` (idempotent). Creates default dirs and templates. |
 | `chauf start` | `--project <path?>`, `--all`, `--dry-run` | Start services for current project (or all registered with `--all`). |
 | `chauf stop` | `--project <path?>`, `--all`, `--dry-run` | Stop services. |
+| `chauf status` | `[service-type]`, `--project <slug>`, `--detail`, `-v` | Show status of Chauffeur services with running state. Can filter by service type (nginx, caddy, php-fpm) or project. Use `--detail` for verbose output. |
 | `chauf remove` | `--force`, `<service>`, `[<version>]` | Remove installed service (php, nginx, caddy). Use `--force` to skip confirmation prompts. PHP version can be specified for per-version removal. For caddy, includes dnsmasq validation with double confirmation to prevent system damage. |
 | `chauf uninstall` | `--purge` | Remove Chauffeur workspace. `--purge` also deletes caches and installed runtimes. |
 | `chauf link` | `--site <domain>`, `--ssl`, `--php <version>`, `--force` | Register **PWD** as a project. Creates `project.yaml`, prepares runtime/log dirs, automatically assigns `<slug>.test` domain unless `--site` specified, map local domain via Caddy, set default PHP for this project. Validates specified PHP version is installed. |
@@ -455,10 +456,53 @@ type LoggerConfig struct {
 ```
 
 **Integration Points:**
-- All command handlers should create a logger instance
-- Replace `fmt.Printf` calls with logger methods
-- Ensure consistent prefix usage: `[ command-name ]`
+- All command handlers should create a logger instance using `lib.NewCommandLogger()`
+- Replace `fmt.Printf` calls with structured logger methods (`logger.Info()`, `logger.Success()`, etc.)
+- Ensure consistent prefix usage: `[ command-name ]` 
 - Add appropriate color and formatting based on output type
+
+# **IMPORTANT REQUIREMENT: MANDATORY USAGE PATTERN**
+All repetitive operations and logging calls MUST use the new lib.Logger system. Direct fmt.Printf calls with manual formatting are PROHIBITED because they bypass the structured logging system.
+
+# **Correct Usage Examples**:
+```go
+// Create logger instance
+logger := lib.NewCommandLogger("install")
+
+// Use structured logging methods
+logger.Info("Installing nginx")
+logger.Success("Installation complete", "path/to/binary")
+logger.Warn("Optional feature not available", "consider enabling")
+
+// Use child loggers for nested operations
+buildLogger := logger.NewChildLogger("php")
+buildLogger.Info("Starting compilation")
+
+# **PROHIBITED PATTERNS:**
+```go
+// ❌ WRONG - Direct fmt.Printf calls break logging hierarchy
+fmt.Printf("[install] Installing nginx\n")
+
+// ❌ WRONG - Manual spinner creation bypasses lib logging
+spin := progressSpinner{...} // Use lib.NewSpinner instead
+
+// ❌ WRONG - Manual progress printing bypasses lib progress tracking
+fmt.Printf("Progress: 50%%\n") // Use lib.NewProgressPrinter instead
+```
+
+# **Integration Examples:**
+```go
+// Replace existing patterns like this:
+fmt.Printf("\r[ %s ] %s %s %s (%s)\n", s.command, s.message, green("✓"), summary, gray(durationStr))
+
+// With lib.Logger:
+logger := lib.NewCommandLogger(s.command)
+logger.Success(summary, "")
+
+// For spinner animations - ALWAYS use lib lib:
+spin := lib.NewSpinner("command", "message")
+spin.Success("operation completed")
+```
 
 ### 5.1.8) Log File Structure
 
