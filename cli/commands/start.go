@@ -171,7 +171,7 @@ func RunStart(args []string) error {
 			}
 			projectServices, err := manager.ListProjectServices(projectSlug)
 			if err != nil {
-				fmt.Printf("Warning: Could not load services for project %s: %v\n", projectSlug, err)
+				logger.Warn(fmt.Sprintf("Could not load services for project %s", projectSlug), fmt.Sprintf("error: %v", err))
 				continue
 			}
 			servicesToStart = append(servicesToStart, projectServices...)
@@ -213,7 +213,7 @@ func RunStart(args []string) error {
 					for _, projectSlug := range projects {
 						projectServices, err := manager.ListProjectServices(projectSlug)
 						if err != nil {
-							fmt.Printf("Warning: Could not load services for project %s: %v\n", projectSlug, err)
+							logger.Warn(fmt.Sprintf("Could not load services for project %s", projectSlug), fmt.Sprintf("error: %v", err))
 							continue
 						}
 						servicesToStart = append(servicesToStart, projectServices...)
@@ -246,7 +246,7 @@ func RunStart(args []string) error {
 	}
 
 	if dryRun {
-		fmt.Printf("Would start %d services:\n", len(servicesToStart))
+		logger.Info(fmt.Sprintf("Would start %d services:", len(servicesToStart)))
 		for _, service := range servicesToStart {
 			status, _ := manager.GetStatus(service)
 			fmt.Printf("  - %s (%s)\n", service.Name, status)
@@ -259,7 +259,7 @@ func RunStart(args []string) error {
 		// Check if service is already running
 		status, err := manager.GetStatus(service)
 		if err != nil {
-			fmt.Printf("Warning: Could not check status of %s: %v\n", service.Name, err)
+			logger.Warn(fmt.Sprintf("Could not check status of %s", service.Name), fmt.Sprintf("error: %v", err))
 		} else if status != "stopped" {
 			fmt.Printf("  ✓ %s is already %s\n", service.Name, status)
 			continue
@@ -270,7 +270,7 @@ func RunStart(args []string) error {
 		
 		if err := manager.Start(service); err != nil {
 			spin.Fail("failed to start")
-			fmt.Printf("  ✗ Failed to start %s: %v\n", service.Name, err)
+			logger.Error(fmt.Sprintf("Failed to start %s", service.Name), err.Error())
 			continue
 		}
 
@@ -278,7 +278,7 @@ func RunStart(args []string) error {
 		status, err = manager.GetStatus(service)
 		if err != nil {
 			spin.Fail("started but verification failed")
-			fmt.Printf("  ⚠ Started %s but could not verify status\n", service.Name)
+			logger.Warn(fmt.Sprintf("Started %s but could not verify status", service.Name), "")
 		} else {
 			spin.Success(status + " started successfully")
 		}

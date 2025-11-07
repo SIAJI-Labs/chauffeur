@@ -11,6 +11,7 @@ import (
 	"github.com/siaji/chauffeur/cli/installers"
 	"github.com/siaji/chauffeur/cli/internal/system"
 	"github.com/siaji/chauffeur/cli/internal/workspace"
+	"github.com/siaji/chauffeur/cli/lib"
 )
 
 /**
@@ -20,6 +21,8 @@ import (
  * @return error when parsing fails or an installation step errors.
  */
 func RunInstall(args []string) error {
+	logger := lib.NewCommandLogger("install")
+
 	if len(args) == 0 {
 		printInstallUsage()
 		return errors.New("no services specified")
@@ -104,15 +107,15 @@ func RunInstall(args []string) error {
 				return err
 			}
 			if ok && !force {
-				fmt.Printf("%s already installed at %s\n", spec.name, spec.binaryPath)
+				logger.Info(fmt.Sprintf("%s already installed at %s", spec.name, spec.binaryPath))
 				continue
 			}
 
-			fmt.Printf("Installing %s (%s)...\n", spec.name, spec.description)
+			logger.Info(fmt.Sprintf("Installing %s (%s)...", spec.name, spec.description))
 			if err := spec.install(force); err != nil {
-				return fmt.Errorf("install %s: %w", spec.name, err)
+				return logger.Error(fmt.Sprintf("install %s", spec.name), err.Error())
 			}
-			fmt.Printf("Installed %s successfully.\n", spec.name)
+			logger.Success(fmt.Sprintf("Installed %s successfully", spec.name), "")
 		}
 	}
 
@@ -134,6 +137,8 @@ func isValidPHPVersion(s string) bool {
  * runPHPInstall handles PHP installation with version selection.
  */
 func runPHPInstall(version string, force bool) error {
+	logger := lib.NewCommandLogger("install")
+
 	var err error
 
 	// If no version specified, show interactive selection
@@ -164,15 +169,15 @@ func runPHPInstall(version string, force bool) error {
 		return err
 	}
 
-	fmt.Printf("Installing PHP %s...\n", version)
+	logger.Info(fmt.Sprintf("Installing PHP %s...", version))
 	if err := installers.InstallPHPSource(version, installers.InstallOptions{
 		Prefix: prefix,
 		Force:  force,
 		Info:   info,
 	}); err != nil {
-		return fmt.Errorf("install php %s: %w", version, err)
+		return logger.Error(fmt.Sprintf("install php %s", version), err.Error())
 	}
-	fmt.Printf("Installed PHP %s successfully.\n", version)
+	logger.Success(fmt.Sprintf("Installed PHP %s successfully", version), "")
 
 	return nil
 }
@@ -181,7 +186,8 @@ func runPHPInstall(version string, force bool) error {
  * selectPHPVersion shows an interactive menu for PHP version selection.
  */
 func selectPHPVersion() (string, error) {
-	fmt.Println("Select PHP version to install:")
+	logger := lib.NewCommandLogger("install")
+	logger.Info("Select PHP version to install:")
 	
 	prefix, err := workspace.Dir()
 	if err != nil {
@@ -231,7 +237,7 @@ func selectPHPVersion() (string, error) {
 	}
 
 	selected := versions[choice-1]
-	fmt.Printf("Selected PHP %s\n", selected.Version)
+	logger.Success(fmt.Sprintf("Selected PHP %s", selected.Version), "")
 	return selected.Version, nil
 }
 

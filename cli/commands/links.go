@@ -9,17 +9,20 @@ import (
 
 	"github.com/siaji/chauffeur/cli/internal/config"
 	"github.com/siaji/chauffeur/cli/internal/projects"
+	"github.com/siaji/chauffeur/cli/lib"
 )
 
 // RunLinks handles `chauf links` command invocations.
 func RunLinks(args []string) error {
+	logger := lib.NewCommandLogger("links")
+
 	for _, arg := range args {
 		switch arg {
 		case "--help", "-h":
 			printLinksUsage()
 			return nil
 		default:
-			return fmt.Errorf("unknown flag for links: %s", arg)
+			return logger.Error("unknown flag for links", arg)
 		}
 	}
 
@@ -49,7 +52,7 @@ func RunLinks(args []string) error {
 		return nil
 	}
 
-	fmt.Printf("Linked Projects (%d):\n\n", len(allProjects))
+	logger.Info(fmt.Sprintf("Linked Projects (%d):", len(allProjects)))
 	
 	maxPath := 20
 	maxDomain := 10
