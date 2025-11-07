@@ -481,7 +481,8 @@ buildLogger.Info("Starting compilation")
 # **PROHIBITED PATTERNS:**
 ```go
 // ❌ WRONG - Direct fmt.Printf calls break logging hierarchy
-fmt.Printf("[install] Installing nginx\n")
+logger := lib.NewCommandLogger("install")
+fmt.Printf("[install] Installing nginx\n") // Should use logger.Info()
 
 // ❌ WRONG - Manual spinner creation bypasses lib logging
 spin := progressSpinner{...} // Use lib.NewSpinner instead
@@ -492,14 +493,15 @@ fmt.Printf("Progress: 50%%\n") // Use lib.NewProgressPrinter instead
 
 # **Integration Examples:**
 ```go
-// Replace existing patterns like this:
-fmt.Printf("\r[ %s ] %s %s %s (%s)\n", s.command, s.message, green("✓"), summary, gray(durationStr))
+// Replace existing patterns like:
+// OLD CODE (to be replaced):
+// fmt.Printf("\r[ %s ] %s %s %s (%s)\n", s.command, s.message, green("✓"), summary, gray(durationStr))
 
 // With lib.Logger:
 logger := lib.NewCommandLogger(s.command)
 logger.Success(summary, "")
 
-// For spinner animations - ALWAYS use lib lib:
+// For spinner animations - ALWAYS use lib:
 spin := lib.NewSpinner("command", "message")
 spin.Success("operation completed")
 ```
@@ -531,6 +533,21 @@ spin.Success("operation completed")
   └── Error: HTTP 404 from download URL
   └── Detailed log: ~/.chauffeur/logs/install/php-8.3-install-20250104T143022Z.log
 ```
+
+### 🚨 **CRITICAL ENFORCEMENT REMINDER**
+
+**ZERO TOLERANCE FOR `fmt.Printf` WITH COMMAND PREFIXES**: 
+- **❌ ABSOLUTELY FORBIDDEN**: Any `fmt.Printf` calls with manual command prefixes like `[command]`
+- **✅ MANDATORY**: All command output must use `lib.NewCommandLogger()` methods
+
+**Quick Enforcement Checklist**:
+1. ✅ `logger := lib.NewCommandLogger("command")` - Always create logger first
+2. ✅ `logger.Info("message")` - For regular messages
+3. ✅ `logger.Success("operation", "context")` - For completed operations
+4. ✅ `logger.Error("failed", "details")` - For errors
+5. ❌ `fmt.Printf("[command] message\n")` - NEVER do this
+
+**Code Review Rule**: Any instance of `fmt.Printf` with a command prefix is a **blocking issue** that must be fixed before merging.
 
 ---
 
@@ -982,6 +999,10 @@ type myProgressPrinter struct { ... } // Use lib.NewProgressPrinter instead
 
 // ❌ DO NOT: Custom spinner logic  
 fmt.Printf("\rWorking..%s", dots[i%len(dots)]) // Use lib.NewSpinner instead
+
+// ❌ DO NOT: Mix logger with fmt.Printf
+logger := lib.NewCommandLogger("command")
+fmt.Printf("[command] Something happened\n") // Should use logger.Info()
 ```
 
 **Usage Examples**:
