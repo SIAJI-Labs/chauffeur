@@ -9,6 +9,7 @@ import (
 	"github.com/siaji/chauffeur/cli/internal/projects"
 	"github.com/siaji/chauffeur/cli/internal/services"
 	"github.com/siaji/chauffeur/cli/internal/workspace"
+	"github.com/siaji/chauffeur/cli/lib"
 )
 
 /**
@@ -151,8 +152,7 @@ func RunStop(args []string) error {
 	// Stop services
 	fmt.Printf("Stopping %d services...\n", len(servicesToStop))
 	for _, service := range servicesToStop {
-		fmt.Printf("Stopping %s...\n", service.Name)
-
+		// Check if service is already stopped
 		status, err := manager.GetStatus(service)
 		if err != nil {
 			fmt.Printf("Warning: Could not check status of %s: %v\n", service.Name, err)
@@ -161,7 +161,11 @@ func RunStop(args []string) error {
 			continue
 		}
 
+		// Stop with spinner for active processes
+		spin := lib.NewSpinner("stop", fmt.Sprintf("Stopping %s", service.Name))
+
 		if err := manager.Stop(service); err != nil {
+			spin.Fail("failed to stop")
 			fmt.Printf("  ✗ Failed to stop %s: %v\n", service.Name, err)
 			continue
 		}
@@ -169,9 +173,10 @@ func RunStop(args []string) error {
 		// Verify it stopped successfully
 		status, err = manager.GetStatus(service)
 		if err != nil {
+			spin.Fail("stopped but verification failed")
 			fmt.Printf("  ⚠ Stopped %s but could not verify status\n", service.Name)
 		} else {
-			fmt.Printf("  ✓ %s stopped successfully (%s)\n", service.Name, status)
+			spin.Success(status + " stopped successfully")
 		}
 	}
 

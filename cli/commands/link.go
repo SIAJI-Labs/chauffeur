@@ -10,6 +10,7 @@ import (
 	"github.com/siaji/chauffeur/cli/internal/config"
 	"github.com/siaji/chauffeur/cli/internal/projects"
 	"github.com/siaji/chauffeur/cli/internal/templates"
+	"github.com/siaji/chauffeur/cli/lib"
 )
 
 // RunLink handles `chauf link` command invocations.
@@ -113,8 +114,10 @@ func RunLink(args []string) error {
 	}
 
 	// Generate nginx template
+	templateSpin := lib.NewSpinner("link", "Generating templates")
 	templateEngine, err := templates.NewTemplateEngine()
 	if err != nil {
+		templateSpin.Fail("template engine initialization failed")
 		return fmt.Errorf("initialize template engine: %w", err)
 	}
 
@@ -123,14 +126,17 @@ func RunLink(args []string) error {
 	
 	// Generate and write nginx configuration
 	if err := templateEngine.WriteNginxConfig(proj, layout, templateType); err != nil {
+		templateSpin.Fail("nginx configuration generation failed")
 		fmt.Printf("Warning: Failed to generate nginx configuration: %v\n", err)
-		// Continue even if nginx generation fails
-	}
-
-	// Generate and write Caddy configuration
-	if err := templateEngine.WriteCaddyConfig(proj, layout, templateType); err != nil {
-		fmt.Printf("Warning: Failed to generate Caddy configuration: %v\n", err)
-		// Continue even if Caddy generation fails
+		// Continue even if nginx generation fails - don't return error
+	} else {
+		// If nginx succeeded, try Caddy
+		if err := templateEngine.WriteCaddyConfig(proj, layout, templateType); err != nil {
+			templateSpin.Success("nginx templates generated (caddy failed)")
+			fmt.Printf("Warning: Failed to generate Caddy configuration: %v\n", err)
+		} else {
+			templateSpin.Success("nginx + caddy templates generated")
+		}
 	}
 
 	fmt.Printf("Project linked as %s\n", slug)

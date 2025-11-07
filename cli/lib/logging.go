@@ -31,22 +31,22 @@ const (
 
 // Logger provides flexible logging with command context and hierarchical output
 type Logger struct {
-	name        string
-	command     string
-	colors      bool
-	level       LogLevel
-	parent      bool  // Whether this is a parent logger (for nested output)
-	timestamps  bool // Whether to include timestamps
+	name       string
+	command    string
+	colors     bool
+	level      LogLevel
+	parent     bool // Whether this is a parent logger (for nested output)
+	timestamps bool // Whether to include timestamps
 }
 
 // LoggerConfig holds configuration for logger creation
 type LoggerConfig struct {
-	Name       string    // Logger name (optional, overrides command)
-	Command    string    // Command name for prefix
-	Level      LogLevel  // Minimum log level to output
-	Colors     bool      // Enable color output (auto-detected if not set)
-	Timestamps bool      // Include timestamps
-	Parent     bool      // Is this a parent logger
+	Name       string   // Logger name (optional, overrides command)
+	Command    string   // Command name for prefix
+	Level      LogLevel // Minimum log level to output
+	Colors     bool     // Enable color output (auto-detected if not set)
+	Timestamps bool     // Include timestamps
+	Parent     bool     // Is this a parent logger
 }
 
 // NewLogger creates a new logger instance with default configuration
@@ -66,7 +66,7 @@ func NewLoggerWithConfig(config LoggerConfig) *Logger {
 	if config.Colors == isTerminal(nil) {
 		config.Colors = isTerminal(os.Stdout)
 	}
-	
+
 	return &Logger{
 		name:       config.Name,
 		command:    config.Command,
@@ -279,12 +279,12 @@ func (l *Logger) Error(message, details string) error {
 	if !l.shouldLog(ErrorLevel) {
 		return fmt.Errorf("%s: %s", message, details)
 	}
-	
+
 	errorIndent := "  └──"
 	if l.parent {
 		errorIndent = "      └──"
 	}
-	
+
 	fmt.Printf("%s %s %s\n", l.prefix(), l.red("✗"), message)
 	if details != "" {
 		fmt.Printf("%s Error: %s\n", errorIndent, l.gray(details))
@@ -297,14 +297,14 @@ func (l *Logger) Warn(message, context string) {
 	if !l.shouldLog(WarnLevel) {
 		return
 	}
-	
+
 	warnIndent := "  ⚠"
 	contextIndent := "  └──"
 	if l.parent {
 		warnIndent = "    ⚠"
 		contextIndent = "      └──"
 	}
-	
+
 	fmt.Printf("%s Warning: %s\n", warnIndent, l.yellow(message))
 	if context != "" {
 		fmt.Printf("%s %s\n", contextIndent, l.gray(context))
@@ -374,7 +374,7 @@ func (l *Logger) LogOperationStart(operation string) {
 func (l *Logger) LogOperationEnd(operation string, duration time.Duration, success bool) {
 	status := "completed"
 	durStr := formatDuration(duration)
-	
+
 	if success {
 		l.Success(fmt.Sprintf("%s %s", operation, status), durStr)
 	} else {
