@@ -7,10 +7,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/siaji/chauffeur/cli/lib"
 )
 
 // RunUninstall handles `chauf uninstall` logic.
 func RunUninstall(args []string) error {
+	logger := lib.NewCommandLogger("uninstall")
 	purge := false
 
 	for _, arg := range args {
@@ -33,7 +36,7 @@ func RunUninstall(args []string) error {
 	info, err := os.Stat(workspace)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			fmt.Printf("No Chauffeur workspace found at %s\n", workspace)
+			logger.Info(fmt.Sprintf("No Chauffeur workspace found at %s", workspace))
 			reportPathRemoval()
 			return nil
 		}
@@ -48,7 +51,7 @@ func RunUninstall(args []string) error {
 		if err := os.RemoveAll(workspace); err != nil {
 			return fmt.Errorf("purge workspace: %w", err)
 		}
-		fmt.Printf("Removed Chauffeur workspace at %s (purged runtimes and caches)\n", workspace)
+		logger.Success(fmt.Sprintf("Removed Chauffeur workspace at %s (purged runtimes and caches)", workspace), "")
 		reportPathRemoval()
 		return nil
 	}
@@ -81,12 +84,12 @@ func RunUninstall(args []string) error {
 		if err := os.RemoveAll(workspace); err != nil {
 			return fmt.Errorf("remove workspace: %w", err)
 		}
-		fmt.Printf("Removed Chauffeur workspace at %s\n", workspace)
+		logger.Success(fmt.Sprintf("Removed Chauffeur workspace at %s", workspace), "")
 		reportPathRemoval()
 		return nil
 	}
 
-	fmt.Printf("Cleaned Chauffeur workspace at %s (retained runtimes in %s)\n", workspace, filepath.Join(workspace, "php"))
+	logger.Info(fmt.Sprintf("Cleaned Chauffeur workspace at %s (retained runtimes in %s)", workspace, filepath.Join(workspace, "php")))
 	reportPathRemoval()
 	return nil
 }
@@ -109,6 +112,7 @@ func defaultWorkspace() (string, error) {
 }
 
 func reportPathRemoval() {
+	logger := lib.NewCommandLogger("uninstall")
 	removed, err := removePathExports()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to update shell PATH entries: %v\n", err)
@@ -116,14 +120,14 @@ func reportPathRemoval() {
 	}
 
 	if len(removed) == 0 {
-		fmt.Println("No Chauffeur PATH entries found in shell profiles.")
+		logger.Info("No Chauffeur PATH entries found in shell profiles.")
 		return
 	}
 
 	for _, file := range removed {
-		fmt.Printf("Removed Chauffeur PATH entry from %s\n", file)
+		logger.Info(fmt.Sprintf("Removed Chauffeur PATH entry from %s", file))
 	}
-	fmt.Println("Reload your shell to drop ~/.chauffeur/bin from PATH.")
+	logger.Info("Reload your shell to drop ~/.chauffeur/bin from PATH.")
 }
 
 func removePathExports() ([]string, error) {
