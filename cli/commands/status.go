@@ -3,9 +3,11 @@ package commands
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/siaji/chauffeur/cli/internal/services"
 	"github.com/siaji/chauffeur/cli/internal/workspace"
+	"github.com/siaji/chauffeur/cli/lib"
 )
 
 /**
@@ -15,6 +17,9 @@ import (
  * @return error when status checking fails.
  */
 func RunStatus(args []string) error {
+	// Create logger for status command
+	logger := lib.NewCommandLogger("status")
+
 	var (
 		serviceType string
 		projectSlug string
@@ -29,7 +34,7 @@ func RunStatus(args []string) error {
 			return nil
 		case "--project":
 			if i+1 >= len(args) {
-				return fmt.Errorf("--project requires a project slug")
+				return logger.Error("--project requires a project slug", "missing argument")
 			}
 			projectSlug = args[i+1]
 			i += 2
@@ -38,10 +43,10 @@ func RunStatus(args []string) error {
 			i++
 		default:
 			if strings.HasPrefix(arg, "-") {
-				return fmt.Errorf("unknown flag for status: %s", arg)
+				return logger.Error("unknown flag for status", arg)
 			}
 			if serviceType != "" {
-				return fmt.Errorf("multiple service types specified")
+				return logger.Error("multiple service types specified", "only one service type allowed")
 			}
 			serviceType = arg
 			i++
@@ -50,13 +55,13 @@ func RunStatus(args []string) error {
 
 	// Ensure workspace exists
 	if err := workspace.Ensure(); err != nil {
-		return fmt.Errorf("ensure workspace: %w", err)
+		return logger.Error("ensure workspace", err.Error())
 	}
 
 	// Create service manager
 	manager, err := services.NewServiceManager()
 	if err != nil {
-		return fmt.Errorf("create service manager: %w", err)
+		return logger.Error("create service manager", err.Error())
 	}
 
 	// Determine which services to show status for
@@ -66,7 +71,7 @@ func RunStatus(args []string) error {
 		// Show status for specific project only
 		projectServices, err := manager.ListProjectServices(projectSlug)
 		if err != nil {
-			return fmt.Errorf("list project services: %w", err)
+			return logger.Error("list project services", err.Error())
 		}
 		servicesToCheck = append(servicesToCheck, projectServices...)
 	} else if serviceType != "" {
@@ -91,18 +96,18 @@ func RunStatus(args []string) error {
 
 			projects, err := findAllLinkedProjects()
 			if err != nil {
-				return fmt.Errorf("find linked projects: %w", err)
+				return logger.Error("find linked projects", err.Error())
 			}
-			for _, projectSlug := range projects {
-				projectServices, err := manager.ListProjectServices(projectSlug)
+			for _, projSlug := range projects {
+				projectServices, err := manager.ListProjectServices(projSlug)
 				if err != nil {
-					fmt.Printf("Warning: Could not load services for project %s: %v\n", projectSlug, err)
+					logger.Warn("Could not load services for project", fmt.Sprintf("%s: %v", projSlug, err))
 					continue
 				}
 				servicesToCheck = append(servicesToCheck, projectServices...)
 			}
 		default:
-			return fmt.Errorf("unknown service type: %s", serviceType)
+			return logger.Error("unknown service type", serviceType)
 		}
 	} else {
 		// Show status for all services
@@ -112,12 +117,12 @@ func RunStatus(args []string) error {
 		// Add all project services
 		projects, err := findAllLinkedProjects()
 		if err != nil {
-			return fmt.Errorf("find linked projects: %w", err)
+			return logger.Error("find linked projects", err.Error())
 		}
-		for _, projectSlug := range projects {
-			projectServices, err := manager.ListProjectServices(projectSlug)
+		for _, projSlug := range projects {
+			projectServices, err := manager.ListProjectServices(projSlug)
 			if err != nil {
-				fmt.Printf("Warning: Could not load services for project %s: %v\n", projectSlug, err)
+				logger.Warn("Could not load services for project", fmt.Sprintf("%s: %v", projSlug, err))
 				continue
 			}
 			servicesToCheck = append(servicesToCheck, projectServices...)
@@ -126,22 +131,24 @@ func RunStatus(args []string) error {
 
 	if len(servicesToCheck) == 0 {
 		if projectSlug != "" {
-			fmt.Printf("No services found for project: %s\n", projectSlug)
+			logger.Info(fmt.Sprintf("No services found for project: %s", projectSlug))
 		} else if serviceType != "" {
-			fmt.Printf("No services found for type: %s\n", serviceType)
+			logger.Info(fmt.Sprintf("No services found for type: %s", serviceType))
 		} else {
-			fmt.Println("No Chauffeur services found.")
-			fmt.Println("Run 'chauf install <service>' to install services.")
-			fmt.Println("Run 'chauf start' to start Chauffeur services.")
+			logger.Info("No Chauffeur services found.")
+			logger.Info("Run 'chauf install <service>' to install services.")
+			logger.Info("Run 'chauf start' to start Chauffeur services.")
 		}
 		return nil
 	}
 
 	// Display status
+	startTime := time.Now()
+	logger.Info(fmt.Sprintf("Checking status of %d Chauffeur services...", len(servicesToCheck)))
+
 	if !detail {
 		// Simple view
-		fmt.Printf("Chauffeur Services (%d total):\n", len(servicesToCheck))
-		fmt.Println()
+		logger.PrintSection(fmt.Sprintf("Chauffeur Services (%d total)", len(servicesToCheck)))
 
 		// Separate global from project services
 		var globalServices []services.Service
@@ -155,6 +162,7 @@ func RunStatus(args []string) error {
 			}
 		}
 
+		// Show global services
 		if len(globalServices) > 0 {
 			fmt.Println("Global Services:")
 			for _, service := range globalServices {
@@ -168,6 +176,7 @@ func RunStatus(args []string) error {
 			fmt.Println()
 		}
 
+		// Show project services
 		if len(projectServices) > 0 {
 			fmt.Println("Project Services:")
 			for _, service := range projectServices {
@@ -181,8 +190,7 @@ func RunStatus(args []string) error {
 		}
 	} else {
 		// Detailed view
-		fmt.Printf("Chauffeur Services - Detailed Status (%d total):\n", len(servicesToCheck))
-		fmt.Println()
+		logger.PrintSection(fmt.Sprintf("Chauffeur Services - Detailed Status (%d total)", len(servicesToCheck)))
 
 		for _, service := range servicesToCheck {
 			fmt.Printf("Service: %s\n", service.Name)
@@ -195,13 +203,25 @@ func RunStatus(args []string) error {
 			
 			status, err := manager.GetStatus(service)
 			if err != nil {
-				fmt.Printf("  Status: Unknown (error: %v)\n", err)
+				fmt.Printf("  Status: Unknown (error)\n")
+				fmt.Printf("    └── Error: %s\n", err.Error())
 			} else {
 				fmt.Printf("  Status: %s\n", status)
 			}
 
 			fmt.Println()
 		}
+	}
+
+	// Log completion
+	duration := time.Since(startTime)
+	// Simple duration formatting
+	if duration < time.Second {
+		logger.Success("Status check complete", fmt.Sprintf("%.0fms", float64(duration.Nanoseconds())/1000000.0))
+	} else if duration < time.Minute {
+		logger.Success("Status check complete", fmt.Sprintf("%.1fs", float64(duration.Nanoseconds())/1000000000.0))
+	} else {
+		logger.Success("Status check complete", fmt.Sprintf("%.0fm %.0fs", duration.Minutes(), float64(duration.Seconds())-float64(int(duration.Seconds()))))
 	}
 
 	return nil
