@@ -14,6 +14,9 @@ Chauffeur is a host-based CLI for managing per-project PHP development services 
 - ✅ **Shell Integration**: Clean PATH management with no whitespace pollution  
 - ✅ **Enhanced Logging**: Structured CLI output with color-coded status, progress indicators, and detailed timing information - fully implemented and tested  
 - ✅ **Project Registration**: Complete `chauf link`, `chauf links`, and `chauf unlink` commands with comprehensive project management
+- ✅ **Composer Integration**: `chauf install composer` installs a verified Composer PHAR with project-aware PHP shims
+- ✅ **Port Management**: Workspace defaults live on user-space ports with automatic conflict detection and per-project overrides
+- ✅ **Smart PHP Defaults**: When the config points to a missing PHP runtime, Chauffeur detects installed versions and offers to switch the default automatically
 - ✅ **Nginx Template System**: Automatic nginx configuration generation with Laravel, WordPress, and general templates  
 - ✅ **Template Detection**: Smart project type detection for optimal nginx configuration  
 - ✅ **Template Updates**: Automatic nginx config updates on PHP version changes  
@@ -21,6 +24,7 @@ Chauffeur is a host-based CLI for managing per-project PHP development services 
 - ✅ **Safe Removal**: Comprehensive service removal with dnsmasq safety checks and user confirmation  
 - ✅ **Comprehensive Testing**: Full test suite with operation-based structure and 80% coverage standards  
 - ✅ **Service Orchestration**: `chauf start/stop` with dnsmasq validation  
+- ✅ **Environment Insights**: `chauf info` surfaces workspace paths, versions, installed services, and port configuration at a glance  
 - ✅ **Site Accessibility**: Caddy integration for local domain routing with port 80/8080 access
 - 🚧 **Port Forwarding Automation**: Port 80 to 8080 redirection setup (manual implementation complete)
 - Linux-focused workflow (Arch/Ubuntu/Debian friendly); other OS targets are not yet supported
@@ -142,15 +146,20 @@ Once installed, you can manage services:
 chauf install php 8.3
 chauf install nginx
 chauf install caddy
+chauf install composer
 
 # Remove services
 chauf remove php 8.3        # Remove specific PHP version
 chauf remove php           # Remove all PHP versions
 chauf remove nginx         # Remove nginx
 chauf remove caddy         # Remove caddy (with dnsmasq validation)
+chauf remove composer      # Remove Composer shim + PHAR
 
 # Remove without confirmation
 chauf remove nginx --force
+
+# Inspect current installation
+chauf info
 ```
 
 #### dnsmasq Integration for Local DNS Resolution
@@ -191,6 +200,9 @@ chauf link
 # With custom domain
 chauf link --site myapp.test --ssl
 
+# Override user-space Caddy ports if needed
+chauf link --caddy-http-port 8090 --caddy-https-port 8543
+
 # Start services
 chauf start
 
@@ -198,6 +210,8 @@ chauf start
 curl http://my-project.test  # Works via port 80
 curl http://my-project.test:8080  # Direct access to Caddy
 ```
+
+Chauffeur validates every configured port during linking. The default `~/.chauffeur/config/chauffeur.yaml` created by `chauf init` pins user-space ports (Caddy 8080/8443, Nginx 8081/8444, PHP-FPM 9000) and defines a conflict-resolution strategy (`prompt`, `auto`, or `fail`). You can override ports per project with `--caddy-http-port` / `--caddy-https-port`, and the CLI will either prompt for alternatives, auto-select the next free port inside the configured range, or stop with an actionable error based on that strategy.
 
 #### Site Access Features
 
@@ -236,6 +250,24 @@ chauf remove caddy --force    # Remove caddy only (without touching dnsmasq)
 - **Safe Default**: `--force` flag only removes Caddy, never touches system packages
 - **User Choice**: Users can keep dnsmasq while removing Caddy
 - **Configuration Cleanup**: Offers to remove chauffeur dnsmasq configuration file
+
+### Inspecting Your Chauffeur Environment
+
+Use `chauf info` whenever you need a quick snapshot of your setup:
+
+```bash
+chauf info
+```
+
+The command reports:
+
+- Workspace location, projects directory, and config file path
+- Current CLI version alongside the latest GitHub release (with update hints)
+- Installed services (Caddy, Nginx, Composer) and their reported versions/paths
+- Installed PHP runtimes and the active default version
+- Port configuration (Caddy/Nginx bindings, port range, PHP-FPM fallback)
+
+This makes it easy to confirm whether a machine is up to date before sharing instructions or reproducing an issue.
 ```
 
 ### PHP Management
@@ -347,7 +379,6 @@ The uninstaller cleanly removes PATH entries without leaving whitespace pollutio
 - Service process monitoring and health checks
 
 ### Planned 📋
-- `chauf init` explicit workspace initialization
 - Enhanced service configuration management
 - Log rotation and management utilities
 - Performance monitoring and health checks
@@ -365,6 +396,7 @@ See [TODO_STATUS.md](docs/TODO_STATUS.md) for comprehensive project status and r
 - **SSL Support**: When `--ssl` is provided with `--site`, templates include HTTPS configuration with internal TLS on port 8443
 - **User-Space Ports**: All configurations use non-privileged ports (HTTP: 8080, HTTPS: 8443) to avoid conflicts with system services
 - Use `--php <version>` to pin a per-project PHP version without touching global defaults.
+- Use `--caddy-http-port` and `--caddy-https-port` to override Caddy listener ports per project; Chauffeur validates ports according to the configured conflict-resolution strategy before writing project metadata.
 - Run `chauf php isolate <version>` in the project directory to switch the linked PHP runtime (requires the version to be installed). This automatically updates the nginx configuration to use the new PHP-FPM socket.
 - Re-run with `--force` when intentionally overwriting an existing project registration.
 - Run `chauf unlink` to remove a project registration (defaults to current directory when no flags provided). This also removes the associated nginx configuration.

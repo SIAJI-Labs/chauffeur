@@ -58,26 +58,26 @@ func TestRunLink(t *testing.T) {
 		validate func(t *testing.T, err error)
 	}{
 		{
-			name: "basic link without flags",
-			args: []string{},
+			name:    "basic link without flags",
+			args:    []string{},
 			wantErr: false,
 			pattern: "Project linked as test-project",
 		},
 		{
-			name: "link with site and ssl flags",
-			args: []string{"--site", "test.example", "--ssl"},
+			name:    "link with site and ssl flags",
+			args:    []string{"--site", "test.example", "--ssl"},
 			wantErr: false,
 			pattern: "ssl=true",
 		},
 		{
-			name: "link with php version override",
-			args: []string{"--php", "7.4"},
+			name:    "link with php version override",
+			args:    []string{"--php", "7.4"},
 			wantErr: false,
 			pattern: "PHP: 7.4",
 		},
 		{
-			name: "error when ssl without site",
-			args: []string{"--ssl"},
+			name:    "error when ssl without site",
+			args:    []string{"--ssl"},
 			wantErr: true,
 			pattern: "",
 			validate: func(t *testing.T, err error) {
@@ -87,8 +87,8 @@ func TestRunLink(t *testing.T) {
 			},
 		},
 		{
-			name: "error when unknown flag",
-			args: []string{"--unknown"},
+			name:    "error when unknown flag",
+			args:    []string{"--unknown"},
 			wantErr: true,
 			pattern: "",
 			validate: func(t *testing.T, err error) {
@@ -98,8 +98,8 @@ func TestRunLink(t *testing.T) {
 			},
 		},
 		{
-			name: "error when site value missing",
-			args: []string{"--site"},
+			name:    "error when site value missing",
+			args:    []string{"--site"},
 			wantErr: true,
 			pattern: "",
 			validate: func(t *testing.T, err error) {
@@ -109,8 +109,8 @@ func TestRunLink(t *testing.T) {
 			},
 		},
 		{
-			name: "error when php value missing",
-			args: []string{"--php"},
+			name:    "error when php value missing",
+			args:    []string{"--php"},
 			wantErr: true,
 			pattern: "",
 			validate: func(t *testing.T, err error) {
@@ -128,7 +128,7 @@ func TestRunLink(t *testing.T) {
 			if err := os.MkdirAll(testProjectDir, 0o755); err != nil {
 				t.Fatalf("create test project dir: %v", err)
 			}
-			
+
 			// Use a fresh projects directory for each test
 			testProjectsDir := filepath.Join(workspaceDir, test.name+"-projects")
 			if err := os.MkdirAll(testProjectsDir, 0o755); err != nil {
@@ -136,8 +136,10 @@ func TestRunLink(t *testing.T) {
 			}
 
 			// Update environment for this test
-			t.Setenv("HOME", filepath.Join(tmpDir, test.name+"-home"))
-			
+			homeDir := filepath.Join(tmpDir, test.name+"-home")
+			t.Setenv("HOME", homeDir)
+			ensureMockPHP(t, homeDir, "8.3", "7.4")
+
 			// Create fresh config for this test
 			_ = config.Config{
 				Version: 1,
@@ -155,7 +157,7 @@ func TestRunLink(t *testing.T) {
 			if err := os.Chdir(testProjectDir); err != nil {
 				t.Fatalf("chdir to test project: %v", err)
 			}
-			
+
 			// Store original directory
 			origWd, err := os.Getwd()
 			if err != nil {
@@ -237,23 +239,23 @@ func TestRunLinks(t *testing.T) {
 		teardown func()
 	}{
 		{
-			name: "no projects linked",
-			args: []string{},
+			name:    "no projects linked",
+			args:    []string{},
 			wantErr: false,
 			pattern: "No projects linked yet",
 		},
 		{
-			name: "one project linked",
-			args: []string{},
+			name:    "one project linked",
+			args:    []string{},
 			wantErr: false,
 			pattern: "test-project",
 			setup: func() {
 				// Create a test project
 				testProject := projects.Config{
-					Version: 1,
-					Path:    "/path/to/test-project",
-					PHP:     "8.3",
-					Site:    &projects.Site{Domain: "test.test", SSL: false},
+					Version:   1,
+					Path:      "/path/to/test-project",
+					PHP:       "8.3",
+					Site:      &projects.Site{Domain: "test.test", SSL: false},
 					CreatedAt: time.Now().UTC(),
 				}
 				layout, _ := projects.EnsureLayout(projectsDir, "test-project")
@@ -261,16 +263,16 @@ func TestRunLinks(t *testing.T) {
 			},
 		},
 		{
-			name: "multiple projects linked",
-			args: []string{},
+			name:    "multiple projects linked",
+			args:    []string{},
 			wantErr: false,
 			pattern: "Linked Projects (2)",
 			setup: func() {
 				// First project
 				testProject1 := projects.Config{
-					Version: 1,
-					Path:    "/path/to/project-one",
-					PHP:     "8.3",
+					Version:   1,
+					Path:      "/path/to/project-one",
+					PHP:       "8.3",
 					CreatedAt: time.Now().UTC(),
 				}
 				layout1, _ := projects.EnsureLayout(projectsDir, "project-one")
@@ -278,10 +280,10 @@ func TestRunLinks(t *testing.T) {
 
 				// Second project
 				testProject2 := projects.Config{
-					Version: 1,
-					Path:    "/path/to/project-two",
-					PHP:     "7.4",
-					Site:    &projects.Site{Domain: "two.test", SSL: true},
+					Version:   1,
+					Path:      "/path/to/project-two",
+					PHP:       "7.4",
+					Site:      &projects.Site{Domain: "two.test", SSL: true},
 					CreatedAt: time.Now().UTC(),
 				}
 				layout2, _ := projects.EnsureLayout(projectsDir, "project-two")
@@ -289,8 +291,8 @@ func TestRunLinks(t *testing.T) {
 			},
 		},
 		{
-			name: "help flag",
-			args: []string{"--help"},
+			name:    "help flag",
+			args:    []string{"--help"},
 			wantErr: false,
 			pattern: "Usage:",
 		},
@@ -355,6 +357,7 @@ func TestRunLinkOverwrite(t *testing.T) {
 	}
 
 	t.Setenv("HOME", tmpDir)
+	ensureMockPHP(t, tmpDir, "8.3")
 
 	// First link should succeed
 	if err := RunLink([]string{}); err != nil {
@@ -375,7 +378,7 @@ func TestRunLinkOverwrite(t *testing.T) {
 func captureOutput(fn func() error) (string, error) {
 	oldStdout := os.Stdout
 	oldStderr := os.Stderr
-	
+
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 	os.Stderr = w // Redirect stderr too
@@ -394,11 +397,11 @@ func captureOutput(fn func() error) (string, error) {
 }
 
 func contains(s, substr string) bool {
-	return s != "" && substr != "" && len(s) >= len(substr) && 
-		   (s == substr || 
-		    len(s) > len(substr) && 
-		    (s == substr || 
-		     (len(s) > len(substr) && checkContainsSubstring(s, substr))))
+	return s != "" && substr != "" && len(s) >= len(substr) &&
+		(s == substr ||
+			len(s) > len(substr) &&
+				(s == substr ||
+					(len(s) > len(substr) && checkContainsSubstring(s, substr))))
 }
 
 func checkContainsSubstring(s, substr string) bool {
@@ -421,4 +424,18 @@ func checkContainsSubstring(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+func ensureMockPHP(t *testing.T, home string, versions ...string) {
+	t.Helper()
+	for _, version := range versions {
+		binDir := filepath.Join(home, ".chauffeur", "php", version, "bin")
+		if err := os.MkdirAll(binDir, 0o755); err != nil {
+			t.Fatalf("create mock PHP dir: %v", err)
+		}
+		phpPath := filepath.Join(binDir, "php")
+		if err := os.WriteFile(phpPath, []byte("#!/usr/bin/env bash\nexit 0\n"), 0o755); err != nil {
+			t.Fatalf("create mock PHP binary: %v", err)
+		}
+	}
 }

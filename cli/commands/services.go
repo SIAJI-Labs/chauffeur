@@ -10,7 +10,7 @@ import (
 	"github.com/siaji/chauffeur/cli/internal/system"
 )
 
-var serviceNames = []string{"caddy", "nginx", "php"}
+var serviceNames = []string{"caddy", "nginx", "php", "composer"}
 
 // KnownServices returns a copy of registered service names.
 func KnownServices() []string {
@@ -29,22 +29,22 @@ func IsKnownService(name string) bool {
 	return false
 }
 
-type serviceSpec struct {
-	name        string
-	description string
-	binaryPath  string
+type ServiceSpec struct {
+	Name        string
+	Description string
+	BinaryPath  string
 	installFunc func(force bool) error
 }
 
-// newServiceSpec returns metadata and installer wiring for a named service.
-func newServiceSpec(name, prefix string, info system.Info) (serviceSpec, error) {
+// NewServiceSpec returns metadata and installer wiring for a named service.
+func NewServiceSpec(name, prefix string, info system.Info) (ServiceSpec, error) {
 	switch name {
 	case "caddy":
 		target := filepath.Join(prefix, "caddy", "bin", "caddy")
-		return serviceSpec{
-			name:        "caddy",
-			description: "verified tarball from GitHub releases",
-			binaryPath:  target,
+		return ServiceSpec{
+			Name:        "caddy",
+			Description: "verified tarball from GitHub releases",
+			BinaryPath:  target,
 			installFunc: func(force bool) error {
 				return installers.InstallCaddyTarball(installers.InstallOptions{
 					Prefix: prefix,
@@ -55,10 +55,10 @@ func newServiceSpec(name, prefix string, info system.Info) (serviceSpec, error) 
 		}, nil
 	case "nginx":
 		target := filepath.Join(prefix, "nginx", "sbin", "nginx")
-		return serviceSpec{
-			name:        "nginx",
-			description: "source build from nginx.org release",
-			binaryPath:  target,
+		return ServiceSpec{
+			Name:        "nginx",
+			Description: "source build from nginx.org release",
+			BinaryPath:  target,
 			installFunc: func(force bool) error {
 				return installers.InstallNginxSource(installers.InstallOptions{
 					Prefix: prefix,
@@ -69,32 +69,46 @@ func newServiceSpec(name, prefix string, info system.Info) (serviceSpec, error) 
 		}, nil
 	case "php":
 		target := filepath.Join(prefix, "bin", "php")
-		return serviceSpec{
-			name:        "php",
-			description: "default PHP CLI managed by Chauffeur",
-			binaryPath:  target,
+		return ServiceSpec{
+			Name:        "php",
+			Description: "default PHP CLI managed by Chauffeur",
+			BinaryPath:  target,
+		}, nil
+	case "composer":
+		target := filepath.Join(prefix, "bin", "composer")
+		return ServiceSpec{
+			Name:        "composer",
+			Description: "PHP dependency manager with Chauffeur PHP version isolation",
+			BinaryPath:  target,
+			installFunc: func(force bool) error {
+				return installers.InstallComposer(installers.InstallOptions{
+					Prefix: prefix,
+					Force:  force,
+					Info:   info,
+				})
+			},
 		}, nil
 	default:
-		return serviceSpec{}, fmt.Errorf("unknown service %q", name)
+		return ServiceSpec{}, fmt.Errorf("unknown service %q", name)
 	}
 }
 
 // available reports whether the service binary already exists on disk.
-func (s serviceSpec) available() (bool, error) {
-	info, err := os.Stat(s.binaryPath)
+func (s ServiceSpec) available() (bool, error) {
+	info, err := os.Stat(s.BinaryPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return false, nil
 		}
-		return false, fmt.Errorf("stat %s: %w", s.binaryPath, err)
+		return false, fmt.Errorf("stat %s: %w", s.BinaryPath, err)
 	}
 	return info.Mode().IsRegular(), nil
 }
 
 // install executes the underlying installer, optionally forcing a reinstall.
-func (s serviceSpec) install(force bool) error {
+func (s ServiceSpec) install(force bool) error {
 	if s.installFunc == nil {
-		return fmt.Errorf("installer for %s is not defined", s.name)
+		return fmt.Errorf("installer for %s is not defined", s.Name)
 	}
 	return s.installFunc(force)
 }

@@ -40,7 +40,7 @@ func RunInstall(args []string) error {
 	i := 0
 	for i < len(args) {
 		arg := args[i]
-		
+
 		switch arg {
 		case "--force":
 			force = true
@@ -52,7 +52,7 @@ func RunInstall(args []string) error {
 			if strings.HasPrefix(arg, "-") {
 				return fmt.Errorf("unknown flag for install: %s", arg)
 			}
-			
+
 			// Handle service[version] syntax
 			if arg == "php" && i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
 				// Next argument looks like a version (not a flag)
@@ -64,7 +64,7 @@ func RunInstall(args []string) error {
 					continue
 				}
 			}
-			
+
 			services = append(services, arg)
 			i++
 		}
@@ -95,9 +95,21 @@ func RunInstall(args []string) error {
 			if err := runPHPInstall(version, force); err != nil {
 				return err
 			}
+		} else if name == "composer" {
+			// Handle Composer installation
+			logger.Info("Installing Composer (PHP dependency manager)...")
+			ok, err := handleComposerInstall(prefix, info, force)
+			if err != nil {
+				return logger.Error("install composer", err.Error())
+			}
+			if !ok && !force {
+				logger.Info("Composer already installed")
+			} else {
+				logger.Success("Composer installed successfully", "Uses Chauffeur PHP version isolation")
+			}
 		} else {
 			// Handle other services (nginx, caddy)
-			spec, err := newServiceSpec(name, prefix, info)
+			spec, err := NewServiceSpec(name, prefix, info)
 			if err != nil {
 				return err
 			}
@@ -107,15 +119,15 @@ func RunInstall(args []string) error {
 				return err
 			}
 			if ok && !force {
-				logger.Info(fmt.Sprintf("%s already installed at %s", spec.name, spec.binaryPath))
+				logger.Info(fmt.Sprintf("%s already installed at %s", spec.Name, spec.BinaryPath))
 				continue
 			}
 
-			logger.Info(fmt.Sprintf("Installing %s (%s)...", spec.name, spec.description))
+			logger.Info(fmt.Sprintf("Installing %s (%s)...", spec.Name, spec.Description))
 			if err := spec.install(force); err != nil {
-				return logger.Error(fmt.Sprintf("install %s", spec.name), err.Error())
+				return logger.Error(fmt.Sprintf("install %s", spec.Name), err.Error())
 			}
-			logger.Success(fmt.Sprintf("Installed %s successfully", spec.name), "")
+			logger.Success(fmt.Sprintf("Installed %s successfully", spec.Name), "")
 		}
 	}
 
@@ -188,7 +200,7 @@ func runPHPInstall(version string, force bool) error {
 func selectPHPVersion() (string, error) {
 	logger := lib.NewCommandLogger("install")
 	logger.Info("Select PHP version to install:")
-	
+
 	prefix, err := workspace.Dir()
 	if err != nil {
 		return "", err
@@ -242,6 +254,34 @@ func selectPHPVersion() (string, error) {
 }
 
 /**
+ * handleComposerInstall manages Composer installation and updates.
+ */
+func handleComposerInstall(prefix string, info system.Info, force bool) (bool, error) {
+	spec, err := NewServiceSpec("composer", prefix, info)
+	if err != nil {
+		return false, err
+	}
+
+	// Check if already available
+	available, err := spec.available()
+	if err != nil {
+		return false, err
+	}
+
+	// If available and not forcing, skip installation
+	if available && !force {
+		return false, nil
+	}
+
+	// Install Composer using the service spec
+	if err := spec.install(force); err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
+
+/**
  * printInstallUsage renders CLI help for the install command.
  */
 func printInstallUsage() {
@@ -255,11 +295,16 @@ Options:
 
 Services:
   caddy      Verified tarball from GitHub releases.
+  composer   PHP dependency manager with Chauffeur PHP version isolation.
   nginx      Source build from the latest GitHub release.
   php        Source build with development extensions.
   
 PHP Installation:
   chauf install php           Interactive version selection.
   chauf install php 8.3      Install specific version.
-  chauf install php --force   Reinstall selected version.`)
+  chauf install php --force   Reinstall selected version.
+
+Composer Installation:
+  chauf install composer          Download and install Composer with PHP isolation.
+  chauf install composer --force   Reinstall Composer.`)
 }

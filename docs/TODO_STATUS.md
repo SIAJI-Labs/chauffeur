@@ -13,6 +13,7 @@ This document tracks the current status of features and improvements for the Cha
 - [x] **Idempotent Installation**: Safe to run multiple times
 - [x] **Service Removal**: `chauf remove` command for uninstalling individual services with version support and confirmation prompts
 - [x] **Safe Caddy Removal**: dnsmasq validation with double confirmation and user choice to prevent system damage
+- [x] **Workspace Initialization**: `chauf init` command bootstraps directory structure, templates, default config, and PATH guidance with user-space ports
 
 ### PHP Management
 - [x] **PHP Installation**: `chauf php install <version>` for building from source
@@ -33,6 +34,12 @@ This document tracks the current status of features and improvements for the Cha
 - [x] **Testing Standards**: Comprehensive testing framework with operation-based structure, 80% coverage requirements, and integration test patterns
 - [x] **Self-Update**: `chauf self-update` pulls latest git changes and rebuilds the CLI binary  
 - [x] **Dev Mode**: `chauf self-update --dev` rebuilds from current directory when it's a valid chauffeur repository
+- [x] **Environment Reporting**: `chauf info` displays workspace paths, local/remote versions, installed services, and port configuration
+
+### Composer Integration
+- [x] **Composer Installer**: `chauf install composer` downloads the latest Composer release, verifies SHA256 checksums, and stores the PHAR under the Chauffeur workspace
+- [x] **Project-Aware Composer Shim**: Installed shims automatically invoke the Chauffeur PHP shim, honoring per-project PHP isolation and global defaults
+- [x] **Composer Removal**: `chauf remove composer` cleans the managed PHAR and shims without touching system Composer installations
 
 ### Project Registration Foundation
 - [x] **Complete Project Registration System**: `chauf link`, `chauf links`, and `chauf unlink` commands fully implemented
@@ -55,6 +62,7 @@ This document tracks the current status of features and improvements for the Cha
 - [x] **Fallback Support**: Basic nginx configuration generation when templates are unavailable (testing environments)
 - [x] **User-Space Ports**: All nginx configurations use non-privileged ports (HTTP: 8080, HTTPS: 8443) to avoid system service conflicts
 - [x] **Default Domain Assignment**: `chauf link` automatically assigns `<slug>.test` domain when `--site` flag is omitted, simplifying project setup for local development
+- [x] **Port Conflict Management**: Configurable port range (default 8080-8099) with prompt/auto/fail strategies plus per-project overrides via --caddy-http-port/--caddy-https-port
 
 ## 🎯 Current Focus Areas
 

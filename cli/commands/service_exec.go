@@ -43,7 +43,7 @@ func RunServiceCommand(name string, args []string) error {
 		return runBinaryCommand(binaryPath, args)
 	}
 
-	spec, err := newServiceSpec(name, prefix, info)
+	spec, err := NewServiceSpec(name, prefix, info)
 	if err != nil {
 		return err
 	}
@@ -56,7 +56,7 @@ func RunServiceCommand(name string, args []string) error {
 		return fmt.Errorf("service %s is not installed; run 'chauf install %s' first", name, name)
 	}
 
-	return runBinaryCommand(spec.binaryPath, args)
+	return runBinaryCommand(spec.BinaryPath, args)
 }
 
 /**
@@ -70,40 +70,40 @@ func getProjectAwarePHPBinary(prefix string) (string, error) {
 	cfg, err := config.Load()
 	if err != nil {
 		// Fall back to default behavior
-		spec, specErr := newServiceSpec("php", prefix, system.Info{})
+		spec, specErr := NewServiceSpec("php", prefix, system.Info{})
 		if specErr != nil {
 			return "", specErr
 		}
-		return spec.binaryPath, nil
+		return spec.BinaryPath, nil
 	}
 
 	cwd, err := os.Getwd()
 	if err != nil {
 		// Fall back to default behavior
-		spec, specErr := newServiceSpec("php", prefix, system.Info{})
+		spec, specErr := NewServiceSpec("php", prefix, system.Info{})
 		if specErr != nil {
 			return "", specErr
 		}
-		return spec.binaryPath, nil
+		return spec.BinaryPath, nil
 	}
 	cwd, err = filepath.Abs(cwd)
 	if err != nil {
 		// Fall back to default behavior
-		spec, specErr := newServiceSpec("php", prefix, system.Info{})
+		spec, specErr := NewServiceSpec("php", prefix, system.Info{})
 		if specErr != nil {
 			return "", specErr
 		}
-		return spec.binaryPath, nil
+		return spec.BinaryPath, nil
 	}
 
 	projectCfg, _, err := projects.FindByPath(cfg.ProjectsDir, cwd)
 	if err != nil {
 		// Not in a linked project, use default behavior
-		spec, specErr := newServiceSpec("php", prefix, system.Info{})
+		spec, specErr := NewServiceSpec("php", prefix, system.Info{})
 		if specErr != nil {
 			return "", specErr
 		}
-		return spec.binaryPath, nil
+		return spec.BinaryPath, nil
 	}
 
 	// We're in a linked project, check if PHP is isolated
@@ -116,20 +116,20 @@ func getProjectAwarePHPBinary(prefix string) (string, error) {
 		} else {
 			// Isolated PHP version is not installed, warn and fall back to default
 			fmt.Printf("Warning: Project PHP version %s is not installed. Using default PHP instead.\n", projectCfg.PHP)
-			spec, specErr := newServiceSpec("php", prefix, system.Info{})
+			spec, specErr := NewServiceSpec("php", prefix, system.Info{})
 			if specErr != nil {
 				return "", specErr
 			}
-			return spec.binaryPath, nil
+			return spec.BinaryPath, nil
 		}
 	}
 
 	// No isolation or no specific version, use default behavior
-	spec, specErr := newServiceSpec("php", prefix, system.Info{})
+	spec, specErr := NewServiceSpec("php", prefix, system.Info{})
 	if specErr != nil {
 		return "", specErr
 	}
-	return spec.binaryPath, nil
+	return spec.BinaryPath, nil
 }
 
 /**

@@ -95,16 +95,17 @@ Ensure information consistency across all three documentation files:
 
 | Command | Flags/Args | Description |
 |---|---|---|
-| `chauf init` | `--force`, `--quiet` | Initialize Chauffeur workspace in `~/.chauffeur/` (idempotent). Creates default dirs and templates. |
+| `chauf init` | `--force`, `--quiet` | Initialize Chauffeur workspace in `~/.chauffeur/` (idempotent). Creates default configuration with user-space ports, directories, and templates. Default ports: Caddy HTTP 8080, Caddy HTTPS 8443, Nginx HTTP 8081, Nginx HTTPS 8444 to avoid system conflicts. |
 | `chauf start` | `--project <path?>`, `--all`, `--dry-run` | Start services for current project (or all registered with `--all`). |
 | `chauf stop` | `--project <path?>`, `--all`, `--dry-run` | Stop services. |
 | `chauf status` | `[service-type]`, `--project <slug>`, `--detail`, `-v` | Show status of Chauffeur services with running state. Can filter by service type (nginx, caddy, php-fpm) or project. Use `--detail` for verbose output. |
 | `chauf remove` | `--force`, `<service>`, `[<version>]` | Remove installed service (php, nginx, caddy). Use `--force` to skip confirmation prompts. PHP version can be specified for per-version removal. For caddy, includes dnsmasq validation with double confirmation to prevent system damage. |
 | `chauf uninstall` | `--purge` | Remove Chauffeur workspace. `--purge` also deletes caches and installed runtimes. |
-| `chauf link` | `--site <domain>`, `--ssl`, `--php <version>`, `--force` | Register **PWD** as a project. Creates `project.yaml`, prepares runtime/log dirs, automatically assigns `<slug>.test` domain unless `--site` specified, map local domain via Caddy, set default PHP for this project. Validates specified PHP version is installed. |
+| `chauf link` | `--site <domain>`, `--ssl`, `--php <version>`, `--caddy-http-port <port>`, `--caddy-https-port <port>`, `--force` | Register **PWD** as a project. Creates `project.yaml`, prepares runtime/log dirs, automatically assigns `<slug>.test` domain unless `--site` specified, map local domain via Caddy, set default PHP for this project. Validates specified PHP version is installed. Includes automatic port conflict detection and resolution with configurable fallback behavior. |
 | `chauf links` | _none_ | List all registered projects and their metadata. |
 | `chauf unlink` | `--force`, `--slug <slug>`, `--site <domain>`, `--project <path>`, `--all` | Remove a registered project. Can unlink by slug, domain, path, all projects with proper confirmation unless --force is used. |
 | `chauf self-update` | `--dev` | Pull latest Chauffeur git changes via SSH and rebuild the CLI binary in-place (services unaffected; requires git & go). With --dev, rebuild from current directory if it's a valid chauffeur repository. |
+| `chauf info` | _none_ | Display Chauffeur workspace details: binary/config paths, current vs. latest release, installed services (caddy/nginx/php/composer) with version output, and port configuration (Caddy/Nginx bindings, port range, PHP-FPM fallback). |
 
 ### PHP Management
 
@@ -113,6 +114,13 @@ Ensure information consistency across all three documentation files:
 | `chauf php install <version>` | `--force`, `--no-ext`, `--from <source>` | Install PHP runtime `<version>` into `~/.chauffeur/php/<version>` (source can be `source`, `tarball`, or `distro-extract`; default `tarball`). |
 | `chauf php use <version>` | _none_ | Set global default PHP version used by `chauf php ...` commands. |
 | `chauf php isolate <version>` | _none_ | Pin current directory/project to `<version>` (requires linked project and installed runtime). |
+
+### Composer Integration
+
+- `chauf install composer` downloads the latest Composer release, verifies its SHA-256 checksum, stores the PHAR under `~/.chauffeur/composer/composer.phar`, and writes a shim at `~/.chauffeur/bin/composer` (symlinked to `~/.chauffeur/bin/shims/composer`).  
+- The Composer shim **always** invokes Chauffeur's PHP shim (`~/.chauffeur/bin/php`), so Composer automatically honors per-project PHP isolation and global defaults.
+- `chauf remove composer` removes the managed PHAR plus both the shim and entry point (with confirmation unless `--force` is provided). System-wide Composer installations remain untouched.
+- Users can invoke Composer either through the shim on `$PATH` (`composer ...`) or via `chauf composer ...`, both yielding identical behavior thanks to the shared shim.
 
 #### Project-Aware PHP Shim Behavior
 
@@ -171,12 +179,23 @@ telemetry: false
 workspace_dir: ~/.chauffeur
 caddy:
   enable: true
-  http_port: 80
-  https_port: 443
+  http_port: 8080   # User-space port to avoid system conflicts
+  https_port: 8443  # User-space port to avoid system conflicts
 nginx:
   enable: true
+  http_port: 8081   # Different from Caddy to avoid conflicts
+  https_port: 8444  # Different from Caddy to avoid conflicts
 php:
   default: 8.3
+ports:
+  start_range: 8080       # Port range for auto-allocation
+  end_range: 8099
+  conflict_resolution: "prompt"  # Options: "prompt", "auto", "fail"
+  caddy_http_fallback: 8080
+  caddy_https_fallback: 8443
+  nginx_http_fallback: 8081
+  nginx_https_fallback: 8444
+  php_fpm_fallback: 9000
 projects_dir: ~/.chauffeur/projects
 ```
 
@@ -204,7 +223,14 @@ created_at: 2025-10-30T12:00:00+07:00
 - `chauf link` registers **PWD** unless `--project` explicitly provided elsewhere. Automatically assigns `<slug>.test` as default domain when `--site` flag is not specified.
 - Using **Caddy** avoids editing `/etc/hosts`; Codex should generate Caddyfile entries that route `site.test` → local upstream.
 - Services must **not conflict** with host services or ports; prefer per‑project Unix sockets and reverse proxy fan‑out via Caddy/Nginx.
+- **Port Conflict Management**: Chauffeur automatically detects port conflicts and provides configurable resolution strategies. The system uses user-space ports by default (Caddy: 8080/8443, Nginx: 8081/8444, PHP-FPM: 9000) to avoid system service conflicts. Three resolution modes are available:
+  - **"prompt"** (default): Interactive prompts asking user to select alternative ports
+  - **"auto"**: Automatically selects available ports within the configured range
+  - **"fail"**: Fails immediately if port conflicts are detected
+  - Port ranges can be configured via `start_range` and `end_range` in `chauffeur.yaml`
+  - Custom ports can be specified per-project using `--caddy-http-port` and `--caddy-https-port` flags
 - PHP isolation: `use` sets **global** default; `isolate` writes **project.yaml** override.
+- When the configured default PHP runtime is missing from disk, the Chauffeur PHP shim scans installed versions under `~/.chauffeur/php/`, prompts the user to promote an existing version (highest installed by default), and, upon confirmation, runs `chauf php use <version>` automatically before re-running the command.
 - PHP shims are **project-aware**: the `php` command automatically detects project context and uses appropriate PHP version (project isolation + global default fallback).
 - `chauf link` generates `~/.chauffeur/projects/<slug>/project.yaml` (slug from directory name) and prepares runtime/log directories; `--force` must be supplied to overwrite an existing registration. The command also **automatically generates nginx configurations** based on detected project type:
 - **Laravel**: Detects `artisan` and `composer.json` with Laravel structure; nginx config routes to `/public` with Laravel-specific optimizations
@@ -1086,7 +1112,7 @@ confirm := prompt.Confirm("This will permanently delete all PHP installations. C
 
 ## 10) Acceptance Tests (high‑level)
 
-1. `chauf init` creates workspace; re‑running is no‑op.
+1. `chauf init` creates workspace with user-space ports by default; re‑running is no‑op.
 2. `chauf php install 8.3` creates `~/.chauffeur/php/8.3/bin/php`.
 3. `chauf php use 8.3` updates `chauffeur.yaml` default.
 4. `chauf link --site myproj.test --ssl --php 8.2` creates project folder structure, `project.yaml` metadata, and **automatically generates nginx configuration** based on detected project type (Laravel/WordPress/general). When `--site` is omitted, automatically assigns `<slug>.test` domain.

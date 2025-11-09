@@ -16,6 +16,7 @@ Usage:
   chauf --version        Print the current Chauffeur version.
   chauf version          Same as --version.
   chauf --help           Show this message.
+  chauf init             Initialize Chauffeur workspace with default configuration.
   chauf install <service> [version]
                          Install Chauffeur-managed services (caddy, nginx, php).
   chauf remove <service> [version]
@@ -50,6 +51,11 @@ func main() {
 		fmt.Printf("chauf %s\n", version)
 	case "--help", "-h":
 		usage()
+	case "init":
+		if err := commands.RunInit(args[1:]); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
 	case "install":
 		if err := commands.RunInstall(args[1:]); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -72,6 +78,11 @@ func main() {
 		}
 	case "link":
 		if err := commands.RunLink(args[1:]); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+	case "info":
+		if err := commands.RunInfo(args[1:]); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}

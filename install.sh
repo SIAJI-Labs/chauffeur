@@ -42,11 +42,36 @@ is_curl_install() {
 }
 
 check_existing_chauf() {
-  # First check the workspace binary location (preferred for current workspace)
-  local workspace_chauf="${BIN_DIR}/chauf"
+  # First check if workspace is initialized
+  if [[ ! -f "${WORKSPACE}/config/chauffeur.yaml" ]]; then
+    echo "Chauffeur workspace is not initialized."
+    echo "Running 'chauf init' to create default configuration..."
+    echo ""
+    
+    # Try to initialize workspace if we have a binary
+    local workspace_chauf="${BIN_DIR}/chauf"
+    if [[ -x "${workspace_chauf}" ]]; then
+      if "${workspace_chauf}" init; then
+        echo "Workspace initialized successfully."
+        echo ""
+      else
+        warn "Failed to initialize workspace with existing binary."
+        echo "Will create basic configuration..."
+        create_basic_config
+      fi
+    else
+      info "No chauf binary available yet, creating basic configuration..."
+      create_basic_config
+    fi
+    # Continue with installation even if init failed
+  fi
+
+  # Now check for existing chauf binary (after potential workspace init)
   local existing_chauf=""
   local existing_version=""
   
+  # First check the workspace binary location (preferred for current workspace)
+  workspace_chauf="${BIN_DIR}/chauf"
   if [[ -x "${workspace_chauf}" ]]; then
     existing_chauf="${workspace_chauf}"
     existing_version="$("${workspace_chauf}" --version 2>/dev/null || echo "unknown")"
@@ -313,6 +338,73 @@ ensure_chauf_binary() {
   return 2
 }
 
+create_basic_config() {
+  local config_dir="${WORKSPACE}/config"
+  local config_file="${config_dir}/chauffeur.yaml"
+  
+  # Ensure config directory exists
+  mkdir -p "${config_dir}"
+  
+  # Create basic configuration with user-space ports
+  cat > "${config_file}" << 'EOF'
+# Chauffeur Configuration File
+# This file controls global Chauffeur settings and port management
+
+# Configuration version (do not modify)
+version: 1
+
+# Enable/disable telemetry data collection
+telemetry: false
+
+# Workspace directory where Chauffeur stores its data
+workspace_dir: ~/.chauffeur
+
+# Caddy web server configuration
+caddy:
+  enable: true
+  # Custom ports to avoid conflicts with system services
+  http_port: 8080     # HTTP port (user-space)
+  https_port: 8443    # HTTPS port (user-space)
+
+# Nginx web server configuration  
+nginx:
+  enable: true
+  # Different ports from Caddy to avoid conflicts
+  http_port: 8081     # HTTP port (user-space)
+  https_port: 8444    # HTTPS port (user-space)
+
+# PHP runtime configuration
+php:
+  default: "8.3"
+
+# Port management settings
+ports:
+  # Port range for automatic port allocation
+  start_range: 8080
+  end_range: 8099
+  
+  # How to handle port conflicts:
+  # - "prompt": Ask user to select alternative ports (default)
+  # - "auto":  Automatically select available ports
+  # - "fail":  Fail if ports are in use
+  conflict_resolution: "prompt"
+  
+  # Fallback ports for each service
+  caddy_http_fallback: 8080
+  caddy_https_fallback: 8443
+  nginx_http_fallback: 8081
+  nginx_https_fallback: 8444
+  php_fpm_fallback: 9000
+
+# Directory where Chauffeur stores project configurations
+projects_dir: ~/.chauffeur/projects
+EOF
+  
+  info "Created basic configuration with user-space ports"
+  success "Configuration file created: ${config_file}"
+  info "Default ports: Caddy HTTP 8080, Caddy HTTPS 8443, Nginx HTTP 8081, Nginx HTTPS 8444"
+}
+
 is_git_repo() {
   # If SCRIPT_DIR is empty, we're definitely not in a git repo
   if [[ -z "${SCRIPT_DIR}" ]]; then
@@ -356,6 +448,14 @@ bootstrap_from_remote() {
   info "Running installer from cloned repository"
   if CHAUF_BOOTSTRAP=1 "${tmp_dir}/chauffeur/install.sh" "$@"; then
     rm -rf "${tmp_dir}"
+    # After successful bootstrap, check if workspace exists and suggest init
+    if [[ -d "${WORKSPACE}/config" && ! -f "${WORKSPACE}/config/chauffeur.yaml" ]]; then
+      echo ""
+      section "Workspace Ready"
+      info "Chauffeur workspace is ready but not initialized."
+      info "Run 'chauf init' to create default configuration:"
+      echo "  chauf init"
+    fi
     exit 0
   else
     local status=$?
@@ -365,6 +465,12 @@ bootstrap_from_remote() {
 }
 
 run_local_install() {
+  # Ensure workspace directory exists first (needed before check_existing_chauf)
+  if [[ ! -d "${WORKSPACE}" ]]; then
+    info "Creating workspace directory: ${WORKSPACE}"
+    mkdir -p "${WORKSPACE}"
+  fi
+
   # Check if chauf is already installed (skip for bootstrap since we checked before cloning)
   if [[ "${CHAUF_BOOTSTRAP:-}" != "1" ]]; then
     section "Installation Check"
