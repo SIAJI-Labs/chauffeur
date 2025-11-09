@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -20,6 +21,8 @@ func RunLink(args []string) error {
 		phpVer string
 		ssl    bool
 		force  bool
+		caddyHTTPPort  int
+		caddyHTTPSPort int
 	)
 
 	for i := 0; i < len(args); {
@@ -46,6 +49,28 @@ func RunLink(args []string) error {
 		case "--force":
 			force = true
 			i++
+		case "--caddy-http-port":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--caddy-http-port requires a port value")
+			}
+			portStr := args[i+1]
+			if port, err := strconv.Atoi(portStr); err != nil {
+				return fmt.Errorf("invalid HTTP port: %s", portStr)
+			} else {
+				caddyHTTPPort = port
+			}
+			i += 2
+		case "--caddy-https-port":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--caddy-https-port requires a port value")
+			}
+			portStr := args[i+1]
+			if port, err := strconv.Atoi(portStr); err != nil {
+				return fmt.Errorf("invalid HTTPS port: %s", portStr)
+			} else {
+				caddyHTTPSPort = port
+			}
+			i += 2
 		default:
 			if strings.HasPrefix(arg, "-") {
 				return fmt.Errorf("unknown flag for link: %s", arg)
@@ -59,6 +84,46 @@ func RunLink(args []string) error {
 	cfg, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("load configuration: %w", err)
+	}
+
+	// Create port validator
+	validator, err := lib.NewPortValidator(cfg)
+	if err != nil {
+		return fmt.Errorf("create port validator: %w", err)
+	}
+
+	// Handle custom port overrides
+	if caddyHTTPPort > 0 {
+		// Validate custom port
+		validPort, err := validator.SetPortFromCommand("caddy-http", fmt.Sprintf("%d", caddyHTTPPort))
+		if err != nil {
+			return err
+		}
+		cfg.Caddy.HTTPPort = validPort
+	}
+	
+	if caddyHTTPSPort > 0 {
+		// Validate custom port
+		validPort, err := validator.SetPortFromCommand("caddy-https", fmt.Sprintf("%d", caddyHTTPSPort))
+		if err != nil {
+			return err
+		}
+		cfg.Caddy.HTTPSPort = validPort
+	}
+
+	// Validate all configured ports
+	if err := validator.ValidateAllPorts(); err != nil {
+		// If validation fails, check if it's due to conflicts that can be resolved
+		if cfg.Ports.ConflictResolution == "fail" {
+			return fmt.Errorf("port validation failed: %w", err)
+		}
+		
+		// For auto or prompt modes, validator already handled resolution
+		// Reload the config to get any updated ports
+		cfg, err = config.Load()
+		if err != nil {
+			return fmt.Errorf("reload configuration after port resolution: %w", err)
+		}
 	}
 
 	cwd, err := os.Getwd()
@@ -145,6 +210,10 @@ func RunLink(args []string) error {
 	fmt.Printf("  PHP: %s\n", phpVer)
 	fmt.Printf("  Template: %s\n", templateType)
 	
+	// Show configured ports
+	fmt.Printf("  Caddy HTTP: %d\n", cfg.Caddy.HTTPPort)
+	fmt.Printf("  Caddy HTTPS: %d\n", cfg.Caddy.HTTPSPort)
+	
 	// Access URLs - always show domain (now default to <slug>.test)
 	if proj.Site != nil && proj.Site.Domain != "" {
 		if strings.Contains(proj.Site.Domain, ".test") {
@@ -152,11 +221,26 @@ func RunLink(args []string) error {
 		} else {
 			fmt.Printf("  Domain: %s (custom domain)\n", proj.Site.Domain)
 		}
-		fmt.Printf("  Access: http://%s\n", proj.Site.Domain)
-		if proj.Site.SSL {
-			fmt.Printf("  Access Secure: https://%s\n", proj.Site.Domain)
+		
+		// Show URLs with actual ports
+		httpURL := fmt.Sprintf("http://%s", proj.Site.Domain)
+		if cfg.Caddy.HTTPPort != 80 {
+			httpURL = fmt.Sprintf("http://%s:%d", proj.Site.Domain, cfg.Caddy.HTTPPort)
 		}
+		fmt.Printf("  Access: %s\n", httpURL)
+		
+		if proj.Site.SSL {
+			httpsURL := fmt.Sprintf("https://%s", proj.Site.Domain)
+			if cfg.Caddy.HTTPSPort != 443 {
+				httpsURL = fmt.Sprintf("https://%s:%d", proj.Site.Domain, cfg.Caddy.HTTPSPort)
+			}
+			fmt.Printf("  Access Secure: %s\n", httpsURL)
+		}
+		
 		fmt.Printf("  Note: Use --site <custom-domain> to override default domain\n")
+		if caddyHTTPPort > 0 || caddyHTTPSPort > 0 {
+			fmt.Printf("  Custom ports applied via --caddy-http-port/--caddy-https-port flags\n")
+		}
 	}
 
 	return nil
@@ -166,13 +250,21 @@ func printLinkUsage() {
 	fmt.Print(`Chauffeur Project Linking
 
 Usage:
-  chauf link [--site <domain>] [--ssl] [--php <version>] [--force]
+  chauf link [--site <domain>] [--ssl] [--php <version>] [--caddy-http-port <port>] [--caddy-https-port <port>] [--force]
 
 Flags:
-  --site <domain>   Register a local domain for the project (default: <slug>.test).
-  --ssl             Enable internal TLS for the domain.
-  --php <version>   Override the PHP version for this project (default: global default).
-  --force           Overwrite existing project configuration.
+  --site <domain>           Register a local domain for the project (default: <slug>.test).
+  --ssl                     Enable internal TLS for the domain.
+  --php <version>           Override the PHP version for this project (default: global default).
+  --caddy-http-port <port>  Override Caddy HTTP port for this project (default: from config).
+  --caddy-https-port <port> Override Caddy HTTPS port for this project (default: from config).
+  --force                   Overwrite existing project configuration.
+
+Port Management:
+  If specified ports are already in use, Chauffeur will:
+    - Prompt for alternative ports (default behavior)
+    - Auto-resolve to available ports (if "conflict_resolution: auto" in config)
+    - Fail with error if "conflict_resolution: fail" in config
 
 Note:
   When --site is not specified, the project is automatically assigned a .test domain

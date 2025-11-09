@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/siaji/chauffeur/cli/internal/config"
 	"github.com/siaji/chauffeur/cli/internal/releases"
 	"github.com/siaji/chauffeur/cli/internal/system"
 	"github.com/siaji/chauffeur/cli/lib"
@@ -251,30 +252,44 @@ func writeDefaultCaddyfile(prefix string) error {
 		return fmt.Errorf("stat Caddyfile: %w", err)
 	}
 
-	// Read global config to get correct port settings
-	configPath := filepath.Join(prefix, "config", "chauffeur.yaml")
-	httpPort := "8080"
-	httpsPort := "8443"
-	
-	if configData, err := os.ReadFile(configPath); err == nil {
-		configContent := string(configData)
-		// Simple parsing for port settings - in production you'd use a proper YAML parser
-		lines := strings.Split(configContent, "\n")
-		for _, line := range lines {
-			line = strings.TrimSpace(line)
-			if strings.HasPrefix(line, "http_port:") {
-				httpPort = strings.TrimSpace(strings.TrimPrefix(line, "http_port:"))
-			}
-			if strings.HasPrefix(line, "https_port:") {
-				httpsPort = strings.TrimSpace(strings.TrimPrefix(line, "https_port:"))
-			}
-		}
+	// Load configuration to get current port settings
+	cfg, err := config.Load()
+	if err != nil {
+		// Fallback to default ports if config loading fails
+		cfg = config.Config{}
+		cfg.Caddy.HTTPPort = 8080
+		cfg.Caddy.HTTPSPort = 8443
+	}
+
+	// Validate ports are available before writing config
+	validator, err := lib.NewPortValidator(*(&cfg))
+	if err != nil {
+		return fmt.Errorf("failed to create port validator: %w", err)
+	}
+
+	// Get safe ports for Caddy
+	httpPort, err := validator.GetSafePort("caddy-http", cfg.Caddy.HTTPPort)
+	if err != nil {
+		return fmt.Errorf("failed to get safe HTTP port for Caddy: %w", err)
+	}
+
+	httpsPort, err := validator.GetSafePort("caddy-https", cfg.Caddy.HTTPSPort)
+	if err != nil {
+		return fmt.Errorf("failed to get safe HTTPS port for Caddy: %w", err)
+	}
+
+	// Update config with validated ports
+	cfg.Caddy.HTTPPort = httpPort
+	cfg.Caddy.HTTPSPort = httpsPort
+
+	if err := config.Save(cfg); err != nil {
+		return fmt.Errorf("failed to save updated port configuration: %w", err)
 	}
 
 	content := fmt.Sprintf(`{
 	auto_https off
-	http_port %s
-	https_port %s
+	http_port %d
+	https_port %d
 }
 # Project sites are appended by chauf link
 `, httpPort, httpsPort)

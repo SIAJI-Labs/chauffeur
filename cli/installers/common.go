@@ -49,6 +49,9 @@ func shimContent(name, target string) string {
 	}
 	return fmt.Sprintf(`#!/usr/bin/env bash
 set -euo pipefail
+
+# Track configured default php version (if any)
+DEFAULT_VERSION=""
 TARGET="%s"
 if [[ ! -x "$TARGET" ]]; then
   echo "%s binary is missing at $TARGET" >&2
@@ -69,6 +72,81 @@ if [[ ! -d "$WORKSPACE" ]]; then
   echo "Chauffeur workspace not found at $WORKSPACE" >&2
   exit 1
 fi
+
+# Helpers --------------------------------------------------------------
+
+find_chauf_binary() {
+  if [[ -x "$WORKSPACE/bin/chauf" ]]; then
+    echo "$WORKSPACE/bin/chauf"
+    return 0
+  fi
+  if command -v chauf >/dev/null 2>&1; then
+    command -v chauf
+    return 0
+  fi
+  return 1
+}
+
+list_installed_php_versions() {
+  local found=0
+  if [[ -d "$WORKSPACE/php" ]]; then
+    for dir in "$WORKSPACE"/php/*; do
+      if [[ -d "$dir" ]]; then
+        basename "$dir"
+        found=1
+      fi
+    done
+  fi
+  [[ $found -eq 1 ]]
+}
+
+switch_default_php() {
+  local target="$1"
+  local chauf_bin
+  if ! chauf_bin="$(find_chauf_binary)"; then
+    echo "Unable to locate the 'chauf' binary to update defaults." >&2
+    return 1
+  fi
+
+  if "$chauf_bin" php use "$target" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  echo "Failed to update default PHP version to ${target}. Run 'chauf php use ${target}' manually." >&2
+  return 1
+}
+
+prompt_switch_default_php() {
+  local -a available_versions=()
+  mapfile -t available_versions < <(list_installed_php_versions | sort -r) || true
+  if [[ ${#available_versions[@]} -eq 0 ]]; then
+    return 1
+  fi
+
+  local preferred="${available_versions[0]}"
+  echo "Configured default PHP version (${DEFAULT_VERSION:-unknown}) is not installed." >&2
+  echo "Installed versions: ${available_versions[*]}" >&2
+
+  if [[ ! -t 0 ]]; then
+    echo "Run 'chauf php use ${preferred}' to switch the default automatically." >&2
+    return 1
+  fi
+
+  read -rp "Switch default PHP version to ${preferred}? [y/N]: " answer
+  case "${answer}" in
+    [yY]|[yY][eE][sS])
+      if switch_default_php "${preferred}"; then
+        DEFAULT_VERSION="${preferred}"
+        PHP_BINARY="$WORKSPACE/php/${preferred}/bin/php"
+        return 0
+      fi
+      ;;
+  esac
+
+  return 1
+}
+
+# ---------------------------------------------------------------------
 
 # Get current directory
 CWD="$(pwd)"
@@ -129,14 +207,17 @@ else
     PHP_BINARY="$WORKSPACE/php/$DEFAULT_VERSION/bin/php"
   else
     # Fallback to PHP 8.3 if no config exists
+    DEFAULT_VERSION="8.3"
     PHP_BINARY="$WORKSPACE/php/8.3/bin/php"
   fi
 fi
 
 if [[ ! -x "$PHP_BINARY" ]]; then
+  if ! prompt_switch_default_php; then
   echo "PHP binary not found at $PHP_BINARY" >&2
   echo "Please run 'chauf install php <version>' first" >&2
   exit 1
+  fi
 fi
 
 exec "$PHP_BINARY" "$@"
@@ -271,5 +352,3 @@ func computeFileHash(path string, hasher hash.Hash) (string, error) {
 
 	return hex.EncodeToString(hasher.Sum(nil)), nil
 }
-
-

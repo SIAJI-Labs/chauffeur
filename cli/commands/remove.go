@@ -32,7 +32,7 @@ func RunRemove(args []string) error {
 	i := 0
 	for i < len(args) {
 		arg := args[i]
-		
+
 		switch arg {
 		case "--force":
 			force = true
@@ -44,7 +44,7 @@ func RunRemove(args []string) error {
 			if strings.HasPrefix(arg, "-") {
 				return fmt.Errorf("unknown flag for remove: %s", arg)
 			}
-			
+
 			// Handle service[version] syntax (primarily for PHP)
 			if arg == "php" && i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
 				// Next argument looks like a version (not a flag)
@@ -56,7 +56,7 @@ func RunRemove(args []string) error {
 					continue
 				}
 			}
-			
+
 			services = append(services, arg)
 			i++
 		}
@@ -93,29 +93,34 @@ func RunRemove(args []string) error {
 
 	// Process each service
 	for _, name := range services {
-		if name == "php" {
+		switch name {
+		case "php":
 			// Handle PHP removal with version support
 			version := versions["php"]
 			if err := runRemovePHP(version, force, logger); err != nil {
 				return err
 			}
-		} else {
+		case "composer":
+			if err := runRemoveComposer(prefix, force, logger); err != nil {
+				return err
+			}
+		default:
 			// Handle other services (nginx, caddy)
 			info, err := system.Detect()
 			if err != nil {
 				return err
 			}
-			spec, err := newServiceSpec(name, prefix, info)
+			spec, err := NewServiceSpec(name, prefix, info)
 			if err != nil {
 				return err
 			}
 
 			ok, err := spec.available()
 			if err != nil {
-				return fmt.Errorf("check %s availability: %w", spec.name, err)
+				return fmt.Errorf("check %s availability: %w", spec.Name, err)
 			}
 			if !ok {
-				logger.Warn(fmt.Sprintf("%s is not installed", spec.name), "use 'chauf install' to install it first")
+				logger.Warn(fmt.Sprintf("%s is not installed", spec.Name), "use 'chauf install' to install it first")
 				continue
 			}
 
@@ -200,19 +205,55 @@ func runRemovePHP(version string, force bool, logger *lib.Logger) error {
 	return nil
 }
 
+// runRemoveComposer removes the Composer shim and PHAR
+func runRemoveComposer(prefix string, force bool, logger *lib.Logger) error {
+	entryPoint := filepath.Join(prefix, "bin", "composer")
+	shimPath := filepath.Join(prefix, "bin", "shims", "composer")
+	composerDir := filepath.Join(prefix, "composer")
+
+	if _, err := os.Stat(entryPoint); os.IsNotExist(err) {
+		logger.Warn("Composer is not installed", "run 'chauf install composer' first")
+		return nil
+	}
+
+	if !force {
+		fmt.Print("Remove Composer installation? This deletes the shim and Composer PHAR. Continue? (y/N): ")
+		var response string
+		fmt.Scanln(&response)
+		response = strings.ToLower(strings.TrimSpace(response))
+		if response != "y" && response != "yes" {
+			logger.Success("Operation cancelled", "")
+			return nil
+		}
+	}
+
+	if err := os.Remove(entryPoint); err != nil && !os.IsNotExist(err) {
+		return logger.Fail("remove composer entry point", err.Error())
+	}
+	if err := os.Remove(shimPath); err != nil && !os.IsNotExist(err) {
+		logger.Warn("Failed to remove composer shim", shimPath)
+	}
+	if err := os.RemoveAll(composerDir); err != nil && !os.IsNotExist(err) {
+		return logger.Fail("remove composer directory", err.Error())
+	}
+
+	logger.Success("Removed Composer", composerDir)
+	return nil
+}
+
 // runRemoveService handles removal of nginx and caddy
-func runRemoveService(spec serviceSpec, force bool, logger *lib.Logger) error {
+func runRemoveService(spec ServiceSpec, force bool, logger *lib.Logger) error {
 	ok, err := spec.available()
 	if err != nil {
 		return err
 	}
 	if !ok {
-		logger.Warn(fmt.Sprintf("%s is not installed", spec.name), "")
+		logger.Warn(fmt.Sprintf("%s is not installed", spec.Name), "")
 		return nil
 	}
 
 	// Special handling for caddy with dnsmasq validation
-	if spec.name == "caddy" {
+	if spec.Name == "caddy" {
 		if err := handleCaddyRemoval(spec, force, logger); err != nil {
 			return err
 		}
@@ -221,7 +262,7 @@ func runRemoveService(spec serviceSpec, force bool, logger *lib.Logger) error {
 
 	if !force {
 		// SENSITIVE: Destructive operation - user confirmation for removing service (nginx/caddy)
-		fmt.Printf("Remove %s? This will delete %s. Continue? (y/N): ", spec.name, spec.binaryPath)
+		fmt.Printf("Remove %s? This will delete %s. Continue? (y/N): ", spec.Name, spec.BinaryPath)
 		var response string
 		fmt.Scanln(&response)
 		if strings.ToLower(response) != "y" && strings.ToLower(response) != "yes" {
@@ -231,15 +272,15 @@ func runRemoveService(spec serviceSpec, force bool, logger *lib.Logger) error {
 	}
 
 	// For nginx and other services, remove their entire directories
-	serviceDir := filepath.Dir(filepath.Dir(spec.binaryPath)) // Go up two levels from bin/caddy to caddy/
+	serviceDir := filepath.Dir(filepath.Dir(spec.BinaryPath)) // Go up two levels from bin/caddy to caddy/
 	if err := os.RemoveAll(serviceDir); err != nil {
-		return logger.Fail(fmt.Sprintf("Remove %s", spec.name), err.Error())
+		return logger.Fail(fmt.Sprintf("Remove %s", spec.Name), err.Error())
 	}
 
-	logger.Success("Removed service", fmt.Sprintf("%s (%s)", spec.name, serviceDir))
+	logger.Success("Removed service", fmt.Sprintf("%s (%s)", spec.Name, serviceDir))
 
 	// Remove the service shim
-	shimPath := filepath.Join(filepath.Dir(filepath.Dir(spec.binaryPath)), "..", "bin", "shims", spec.name)
+	shimPath := filepath.Join(filepath.Dir(filepath.Dir(spec.BinaryPath)), "..", "bin", "shims", spec.Name)
 	if err := os.Remove(shimPath); err != nil && !os.IsNotExist(err) {
 		logger.Warn("Failed to remove shim", shimPath)
 	}
@@ -248,10 +289,10 @@ func runRemoveService(spec serviceSpec, force bool, logger *lib.Logger) error {
 }
 
 // handleCaddyRemoval handles caddy removal with dnsmasq validation
-func handleCaddyRemoval(spec serviceSpec, force bool, logger *lib.Logger) error {
+func handleCaddyRemoval(spec ServiceSpec, force bool, logger *lib.Logger) error {
 	if !force {
 		// SENSITIVE: Destructive operation - user confirmation for removing caddy service
-		fmt.Printf("Remove %s? This will delete %s. Continue? (y/N): ", spec.name, spec.binaryPath)
+		fmt.Printf("Remove %s? This will delete %s. Continue? (y/N): ", spec.Name, spec.BinaryPath)
 		var response string
 		fmt.Scanln(&response)
 		if strings.ToLower(response) != "y" && strings.ToLower(response) != "yes" {
@@ -263,25 +304,25 @@ func handleCaddyRemoval(spec serviceSpec, force bool, logger *lib.Logger) error 
 	// Check for dnsmasq and assess removal risk
 	hasDnsmasq := system.IsCommandAvailable("dnsmasq")
 	removeDNS := false
-	
+
 	if hasDnsmasq {
 		logger.Info("Checking dnsmasq usage...")
 		dnsLogger := logger.NewChildLogger("dns")
-		
+
 		dnsLogger.Warn("dnsmasq is installed on the system", "other tools may depend on it")
-		
+
 		fmt.Printf("⚠  WARNING: dnsmasq is installed and may be required by other applications.\n")
 		fmt.Printf("   Removing Caddy will also offer to remove dnsmasq from the system.\n")
 		fmt.Printf("   This could break other tools that rely on local DNS resolution.\n")
 		fmt.Printf("\n")
-		
+
 		// Second confirmation for dnsmasq removal
 		// SENSITIVE: Destructive operation - system package removal confirmation for dnsmasq
 		fmt.Printf("Do you also want to remove dnsmasq from the system? (NOT RECOMMENDED) [y/N]: ")
 		var removeDNSResponse string
 		fmt.Scanln(&removeDNSResponse)
 		removeDNS = strings.ToLower(removeDNSResponse) == "y" || strings.ToLower(removeDNSResponse) == "yes"
-		
+
 		if removeDNS {
 			// Double confirmation for dnsmasq removal
 			// SENSITIVE: Destructive operation - double confirmation for critical system package removal
@@ -292,7 +333,7 @@ func handleCaddyRemoval(spec serviceSpec, force bool, logger *lib.Logger) error 
 			fmt.Printf("Are you absolutely sure you want to remove dnsmasq? Type 'REMOVE' to confirm: ")
 			var finalConfirm string
 			fmt.Scanln(&finalConfirm)
-			
+
 			if finalConfirm != "REMOVE" {
 				dnsLogger.Success("dnsmasq removal cancelled", "keeping system package intact")
 				removeDNS = false
@@ -300,21 +341,21 @@ func handleCaddyRemoval(spec serviceSpec, force bool, logger *lib.Logger) error 
 				dnsLogger.Info("Double confirmation received - proceeding with dnsmasq removal")
 			}
 		}
-		
+
 		if removeDNS {
 			// Before removing dnsmasq, ask about chauffeur config
 			if err := removeDnsmasqConfigurationBeforeRemoval(logger); err != nil {
 				return err
 			}
-			
+
 			// Remove dnsmasq using the system package manager
 			pm := system.DetectPackageManager()
 			if pm == system.Unknown {
 				return dnsLogger.Fail("remove dnsmasq", "unsupported package manager")
 			}
-			
+
 			dnsLogger.Info(fmt.Sprintf("Removing dnsmasq using %s...", pm))
-			
+
 			// Determine the package name based on package manager
 			var dnsmasqPackage string
 			switch pm {
@@ -329,7 +370,7 @@ func handleCaddyRemoval(spec serviceSpec, force bool, logger *lib.Logger) error 
 			default:
 				dnsmasqPackage = "dnsmasq"
 			}
-			
+
 			// Check for AUR helpers for Arch Linux
 			useSudo := true
 			if pm == system.Pacman {
@@ -338,7 +379,7 @@ func handleCaddyRemoval(spec serviceSpec, force bool, logger *lib.Logger) error 
 					useSudo = false // AUR helpers handle sudo internally
 				}
 			}
-			
+
 			// Create the removal command
 			var removeCmd *exec.Cmd
 			switch pm {
@@ -361,13 +402,13 @@ func handleCaddyRemoval(spec serviceSpec, force bool, logger *lib.Logger) error 
 			default:
 				return dnsLogger.Fail("remove dnsmasq", fmt.Sprintf("unsupported package manager: %s", pm))
 			}
-			
+
 			// Execute the removal command
 			// SENSITIVE: Process execution - running system package manager with elevated privileges
 			if err := removeCmd.Run(); err != nil {
 				return dnsLogger.Fail("remove dnsmasq", err.Error())
 			}
-			
+
 			dnsLogger.Success("Removed dnsmasq package", "system DNS resolution may be affected")
 		} else {
 			dnsLogger.Info("Keeping dnsmasq installed - local DNS resolution will remain functional")
@@ -379,15 +420,15 @@ func handleCaddyRemoval(spec serviceSpec, force bool, logger *lib.Logger) error 
 	}
 
 	// Remove caddy directory
-	serviceDir := filepath.Dir(filepath.Dir(spec.binaryPath)) // Go up two levels from bin/caddy to caddy/
+	serviceDir := filepath.Dir(filepath.Dir(spec.BinaryPath)) // Go up two levels from bin/caddy to caddy/
 	if err := os.RemoveAll(serviceDir); err != nil {
 		return logger.Fail("Remove Caddy directory", err.Error())
 	}
 
-	logger.Success("Removed Caddy service", fmt.Sprintf("%s (%s)", spec.name, serviceDir))
+	logger.Success("Removed Caddy service", fmt.Sprintf("%s (%s)", spec.Name, serviceDir))
 
 	// Remove the caddy shim
-	shimPath := filepath.Join(filepath.Dir(filepath.Dir(spec.binaryPath)), "..", "bin", "shims", spec.name)
+	shimPath := filepath.Join(filepath.Dir(filepath.Dir(spec.BinaryPath)), "..", "bin", "shims", spec.Name)
 	if err := os.Remove(shimPath); err != nil && !os.IsNotExist(err) {
 		logger.Warn("Failed to remove shim", shimPath)
 	}
@@ -450,40 +491,40 @@ func updateDefaultPHPAfterRemoval(prefix, removedVersion string) {
 // removeDnsmasqConfigurationBeforeRemoval removes the chauffeur dnsmasq configuration before package removal.
 func removeDnsmasqConfigurationBeforeRemoval(logger *lib.Logger) error {
 	logger.Info("Checking for Chauffeur dnsmasq configuration...")
-	
+
 	dnsLogger := logger.NewChildLogger("dns")
-	
+
 	// Check if configuration exists
 	if _, err := os.Stat("/etc/dnsmasq.d/chauffeur.conf"); os.IsNotExist(err) {
 		dnsLogger.Info("No Chauffeur dnsmasq configuration found - no cleanup needed")
 		return nil
 	}
-	
+
 	dnsLogger.Info("Found Chauffeur dnsmasq configuration at /etc/dnsmasq.d/chauffeur.conf")
-	
+
 	fmt.Printf("\n%s", "Do you want to remove the Chauffeur dnsmasq configuration before removing dnsmasq? [y/N]: ")
 	var response string
 	fmt.Scanln(&response)
-	
+
 	if strings.ToLower(response) != "y" && strings.ToLower(response) != "yes" {
 		dnsLogger.Info("Keeping dnsmasq configuration - file will be removed with package")
 		return nil
 	}
-	
+
 	dnsLogger.Info("Removing dnsmasq configuration...")
-	
+
 	// SENSITIVE: System file modification - removing system configuration file with elevated privileges
 	if err := exec.Command("sudo", "rm", "-f", "/etc/dnsmasq.d/chauffeur.conf").Run(); err != nil {
 		return dnsLogger.Fail("remove dnsmasq configuration", err.Error())
 	}
-	
+
 	dnsLogger.Success("dnsmasq configuration removed", "Configuration file deleted")
-	
+
 	// Offer to restart dnsmasq to apply changes before package removal
 	fmt.Printf("\n%s", "Do you want to restart dnsmasq to apply configuration changes before removing it? [y/N]: ")
 	var restartResponse string
 	fmt.Scanln(&restartResponse)
-	
+
 	if strings.ToLower(restartResponse) == "y" || strings.ToLower(restartResponse) == "yes" {
 		if system.IsNetworkManagerDnsmasqRunning() {
 			dnsLogger.Info("NetworkManager is managing dnsmasq - reloading NetworkManager to apply changes...")
@@ -507,47 +548,47 @@ func removeDnsmasqConfigurationBeforeRemoval(logger *lib.Logger) error {
 			dnsLogger.Info("dnsmasq not restarted - continuing with package removal")
 		}
 	}
-	
+
 	return nil
 }
 
 // removeDnsmasqConfiguration removes the chauffeur dnsmasq configuration.
 func removeDnsmasqConfiguration(logger *lib.Logger) error {
 	logger.Info("Checking for Chauffeur dnsmasq configuration...")
-	
+
 	dnsLogger := logger.NewChildLogger("dns")
-	
+
 	// Check if configuration exists
 	if _, err := os.Stat("/etc/dnsmasq.d/chauffeur.conf"); os.IsNotExist(err) {
 		dnsLogger.Info("No Chauffeur dnsmasq configuration found - no cleanup needed")
 		return nil
 	}
-	
+
 	dnsLogger.Info("Found Chauffeur dnsmasq configuration at /etc/dnsmasq.d/chauffeur.conf")
-	
+
 	fmt.Printf("\n%s", "Do you want to remove the Chauffeur dnsmasq configuration? [y/N]: ")
 	var response string
 	fmt.Scanln(&response)
-	
+
 	if strings.ToLower(response) != "y" && strings.ToLower(response) != "yes" {
 		dnsLogger.Info("Keeping dnsmasq configuration - file remains")
 		return nil
 	}
-	
+
 	dnsLogger.Info("Removing dnsmasq configuration...")
-	
+
 	// SENSITIVE: System file modification - removing system configuration file with elevated privileges
 	if err := exec.Command("sudo", "rm", "-f", "/etc/dnsmasq.d/chauffeur.conf").Run(); err != nil {
 		return dnsLogger.Fail("remove dnsmasq configuration", err.Error())
 	}
-	
+
 	dnsLogger.Success("dnsmasq configuration removed", "Configuration file deleted")
-	
+
 	// Optionally restart dnsmasq (only if dnsmasq is still installed)
 	fmt.Printf("\n%s", "Do you want to restart dnsmasq to apply changes? [y/N]: ")
 	var restartResponse string
 	fmt.Scanln(&restartResponse)
-	
+
 	if strings.ToLower(restartResponse) == "y" || strings.ToLower(restartResponse) == "yes" {
 		if system.IsNetworkManagerDnsmasqRunning() {
 			dnsLogger.Info("NetworkManager is managing dnsmasq - reloading NetworkManager to apply changes...")
@@ -575,7 +616,7 @@ func removeDnsmasqConfiguration(logger *lib.Logger) error {
 			dnsLogger.Info("dnsmasq not restarted - changes will apply on next service restart")
 		}
 	}
-	
+
 	return nil
 }
 

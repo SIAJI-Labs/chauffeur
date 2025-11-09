@@ -5,42 +5,42 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	
+
 	"github.com/siaji/chauffeur/cli/internal/projects"
 )
 
 // TemplateData represents the data available to nginx templates
 type TemplateData struct {
-	ProjectSlug    string
-	ServerName     string
-	ProjectRoot    string
-	PHPFpmSocket   string
-	LogsDir        string
-	SSL            bool
-	CaddySSLCert   string
-	CaddySSLKey    string
+	ProjectSlug  string
+	ServerName   string
+	ProjectRoot  string
+	PHPFpmSocket string
+	LogsDir      string
+	SSL          bool
+	CaddySSLCert string
+	CaddySSLKey  string
 }
 
 // CaddyTemplateData represents the data available to Caddy templates
 type CaddyTemplateData struct {
-	ServerName     string
-	ProjectRoot    string
-	PHPFpmSocket   string
-	SiteDomain    bool
-	SSL            bool
+	ServerName   string
+	ProjectRoot  string
+	PHPFpmSocket string
+	SiteDomain   bool
+	SSL          bool
 }
 
 // TemplateEngine handles nginx template processing
 type TemplateEngine struct {
 	templateDir string
-	caddyDir   string
+	caddyDir    string
 }
 
 // NewTemplateEngine creates a new template engine
 func NewTemplateEngine() (*TemplateEngine, error) {
 	// Try multiple template directory paths
 	var nginxDir, caddyDir string
-	
+
 	// Get the template directory relative to the CLI binary location
 	exePath, err := os.Executable()
 	if err == nil {
@@ -49,14 +49,14 @@ func NewTemplateEngine() (*TemplateEngine, error) {
 		if _, err := os.Stat(nginxCandidate); err == nil {
 			nginxDir = nginxCandidate
 		}
-		
+
 		// Try caddy templates
 		caddyCandidate := filepath.Join(filepath.Dir(exePath), "..", "..", "templates", "caddy")
 		if _, err := os.Stat(caddyCandidate); err == nil {
 			caddyDir = caddyCandidate
 		}
 	}
-	
+
 	// Fallback to development path if installation path doesn't exist
 	if nginxDir == "" {
 		// Assume we're in development environment
@@ -64,21 +64,21 @@ func NewTemplateEngine() (*TemplateEngine, error) {
 		if err != nil {
 			return nil, fmt.Errorf("determine working directory: %w", err)
 		}
-		
+
 		nginxDevCandidate := filepath.Join(wd, "cli", "templates", "nginx")
 		if _, err := os.Stat(nginxDevCandidate); err == nil {
 			nginxDir = nginxDevCandidate
 		}
-		
+
 		caddyDevCandidate := filepath.Join(wd, "cli", "templates", "caddy")
 		if _, err := os.Stat(caddyDevCandidate); err == nil {
 			caddyDir = caddyDevCandidate
 		}
 	}
-	
+
 	return &TemplateEngine{
 		templateDir: nginxDir,
-		caddyDir:  caddyDir,
+		caddyDir:    caddyDir,
 	}, nil
 }
 
@@ -87,17 +87,17 @@ func (e *TemplateEngine) RenderNginxTemplate(templateName string, data TemplateD
 	if e.templateDir == "" {
 		return "", fmt.Errorf("template directory not available")
 	}
-	
+
 	templatePath := filepath.Join(e.templateDir, templateName)
 	if templateName == "" {
 		templatePath = filepath.Join(e.templateDir, "general.conf")
 	}
-	
+
 	content, err := os.ReadFile(templatePath)
 	if err != nil {
 		return "", fmt.Errorf("read nginx template %s: %w", templatePath, err)
 	}
-	
+
 	return e.processTemplate(string(content), data)
 }
 
@@ -106,48 +106,48 @@ func (e *TemplateEngine) RenderCaddyTemplate(templateName string, data CaddyTemp
 	if e.caddyDir == "" {
 		return "", fmt.Errorf("template directory not available")
 	}
-	
+
 	templatePath := filepath.Join(e.caddyDir, templateName)
 	if templateName == "" {
 		templatePath = filepath.Join(e.caddyDir, "general.conf")
 	}
-	
+
 	content, err := os.ReadFile(templatePath)
 	if err != nil {
 		return "", fmt.Errorf("read caddy template %s: %w", templatePath, err)
 	}
-	
+
 	return e.processCaddyTemplate(string(content), data), nil
 }
 
 // processTemplate applies template variable substitution with simple {{VAR}} syntax
 func (e *TemplateEngine) processTemplate(content string, data TemplateData) (string, error) {
 	result := content
-	
+
 	// Basic variable replacement
 	replacements := map[string]string{
-		"{{PROJECT_SLUG}}":    data.ProjectSlug,
-		"{{SERVER_NAME}}":      data.ServerName,
-		"{{PROJECT_ROOT}}":     data.ProjectRoot,
-		"{{PHP_FPM_SOCKET}}":   data.PHPFpmSocket,
-		"{{LOGS_DIR}}":         data.LogsDir,
-		"{{CADDY_SSL_CERT}}":   data.CaddySSLCert,
-		"{{CADDY_SSL_KEY}}":    data.CaddySSLKey,
+		"{{PROJECT_SLUG}}":   data.ProjectSlug,
+		"{{SERVER_NAME}}":    data.ServerName,
+		"{{PROJECT_ROOT}}":   data.ProjectRoot,
+		"{{PHP_FPM_SOCKET}}": data.PHPFpmSocket,
+		"{{LOGS_DIR}}":       data.LogsDir,
+		"{{CADDY_SSL_CERT}}": data.CaddySSLCert,
+		"{{CADDY_SSL_KEY}}":  data.CaddySSLKey,
 	}
-	
+
 	for placeholder, value := range replacements {
 		result = strings.ReplaceAll(result, placeholder, value)
 	}
-	
+
 	// Handle conditional SSL blocks
 	if !data.SSL {
 		// Remove SSL section (everything between {{#SSL}} and {{/SSL}})
 		start := strings.Index(result, "{{#SSL}}")
 		end := strings.Index(result, "{{/SSL}}")
-		
+
 		if start != -1 && end != -1 {
 			beforeSSL := result[:start]
-			afterSSL := result[end + len("{{/SSL}}"):]
+			afterSSL := result[end+len("{{/SSL}}"):]
 			result = beforeSSL + afterSSL
 		}
 	} else {
@@ -155,7 +155,7 @@ func (e *TemplateEngine) processTemplate(content string, data TemplateData) (str
 		result = strings.ReplaceAll(result, "{{#SSL}}", "")
 		result = strings.ReplaceAll(result, "{{/SSL}}", "")
 	}
-	
+
 	return result, nil
 }
 
@@ -166,7 +166,7 @@ func (e *TemplateEngine) GenerateNginxConfig(config projects.Config, layout proj
 	if config.Site != nil && config.Site.Domain != "" {
 		serverName = config.Site.Domain
 	}
-	
+
 	// Prepare template data
 	data := TemplateData{
 		ProjectSlug:  filepath.Base(layout.Root),
@@ -175,14 +175,14 @@ func (e *TemplateEngine) GenerateNginxConfig(config projects.Config, layout proj
 		PHPFpmSocket: layout.SocketPath,
 		LogsDir:      layout.LogsDir,
 	}
-	
+
 	// Configure SSL if enabled
 	if config.Site != nil && config.Site.SSL {
 		data.SSL = true
 		data.CaddySSLCert = "/etc/ssl/certs/caddy.pem"
 		data.CaddySSLKey = "/etc/ssl/private/caddy.key"
 	}
-	
+
 	// Choose template based on type
 	templateName := "general.conf"
 	switch templateType {
@@ -195,7 +195,7 @@ func (e *TemplateEngine) GenerateNginxConfig(config projects.Config, layout proj
 	default:
 		templateName = "general.conf"
 	}
-	
+
 	return e.RenderNginxTemplate(templateName, data)
 }
 
@@ -206,16 +206,16 @@ func (e *TemplateEngine) GenerateCaddyConfig(config projects.Config, layout proj
 	if config.Site != nil && config.Site.Domain != "" {
 		serverName = config.Site.Domain
 	}
-	
+
 	// Prepare template data
 	data := CaddyTemplateData{
 		ServerName:   serverName,
 		ProjectRoot:  config.Path,
 		PHPFpmSocket: layout.SocketPath,
-		SiteDomain:  config.Site != nil && config.Site.Domain != "",
-		SSL:         config.Site != nil && config.Site.SSL,
+		SiteDomain:   config.Site != nil && config.Site.Domain != "",
+		SSL:          config.Site != nil && config.Site.SSL,
 	}
-	
+
 	// Choose template based on type
 	templateName := "general.conf"
 	switch templateType {
@@ -228,14 +228,14 @@ func (e *TemplateEngine) GenerateCaddyConfig(config projects.Config, layout proj
 	default:
 		templateName = "general.conf"
 	}
-	
+
 	content, err := e.RenderCaddyTemplate(templateName, data)
 	if err != nil {
 		return "", err
 	}
-	
+
 	// Use configured ports from global settings (8080/8443 by default)
-	
+
 	return content, nil
 }
 
@@ -247,42 +247,42 @@ func (e *TemplateEngine) WriteNginxConfig(config projects.Config, layout project
 		// If template generation fails, create a basic config as fallback
 		content = e.generateBasicConfig(config, layout)
 	}
-	
+
 	// Determine nginx sites-available path
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return fmt.Errorf("determine home directory: %w", err)
 	}
-	
+
 	nginxDir := filepath.Join(home, ".chauffeur", "nginx")
 	sitesAvailable := filepath.Join(nginxDir, "sites-available")
 	sitesEnabled := filepath.Join(nginxDir, "sites-enabled")
-	
+
 	// Ensure directories exist
 	for _, dir := range []string{sitesAvailable, sitesEnabled} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return fmt.Errorf("create nginx directory %s: %w", dir, err)
 		}
 	}
-	
+
 	// Use configured ports from global settings (8080/8443 by default)
-	
+
 	configPath := filepath.Join(sitesAvailable, filepath.Base(layout.Root)+".conf")
 	if err := os.WriteFile(configPath, []byte(content), 0o644); err != nil {
 		return fmt.Errorf("write nginx config to %s: %w", configPath, err)
 	}
-	
+
 	// Create symlink in sites-enabled
 	enabledPath := filepath.Join(sitesEnabled, filepath.Base(layout.Root)+".conf")
-	
+
 	// Remove existing symlink if it exists
 	os.Remove(enabledPath)
-	
+
 	// Create new symlink
 	if err := os.Symlink(configPath, enabledPath); err != nil {
 		return fmt.Errorf("create nginx symlink: %w", err)
 	}
-	
+
 	return nil
 }
 
@@ -294,55 +294,55 @@ func (e *TemplateEngine) WriteCaddyConfig(config projects.Config, layout project
 		// If template generation fails, create a basic config as fallback
 		content = e.generateBasicCaddyConfig(config, layout)
 	}
-	
+
 	// Use configured ports from global settings (8080/8443 by default)
-	
+
 	// Determine Caddy directory
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return fmt.Errorf("determine home directory: %w", err)
 	}
-	
+
 	caddyDir := filepath.Join(home, ".chauffeur", "caddy")
-	
+
 	// Ensure directory exists
 	if err := os.MkdirAll(caddyDir, 0o755); err != nil {
 		return fmt.Errorf("create caddy directory %s: %w", caddyDir, err)
 	}
-	
+
 	// Read the current Caddyfile for appending new content
 	caddyfilePath := filepath.Join(caddyDir, "Caddyfile")
 	currentContent, err := os.ReadFile(caddyfilePath)
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("read caddyfile: %w", err)
 	}
-	
+
 	// Calculate the section delimiters
 	projectSlug := filepath.Base(layout.Root)
 	startMarker := fmt.Sprintf("# Start of %s configuration", projectSlug)
 	endMarker := fmt.Sprintf("# End of %s configuration", projectSlug)
-	
+
 	// Remove old configuration if it exists
 	if currentContent != nil {
 		contentStr := string(currentContent)
 		startIdx := strings.Index(contentStr, startMarker)
 		endIdx := strings.Index(contentStr, endMarker)
-		
+
 		if startIdx != -1 && endIdx != -1 {
 			// Remove old section
 			beforeSection := contentStr[:startIdx]
-			afterSection := contentStr[endIdx + len(endMarker):]
+			afterSection := contentStr[endIdx+len(endMarker):]
 			contentStr = beforeSection + afterSection
-			
+
 			// Remove any trailing empty lines
 			contentStr = strings.TrimRight(contentStr, "\n") + "\n\n"
 			currentContent = []byte(contentStr)
 		}
 	}
-	
+
 	// Prepare new section content
 	newSection := fmt.Sprintf("%s\n%s\n%s\n", startMarker, content, endMarker)
-	
+
 	// Combine old content with new section
 	var fullContent []byte
 	if currentContent != nil {
@@ -352,12 +352,12 @@ func (e *TemplateEngine) WriteCaddyConfig(config projects.Config, layout project
 		globalConfig := "{\n\tauto_https off\n}\n# Project sites are appended by chauf link\n\n"
 		fullContent = append([]byte(globalConfig), []byte(newSection)...)
 	}
-	
+
 	// Write the complete Caddyfile
 	if err := os.WriteFile(caddyfilePath, fullContent, 0o644); err != nil {
 		return fmt.Errorf("write caddyfile: %w", err)
 	}
-	
+
 	return nil
 }
 
@@ -367,24 +367,24 @@ func (e *TemplateEngine) RemoveNginxConfig(slug string) error {
 	if err != nil {
 		return fmt.Errorf("determine home directory: %w", err)
 	}
-	
+
 	nginxDir := filepath.Join(home, ".chauffeur", "nginx")
 	sitesAvailable := filepath.Join(nginxDir, "sites-available")
 	sitesEnabled := filepath.Join(nginxDir, "sites-enabled")
-	
+
 	configPath := filepath.Join(sitesAvailable, slug+".conf")
 	enabledPath := filepath.Join(sitesEnabled, slug+".conf")
-	
+
 	// Remove symlink first
 	if err := os.Remove(enabledPath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("remove nginx enabled config: %w", err)
 	}
-	
+
 	// Remove config file
 	if err := os.Remove(configPath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("remove nginx config: %w", err)
 	}
-	
+
 	return nil
 }
 
@@ -394,13 +394,13 @@ func (e *TemplateEngine) RemoveCaddyConfig(slug string) error {
 	if err != nil {
 		return fmt.Errorf("determine home directory: %w", err)
 	}
-	
+
 	caddyfilePath := filepath.Join(home, ".chauffeur", "caddy", "Caddyfile")
-	
+
 	// Calculate the section delimiters
 	startMarker := fmt.Sprintf("# Start of %s configuration", slug)
 	endMarker := fmt.Sprintf("# End of %s configuration", slug)
-	
+
 	// Read current content
 	currentContent, err := os.ReadFile(caddyfilePath)
 	if err != nil {
@@ -409,27 +409,27 @@ func (e *TemplateEngine) RemoveCaddyConfig(slug string) error {
 		}
 		return fmt.Errorf("read caddyfile: %w", err)
 	}
-	
+
 	// Remove project section
 	contentStr := string(currentContent)
 	startIdx := strings.Index(contentStr, startMarker)
 	endIdx := strings.Index(contentStr, endMarker)
-	
+
 	if startIdx != -1 && endIdx != -1 {
 		// Remove the section
 		beforeSection := contentStr[:startIdx]
-		afterSection := contentStr[endIdx + len(endMarker):]
+		afterSection := contentStr[endIdx+len(endMarker):]
 		contentStr = beforeSection + afterSection
-		
+
 		// Remove any trailing empty lines
 		contentStr = strings.TrimRight(contentStr, "\n") + "\n"
-		
+
 		// Write back without the removed section
 		if err := os.WriteFile(caddyfilePath, []byte(contentStr), 0o644); err != nil {
 			return fmt.Errorf("update caddyfile: %w", err)
 		}
 	}
-	
+
 	return nil
 }
 
@@ -445,14 +445,14 @@ func (e *TemplateEngine) DetectTemplateType(projectPath string) string {
 			return "laravel"
 		}
 	}
-	
+
 	// Check for WordPress indicators
 	if e.fileExists(filepath.Join(projectPath, "wp-config.php")) &&
 		e.fileExists(filepath.Join(projectPath, "wp-admin")) &&
 		e.fileExists(filepath.Join(projectPath, "wp-includes")) {
 		return "wordpress"
 	}
-	
+
 	// Default to general
 	return "general"
 }
@@ -509,7 +509,7 @@ server {
     location ~ /\. {
         deny all;
     }
-}`, 
+}`,
 		serverName,
 		filepath.Base(layout.Root),
 		layout.SocketPath,
@@ -556,7 +556,7 @@ server {
     location ~ /\. {
         deny all;
     }
-}`, 
+}`,
 			serverName,
 			config.Path,
 			layout.LogsDir,
@@ -571,30 +571,30 @@ server {
 // processCaddyTemplate applies template variable substitution with simple {{VAR}} syntax for Caddy
 func (e *TemplateEngine) processCaddyTemplate(content string, data CaddyTemplateData) string {
 	result := content
-	
+
 	// Basic variable replacement
 	replacements := map[string]string{
 		"{{SERVER_NAME}}":    data.ServerName,
 		"{{PROJECT_ROOT}}":   data.ProjectRoot,
-		"{{PHP_FPM_SOCKET}}":  data.PHPFpmSocket,
+		"{{PHP_FPM_SOCKET}}": data.PHPFpmSocket,
 	}
-	
+
 	for placeholder, value := range replacements {
 		result = strings.ReplaceAll(result, placeholder, value)
 	}
-	
+
 	// Handle conditional blocks
 	if data.SiteDomain {
 		// Remove negative conditional blocks ({{^SITE_DOMAIN}}...{{/SITE_DOMAIN}})
 		start := strings.Index(result, "{{^SITE_DOMAIN}}")
 		end := strings.Index(result, "{{/SITE_DOMAIN}}")
-		
+
 		if start != -1 && end != -1 {
 			before := result[:start]
-			after := result[end + len("{{/SITE_DOMAIN}}"):]
+			after := result[end+len("{{/SITE_DOMAIN}}"):]
 			result = before + after
 		}
-		
+
 		// Remove the positive conditional markers but keep the content
 		result = strings.ReplaceAll(result, "{{#SITE_DOMAIN}}", "")
 		result = strings.ReplaceAll(result, "{{/SITE_DOMAIN}}", "")
@@ -602,26 +602,26 @@ func (e *TemplateEngine) processCaddyTemplate(content string, data CaddyTemplate
 		// Remove positive conditional blocks ({{#SITE_DOMAIN}}...{{/SITE_DOMAIN}})
 		start := strings.Index(result, "{{#SITE_DOMAIN}}")
 		end := strings.Index(result, "{{/SITE_DOMAIN}}")
-		
+
 		if start != -1 && end != -1 {
 			before := result[:start]
-			after := result[end + len("{{/SITE_DOMAIN}}"):]
+			after := result[end+len("{{/SITE_DOMAIN}}"):]
 			result = before + after
 		}
-		
+
 		// Remove the negative conditional markers but keep the content
 		result = strings.ReplaceAll(result, "{{^SITE_DOMAIN}}", "")
 		result = strings.ReplaceAll(result, "{{/SITE_DOMAIN}}", "")
 	}
-	
+
 	if !data.SSL {
 		// Remove SSL section (everything between {{#SSL}} and {{/SSL}})
 		start := strings.Index(result, "{{#SSL}}")
 		end := strings.Index(result, "{{/SSL}}")
-		
+
 		if start != -1 && end != -1 {
 			beforeSSL := result[:start]
-			afterSSL := result[end + len("{{/SSL}}"):]
+			afterSSL := result[end+len("{{/SSL}}"):]
 			result = beforeSSL + afterSSL
 		}
 	} else {
@@ -629,7 +629,7 @@ func (e *TemplateEngine) processCaddyTemplate(content string, data CaddyTemplate
 		result = strings.ReplaceAll(result, "{{#SSL}}", "")
 		result = strings.ReplaceAll(result, "{{/SSL}}", "")
 	}
-	
+
 	return result
 }
 
@@ -640,114 +640,57 @@ func (e *TemplateEngine) generateBasicCaddyConfig(config projects.Config, layout
 		serverName = config.Site.Domain
 	}
 
-	basicConfig := fmt.Sprintf(`# Start of %s configuration
-%s {
-	root %s
-	php_fastcgi unix:%s {
-		root %s
-	}
+	projectLabel := filepath.Base(layout.Root)
+	var builder strings.Builder
 
-	file_server
-	
-	# Security headers
-	header {
-		X-Content-Type-Options nosniff
-		X-Frame-Options SAMEORIGIN
-		X-XSS-Protection "1; mode=block"
-	}
+	fmt.Fprintf(&builder, "# Start of %s configuration\n", projectLabel)
+	fmt.Fprintf(&builder, "%s {\n", serverName)
+	fmt.Fprintf(&builder, "	root %s\n", config.Path)
+	fmt.Fprintf(&builder, "	encode gzip\n")
+	fmt.Fprintf(&builder, "	php_fastcgi unix:%s {\n", layout.SocketPath)
+	fmt.Fprintf(&builder, "		root %s\n", config.Path)
+	fmt.Fprintf(&builder, "	}\n\n")
+	fmt.Fprintf(&builder, "	file_server\n\n")
+	fmt.Fprintf(&builder, "	header {\n")
+	fmt.Fprintf(&builder, "		X-Content-Type-Options nosniff\n")
+	fmt.Fprintf(&builder, "		X-Frame-Options SAMEORIGIN\n")
+	fmt.Fprintf(&builder, "		X-XSS-Protection \"1; mode=block\"\n")
+	fmt.Fprintf(&builder, "	}\n\n")
+	fmt.Fprintf(&builder, "	@static {\n")
+	fmt.Fprintf(&builder, "		path *.css *.js *.png *.jpg *.jpeg *.gif *.ico *.svg\n")
+	fmt.Fprintf(&builder, "	}\n")
+	fmt.Fprintf(&builder, "	handle @static {\n")
+	fmt.Fprintf(&builder, "		header Cache-Control \"public, max-age=31536000\"\n")
+	fmt.Fprintf(&builder, "		file_server\n")
+	fmt.Fprintf(&builder, "	}\n\n")
+	fmt.Fprintf(&builder, "	@php {\n")
+	fmt.Fprintf(&builder, "		path *.php\n")
+	fmt.Fprintf(&builder, "	}\n")
+	fmt.Fprintf(&builder, "	handle @php {\n")
+	fmt.Fprintf(&builder, "		php_fastcgi unix:%s {\n", layout.SocketPath)
+	fmt.Fprintf(&builder, "			root %s\n", config.Path)
+	fmt.Fprintf(&builder, "		}\n")
+	fmt.Fprintf(&builder, "		rewrite /* /index.php?{query}\n")
+	fmt.Fprintf(&builder, "	}\n")
+	fmt.Fprintf(&builder, "}\n\n")
 
-	# Handle static files
-	@static {
-		path *.css *.js *.png *.jpg *.jpeg *.gif *.ico *.svg
-	}
-	
-	handle @static {
-		header Cache-Control "public, max-age=31536000"
-		file_server
-	}
-	
-	# Handle PHP files
-	@php {
-		path *.php
-	}
-	
-	handle @php {
-		php_fastcgi unix:%s {
-			root %s
-		}
-		rewrite /* /index.php?{query}
-	}
-}
-
-%s
-# End of %s configuration
-`, 
-		filepath.Base(layout.Root),
-		serverName,
-		config.Path,
-		layout.SocketPath,
-		config.Path,
-		"",
-		filepath.Base(layout.Root),
-		filepath.Base(layout.Root),
-	)
-
-	// Add SSL section if enabled
 	if config.Site != nil && config.Site.SSL {
-	sslSection := fmt.Sprintf(`
-
-%s:9879 {
-	root %s
-	php_fastcgi unix:%s {
-			root %s
+		fmt.Fprintf(&builder, "%s {\n", serverName)
+		fmt.Fprintf(&builder, "	root %s\n", config.Path)
+		fmt.Fprintf(&builder, "	php_fastcgi unix:%s {\n", layout.SocketPath)
+		fmt.Fprintf(&builder, "		root %s\n", config.Path)
+		fmt.Fprintf(&builder, "	}\n")
+		fmt.Fprintf(&builder, "	file_server\n")
+		fmt.Fprintf(&builder, "	tls internal\n")
+		fmt.Fprintf(&builder, "	header {\n")
+		fmt.Fprintf(&builder, "		X-Content-Type-Options nosniff\n")
+		fmt.Fprintf(&builder, "		X-Frame-Options SAMEORIGIN\n")
+		fmt.Fprintf(&builder, "		X-XSS-Protection \"1; mode=block\"\n")
+		fmt.Fprintf(&builder, "		Strict-Transport-Security \"max-age=31536000; includeSubDomains\"\n")
+		fmt.Fprintf(&builder, "	}\n")
+		fmt.Fprintf(&builder, "}\n\n")
 	}
 
-		file_server
-		tls internal
-		
-	# Enhanced security headers for HTTPS
-		header {
-			X-Content-Type-Options nosniff
-			X-Frame-Options SAMEORIGIN
-			X-XSS-Protection "1; mode=block"
-			Strict-Transport-Security "max-age=31536000; includeSubDomains"
-		}
-	
-	# Handle static files
-	@static {
-			path *.css *.js *.png *.jpg *.jpeg *.gif *.ico *.svg
-		}
-		
-		handle @static {
-			header Cache-Control "public, max-age=31536000"
-			file_server
-		}
-		
-	# Handle PHP files
-		@php {
-			path *.php
-		}
-		
-		handle @php {
-			php_fastcgi unix:%s {
-				root %s
-			}
-			rewrite /* /index.php?{query}
-		}
-	}
-
-# End of %s configuration
-`, 
-			serverName,
-			config.Path,
-			layout.SocketPath,
-			config.Path,
-			filepath.Base(layout.Root),
-			filepath.Base(layout.Root),
-		)
-		
-		basicConfig += sslSection
-	}
-
-	return basicConfig
+	fmt.Fprintf(&builder, "# End of %s configuration\n", projectLabel)
+	return builder.String()
 }
