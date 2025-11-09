@@ -24,13 +24,13 @@ const (
 
 // Service represents a manageable Chauffeur service
 type Service struct {
-	Name     string
-	Type     ServiceType
-	Slug     string // for project services only
-	Binary   string
-	PIDFile  string
-	Args     []string
-	Env      []string
+	Name    string
+	Type    ServiceType
+	Slug    string // for project services only
+	Binary  string
+	PIDFile string
+	Args    []string
+	Env     []string
 }
 
 // ServiceManager handles service lifecycle operations
@@ -39,8 +39,14 @@ type ServiceManager struct {
 	projectsDir  string
 }
 
+var newServiceManagerHook func() (*ServiceManager, error)
+
 // NewServiceManager creates a new service manager
 func NewServiceManager() (*ServiceManager, error) {
+	if newServiceManagerHook != nil {
+		return newServiceManagerHook()
+	}
+
 	wsDir, err := workspace.Dir()
 	if err != nil {
 		return nil, fmt.Errorf("get workspace directory: %w", err)
@@ -72,14 +78,14 @@ func (sm *ServiceManager) ListGlobalServices() []Service {
 				// Continue even if config generation fails
 			}
 		}
-		
+
 		services = append(services, Service{
-			Name:     "chauf-nginx",
-			Type:     ServiceTypeGlobal,
-			Binary:   nginxPath,
-			PIDFile:  filepath.Join(sm.workspaceDir, "nginx", "logs", "nginx.pid"),
-			Args:     []string{"-g", "daemon off;", "-c", nginxConfigPath},
-			Env:      []string{},
+			Name:    "chauf-nginx",
+			Type:    ServiceTypeGlobal,
+			Binary:  nginxPath,
+			PIDFile: filepath.Join(sm.workspaceDir, "nginx", "logs", "nginx.pid"),
+			Args:    []string{"-g", "daemon off;", "-c", nginxConfigPath},
+			Env:     []string{},
 		})
 	}
 
@@ -125,17 +131,24 @@ func (sm *ServiceManager) ListProjectServices(projectSlug string) ([]Service, er
 
 	services := []Service{
 		{
-			Name:     fmt.Sprintf("chauf-php-fpm-%s", projectSlug),
-			Type:     ServiceTypeProject,
-			Slug:     projectSlug,
-			Binary:   phpFpmPath,
-			PIDFile:  filepath.Join(runtimeDir, "php-fpm.pid"),
-			Args:     []string{"--nodaemonize", "--fpm-config", configPath},
-			Env:      []string{},
+			Name:    fmt.Sprintf("chauf-php-fpm-%s", projectSlug),
+			Type:    ServiceTypeProject,
+			Slug:    projectSlug,
+			Binary:  phpFpmPath,
+			PIDFile: filepath.Join(runtimeDir, "php-fpm.pid"),
+			Args:    []string{"--nodaemonize", "--fpm-config", configPath},
+			Env:     []string{},
 		},
 	}
 
 	return services, nil
+}
+
+// OverrideServiceManager allows tests to inject a fake manager.
+func OverrideServiceManager(fn func() (*ServiceManager, error)) (reset func()) {
+	prev := newServiceManagerHook
+	newServiceManagerHook = fn
+	return func() { newServiceManagerHook = prev }
 }
 
 // generatePHPFPMConfig creates a PHP-FPM pool configuration

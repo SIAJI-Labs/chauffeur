@@ -25,6 +25,22 @@ var (
 	lookPath   = exec.LookPath
 )
 
+// OverrideSelfUpdateHooks lets tests swap self-update internals.
+func OverrideSelfUpdateHooks(commandFn func(string, string, ...string) (string, error), buildFn func(string, string, string) error) (reset func()) {
+	prevCommand := runCommand
+	prevBuild := goBuild
+	if commandFn != nil {
+		runCommand = commandFn
+	}
+	if buildFn != nil {
+		goBuild = buildFn
+	}
+	return func() {
+		runCommand = prevCommand
+		goBuild = prevBuild
+	}
+}
+
 // runDevUpdate rebuilds the CLI binary from the current working directory
 func runDevUpdate(logger *lib.Logger) error {
 	// Verify we're in a valid git repository

@@ -14,6 +14,31 @@ import (
 	"github.com/siaji/chauffeur/cli/lib"
 )
 
+var phpInstallFunc = defaultPHPInstall
+
+func defaultPHPInstall(version, prefix string, force bool) error {
+	info, err := system.Detect()
+	if err != nil {
+		return err
+	}
+	return installers.InstallPHPSource(version, installers.InstallOptions{
+		Prefix: prefix,
+		Force:  force,
+		Info:   info,
+	})
+}
+
+// OverridePHPInstallFunc lets tests inject a fake PHP installer.
+func OverridePHPInstallFunc(fn func(version, prefix string, force bool) error) (reset func()) {
+	prev := phpInstallFunc
+	if fn != nil {
+		phpInstallFunc = fn
+	}
+	return func() {
+		phpInstallFunc = prev
+	}
+}
+
 /**
  * RunInstall handles `chauf install <service...>` invocations.
  *
@@ -176,17 +201,8 @@ func runPHPInstall(version string, force bool) error {
 		return err
 	}
 
-	info, err := system.Detect()
-	if err != nil {
-		return err
-	}
-
 	logger.Info(fmt.Sprintf("Installing PHP %s...", version))
-	if err := installers.InstallPHPSource(version, installers.InstallOptions{
-		Prefix: prefix,
-		Force:  force,
-		Info:   info,
-	}); err != nil {
+	if err := phpInstallFunc(version, prefix, force); err != nil {
 		return logger.Error(fmt.Sprintf("install php %s", version), err.Error())
 	}
 	logger.Success(fmt.Sprintf("Installed PHP %s successfully", version), "")

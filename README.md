@@ -42,7 +42,7 @@ Design themes borrowed from Valet/Herd:
 | Service orchestration (`chauf start/stop/status`) | 🚧 | Basic process management exists; dnsmasq integration still evolving. |
 | Composer integration | ✅ | Installs Composer PHAR tied to Chauffeur’s PHP shim. |
 | Logging revamp | ✅ | All user-facing commands now route output through `lib.Logger`; only help/usage text stays raw. |
-| Testing | 🚧 | Unit tests exist for link/links, but `go test ./...` currently fails; more coverage needed. |
+| Testing | ✅ | Command-level smoke tests cover init, link, php use, remove, unlink, and info; CI enforces `go test ./...` on PRs to `main`. |
 
 ## Architecture at a Glance
 ```

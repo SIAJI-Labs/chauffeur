@@ -35,8 +35,7 @@ _A living status board for features, debt, and priorities. Keep this in sync wit
 ## 3. In Progress 🚧
 1. **Service orchestration stability** – refine `chauf start/stop/status` to handle mixed project states, better error surfacing
 2. **dnsmasq/NetworkManager automation** – ensure instructions are clear, reversible, and logged
-3. **Test suite repair** – fix current failures (e.g., tests importing `cli/internal/...`) and restore passing `go test ./...`
-4. **Documentation sync discipline** – ongoing effort to keep README, AGENTS, and this tracker aligned
+3. **Documentation sync discipline** – ongoing effort to keep README, AGENTS, and this tracker aligned
 
 ## 4. Planned 📋
 | Priority | Item | Notes |
@@ -56,7 +55,7 @@ _A living status board for features, debt, and priorities. Keep this in sync wit
 ## 6. Testing & QA
 - Target: `go test ./...` green on Go 1.22+
 - Integration tests should stub HOME to temp directories, avoiding host mutation
-- Add smoke test workflow (start/link/status) once logging and dnsmasq flow stabilize
+- CI (`.github/workflows/go-tests.yml`) runs the suite on every pull request to `main`
 
 ## 7. Release Readiness Checklist
 - [ ] `go test ./...` passes locally
