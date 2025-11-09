@@ -11,10 +11,10 @@ import (
 
 // PortConflict represents a port conflict information
 type PortConflict struct {
-	Port         int
-	Service      string // "caddy", "nginx", "php-fpm"
-	UsedBy       string // Description of what's using the port
-	Suggestions  []int  // Alternative port suggestions
+	Port        int
+	Service     string // "nginx", "php-fpm"
+	UsedBy      string // Description of what's using the port
+	Suggestions []int  // Alternative port suggestions
 }
 
 // PortManager handles port conflict detection and resolution
@@ -250,16 +250,12 @@ func (pm *PortManager) ValidatePortRange() error {
 // GetRecommendedPort returns a recommended port based on service type
 func (pm *PortManager) GetRecommendedPort(service string) int {
 	switch strings.ToLower(service) {
-	case "caddy":
-		return 8080
 	case "nginx":
-		return 8081
+		return 8080
 	case "php-fpm", "phpfpm":
 		return 9000
-	case "caddy-https":
-		return 8443
 	case "nginx-https":
-		return 8444
+		return 8443
 	default:
 		return pm.startRange
 	}
@@ -284,7 +280,7 @@ func ReadPortConfigFromEnv() map[string]int {
 	ports := make(map[string]int)
 	
 	// Known service keys
-	services := []string{"caddy", "nginx", "php-fpm", "caddy-https", "nginx-https"}
+	services := []string{"nginx", "php-fpm", "nginx-https"}
 	
 	for _, service := range services {
 		envKey := fmt.Sprintf("CHAUF_%s_PORT", strings.ToUpper(strings.ReplaceAll(service, "-", "_")))

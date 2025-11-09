@@ -15,7 +15,7 @@ import (
 /**
  * RunServiceCommand executes an installed Chauffeur-managed service with passthrough args.
  *
- * @param name Service identifier (e.g., "nginx", "caddy").
+ * @param name Service identifier (e.g., "nginx", "php").
  * @param args Arguments forwarded to the underlying binary.
  * @return error when the service is unknown, missing, or execution fails.
  */

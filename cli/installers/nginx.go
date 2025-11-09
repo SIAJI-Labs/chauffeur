@@ -789,52 +789,93 @@ func ensureNginxLayout(prefix string) error {
  */
 func writeDefaultNginxConf(prefix string) error {
 	confPath := filepath.Join(prefix, "nginx", "etc", "nginx.conf")
-	if _, err := os.Stat(confPath); err == nil {
-		return nil
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("stat nginx.conf: %w", err)
-	}
-
-	if err := os.MkdirAll(filepath.Dir(confPath), 0o755); err != nil {
+	confDir := filepath.Dir(confPath)
+	if err := os.MkdirAll(confDir, 0o755); err != nil {
 		return fmt.Errorf("ensure nginx etc: %w", err)
 	}
 
-	content := `worker_processes auto;
-error_log /dev/stdout info;
-pid ` + filepath.Join(prefix, "nginx", "nginx.pid") + `;
+	// Backup vendor-provided config if it exists
+	if _, err := os.Stat(confPath); err == nil {
+		if err := os.Rename(confPath, confPath+".dist"); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("backup nginx.conf: %w", err)
+		}
+	}
+
+	nginxDir := filepath.Join(prefix, "nginx")
+	logsDir := filepath.Join(nginxDir, "logs")
+	sitesAvailable := filepath.Join(nginxDir, "sites-available")
+	sitesEnabled := filepath.Join(nginxDir, "sites-enabled")
+	confD := filepath.Join(nginxDir, "conf.d")
+	mimeTarget := filepath.Join(confDir, "mime.types")
+
+	for _, dir := range []string{logsDir, sitesAvailable, sitesEnabled, confD} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return fmt.Errorf("ensure nginx directory %s: %w", dir, err)
+		}
+	}
+
+	// Ensure mime.types exists under etc/
+	if _, err := os.Stat(mimeTarget); errors.Is(err, os.ErrNotExist) {
+		sourceCandidates := []string{
+			filepath.Join(nginxDir, "conf", "mime.types"),
+			filepath.Join(nginxDir, "mime.types"),
+		}
+		var copied bool
+		for _, candidate := range sourceCandidates {
+			if data, readErr := os.ReadFile(candidate); readErr == nil {
+				if err := os.WriteFile(mimeTarget, data, 0o644); err != nil {
+					return fmt.Errorf("write mime.types: %w", err)
+				}
+				copied = true
+				break
+			}
+		}
+		if !copied {
+			return fmt.Errorf("mime.types not found in nginx installation")
+		}
+	}
+
+	content := fmt.Sprintf(`# Chauffeur Nginx Configuration
+# Custom ports to avoid conflicts with system services
+
+worker_processes auto;
+error_log %s/error.log notice;
+pid %s/nginx.pid;
 
 events {
-	worker_connections 1024;
+    worker_connections 1024;
 }
 
 http {
-	include       mime.types;
-	default_type  application/octet-stream;
-	sendfile        on;
-	keepalive_timeout  65;
+    include       %s;
+    default_type  application/octet-stream;
 
-	include ` + filepath.Join(prefix, "nginx", "conf.d", "*.conf") + `;
+    log_format main '$remote_addr - $remote_user [$time_local] "$request" '
+                    '$status $body_bytes_sent "$http_referer" '
+                    '"$http_user_agent" "$http_x_forwarded_for"';
+
+    access_log %s/access.log main;
+
+    sendfile        on;
+    tcp_nopush      on;
+    tcp_nodelay     on;
+    keepalive_timeout  65;
+    types_hash_max_size 2048;
+
+    include %s/conf.d/*.conf;
+    include %s/*.conf;
 }
-`
+`,
+		logsDir,
+		logsDir,
+		mimeTarget,
+		logsDir,
+		nginxDir,
+		sitesEnabled,
+	)
 
 	if err := os.WriteFile(confPath, []byte(content), 0o644); err != nil {
 		return fmt.Errorf("write nginx.conf: %w", err)
-	}
-
-	statusConf := filepath.Join(prefix, "nginx", "conf.d", "chauffeur-status.conf.disabled")
-	if _, err := os.Stat(statusConf); err == nil || !errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
-
-	if err := os.WriteFile(statusConf, []byte(`# Enable manually for status endpoint.
-# server {
-# 	listen 127.0.0.1:8080;
-# 	location /nginx_status {
-# 		stub_status;
-# 	}
-# }
-`), 0o644); err != nil {
-		return fmt.Errorf("write status config: %w", err)
 	}
 
 	return nil

@@ -37,11 +37,7 @@ func (pv *PortValidator) ValidateAllPorts() error {
 	pv.logger.Info("Validating all configured ports...")
 	
 	// Collect all ports to validate
-	ports := map[string]int{
-		"caddy-http":  pv.config.Caddy.HTTPPort,
-		"caddy-https": pv.config.Caddy.HTTPSPort,
-	}
-	
+	ports := map[string]int{}
 	if pv.config.Nginx.HTTPPort > 0 {
 		ports["nginx-http"] = pv.config.Nginx.HTTPPort
 	}
@@ -149,10 +145,6 @@ func (pv *PortValidator) updateConfigWithResolvedPorts(resolved map[string]int) 
 	// Update config based on service names
 	for service, port := range resolved {
 		switch strings.ToLower(service) {
-		case "caddy", "caddy-http":
-			pv.config.Caddy.HTTPPort = port
-		case "caddy-https":
-			pv.config.Caddy.HTTPSPort = port
 		case "nginx", "nginx-http":
 			pv.config.Nginx.HTTPPort = port
 		case "nginx-https":
@@ -235,8 +227,6 @@ func (pv *PortValidator) ValidateEnvironmentPortConfig() error {
 // ShowPortConfiguration displays current port configuration
 func (pv *PortValidator) ShowPortConfiguration() {
 	pv.logger.Info("Current port configuration:")
-	pv.logger.Info(fmt.Sprintf("  Caddy HTTP: %d", pv.config.Caddy.HTTPPort))
-	pv.logger.Info(fmt.Sprintf("  Caddy HTTPS: %d", pv.config.Caddy.HTTPSPort))
 	if pv.config.Nginx.HTTPPort > 0 {
 		pv.logger.Info(fmt.Sprintf("  Nginx HTTP: %d", pv.config.Nginx.HTTPPort))
 	}
@@ -248,10 +238,7 @@ func (pv *PortValidator) ShowPortConfiguration() {
 	pv.logger.Info(fmt.Sprintf("  Conflict Resolution: %s", pv.config.Ports.ConflictResolution))
 	
 	// Check if ports are actually available
-	ports := map[string]int{
-		"caddy-http":  pv.config.Caddy.HTTPPort,
-		"caddy-https": pv.config.Caddy.HTTPSPort,
-	}
+	ports := map[string]int{}
 	if pv.config.Nginx.HTTPPort > 0 {
 		ports["nginx-http"] = pv.config.Nginx.HTTPPort
 	}

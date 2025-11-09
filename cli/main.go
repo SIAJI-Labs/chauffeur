@@ -9,6 +9,9 @@ import (
 
 const version = "0.1.0"
 
+// buildTimestamp is overridden via -ldflags "-X main.buildTimestamp=$(date -u ...)".
+var buildTimestamp = "unknown"
+
 func usage() {
 	fmt.Print(`Chauffeur CLI
 
@@ -18,13 +21,12 @@ Usage:
   chauf --help           Show this message.
   chauf init             Initialize Chauffeur workspace with default configuration.
   chauf install <service> [version]
-                         Install Chauffeur-managed services (caddy, nginx, php).
+                         Install Chauffeur-managed services (nginx, php, composer).
   chauf remove <service> [version]
                          Remove installed Chauffeur-managed services.
   chauf php <command>    Manage PHP runtimes (use <version>, ...).
   chauf self-update      Update the Chauffeur CLI to the latest release.
   chauf nginx [args...]  Run the managed nginx binary with passthrough args.
-  chauf caddy [args...]  Run the managed caddy binary with passthrough args.
   chauf start            Start Chauffeur services with chauf- prefix.
   chauf stop             Stop Chauffeur services with chauf- prefix.
   chauf status           Show status of Chauffeur services.
@@ -40,6 +42,7 @@ Usage:
 func main() {
 	args := os.Args[1:]
 	commands.SetCLIVersion(version)
+	commands.SetBuildTimestamp(buildTimestamp)
 
 	if len(args) == 0 {
 		usage()
@@ -48,7 +51,7 @@ func main() {
 
 	switch args[0] {
 	case "--version", "-V", "version":
-		fmt.Printf("chauf %s\n", version)
+		fmt.Printf("chauf %s (built %s)\n", version, buildTimestamp)
 	case "--help", "-h":
 		usage()
 	case "init":

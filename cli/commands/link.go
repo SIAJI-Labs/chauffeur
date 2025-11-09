@@ -17,13 +17,15 @@ import (
 // RunLink handles `chauf link` command invocations.
 func RunLink(args []string) error {
 	var (
-		domain string
-		phpVer string
-		ssl    bool
-		force  bool
-		caddyHTTPPort  int
-		caddyHTTPSPort int
+		domain    string
+		phpVer    string
+		ssl       bool
+		force     bool
+		httpPort  int
+		httpsPort int
 	)
+
+	logger := lib.NewCommandLogger("link")
 
 	for i := 0; i < len(args); {
 		arg := args[i]
@@ -49,27 +51,27 @@ func RunLink(args []string) error {
 		case "--force":
 			force = true
 			i++
-		case "--caddy-http-port":
+		case "--http-port":
 			if i+1 >= len(args) {
-				return fmt.Errorf("--caddy-http-port requires a port value")
+				return fmt.Errorf("--http-port requires a port value")
 			}
 			portStr := args[i+1]
-			if port, err := strconv.Atoi(portStr); err != nil {
+			val, err := strconv.Atoi(portStr)
+			if err != nil {
 				return fmt.Errorf("invalid HTTP port: %s", portStr)
-			} else {
-				caddyHTTPPort = port
 			}
+			httpPort = val
 			i += 2
-		case "--caddy-https-port":
+		case "--https-port":
 			if i+1 >= len(args) {
-				return fmt.Errorf("--caddy-https-port requires a port value")
+				return fmt.Errorf("--https-port requires a port value")
 			}
 			portStr := args[i+1]
-			if port, err := strconv.Atoi(portStr); err != nil {
+			val, err := strconv.Atoi(portStr)
+			if err != nil {
 				return fmt.Errorf("invalid HTTPS port: %s", portStr)
-			} else {
-				caddyHTTPSPort = port
 			}
+			httpsPort = val
 			i += 2
 		default:
 			if strings.HasPrefix(arg, "-") {
@@ -93,22 +95,20 @@ func RunLink(args []string) error {
 	}
 
 	// Handle custom port overrides
-	if caddyHTTPPort > 0 {
-		// Validate custom port
-		validPort, err := validator.SetPortFromCommand("caddy-http", fmt.Sprintf("%d", caddyHTTPPort))
+	if httpPort > 0 {
+		validPort, err := validator.SetPortFromCommand("nginx-http", fmt.Sprintf("%d", httpPort))
 		if err != nil {
 			return err
 		}
-		cfg.Caddy.HTTPPort = validPort
+		cfg.Nginx.HTTPPort = validPort
 	}
-	
-	if caddyHTTPSPort > 0 {
-		// Validate custom port
-		validPort, err := validator.SetPortFromCommand("caddy-https", fmt.Sprintf("%d", caddyHTTPSPort))
+
+	if httpsPort > 0 {
+		validPort, err := validator.SetPortFromCommand("nginx-https", fmt.Sprintf("%d", httpsPort))
 		if err != nil {
 			return err
 		}
-		cfg.Caddy.HTTPSPort = validPort
+		cfg.Nginx.HTTPSPort = validPort
 	}
 
 	// Validate all configured ports
@@ -117,13 +117,12 @@ func RunLink(args []string) error {
 		if cfg.Ports.ConflictResolution == "fail" {
 			return fmt.Errorf("port validation failed: %w", err)
 		}
-		
-		// For auto or prompt modes, validator already handled resolution
-		// Reload the config to get any updated ports
-		cfg, err = config.Load()
-		if err != nil {
-			return fmt.Errorf("reload configuration after port resolution: %w", err)
-		}
+	}
+
+	// Always reload configuration after validation in case ports were updated
+	cfg, err = config.Load()
+	if err != nil {
+		return fmt.Errorf("reload configuration after port validation: %w", err)
 	}
 
 	cwd, err := os.Getwd()
@@ -144,8 +143,10 @@ func RunLink(args []string) error {
 
 	// Validate that the requested PHP version is installed
 	if !projects.IsPHPVersionInstalled(phpVer) {
-		fmt.Printf("PHP %s is not installed. Run 'chauf install php %s' first.\n", phpVer, phpVer)
-		return fmt.Errorf("php %s not installed", phpVer)
+		return logger.Error(
+			fmt.Sprintf("PHP %s is not installed", phpVer),
+			fmt.Sprintf("Run 'chauf install php %s' first", phpVer),
+		)
 	}
 
 	slug := projects.Slugify(filepath.Base(cwd))
@@ -188,58 +189,65 @@ func RunLink(args []string) error {
 
 	// Detect template type based on project structure
 	templateType := templateEngine.DetectTemplateType(cwd)
-	
-	// Generate and write nginx configuration
-	if err := templateEngine.WriteNginxConfig(proj, layout, templateType); err != nil {
-		templateSpin.Fail("nginx configuration generation failed")
-		fmt.Printf("Warning: Failed to generate nginx configuration: %v\n", err)
-		// Continue even if nginx generation fails - don't return error
-	} else {
-		// If nginx succeeded, try Caddy
-		if err := templateEngine.WriteCaddyConfig(proj, layout, templateType); err != nil {
-			templateSpin.Success("nginx templates generated (caddy failed)")
-			fmt.Printf("Warning: Failed to generate Caddy configuration: %v\n", err)
-		} else {
-			templateSpin.Success("nginx + caddy templates generated")
+
+	// Prepare nginx rendering options
+	nginxOptions := templates.NginxConfigOptions{
+		HTTPPort:  cfg.Nginx.HTTPPort,
+		HTTPSPort: cfg.Nginx.HTTPSPort,
+	}
+	if proj.Site != nil && proj.Site.SSL {
+		certBase := proj.Site.Domain
+		if certBase == "" {
+			certBase = slug
 		}
+		certDir := filepath.Join(cfg.WorkspaceDir, "nginx", "certs")
+		nginxOptions.SSLCertPath = filepath.Join(certDir, fmt.Sprintf("%s.crt", certBase))
+		nginxOptions.SSLKeyPath = filepath.Join(certDir, fmt.Sprintf("%s.key", certBase))
 	}
 
-	fmt.Printf("Project linked as %s\n", slug)
-	fmt.Printf("  Path: %s\n", cwd)
-	fmt.Printf("  Config: %s\n", layout.ConfigPath)
-	fmt.Printf("  PHP: %s\n", phpVer)
-	fmt.Printf("  Template: %s\n", templateType)
-	
-	// Show configured ports
-	fmt.Printf("  Caddy HTTP: %d\n", cfg.Caddy.HTTPPort)
-	fmt.Printf("  Caddy HTTPS: %d\n", cfg.Caddy.HTTPSPort)
-	
+	// Generate and write nginx configuration
+	if err := templateEngine.WriteNginxConfig(proj, layout, templateType, nginxOptions); err != nil {
+		templateSpin.Fail("nginx configuration generation failed")
+		logger.Warn("Failed to generate nginx configuration", err.Error())
+		// Continue even if nginx generation fails - don't return error
+	} else {
+		templateSpin.Success("nginx templates generated")
+	}
+
+	logger.PrintSection(fmt.Sprintf("Project linked as %s", slug))
+	logger.Info(fmt.Sprintf("Path: %s", cwd))
+	logger.Info(fmt.Sprintf("Config: %s", layout.ConfigPath))
+	logger.Info(fmt.Sprintf("PHP: %s", phpVer))
+	logger.Info(fmt.Sprintf("Template: %s", templateType))
+	logger.Info(fmt.Sprintf("Nginx HTTP: %d", cfg.Nginx.HTTPPort))
+	logger.Info(fmt.Sprintf("Nginx HTTPS: %d", cfg.Nginx.HTTPSPort))
+
 	// Access URLs - always show domain (now default to <slug>.test)
 	if proj.Site != nil && proj.Site.Domain != "" {
 		if strings.Contains(proj.Site.Domain, ".test") {
-			fmt.Printf("  Domain: %s (default .test domain)\n", proj.Site.Domain)
+			logger.Info(fmt.Sprintf("Domain: %s (default .test domain)", proj.Site.Domain))
 		} else {
-			fmt.Printf("  Domain: %s (custom domain)\n", proj.Site.Domain)
+			logger.Info(fmt.Sprintf("Domain: %s (custom domain)", proj.Site.Domain))
 		}
-		
+
 		// Show URLs with actual ports
 		httpURL := fmt.Sprintf("http://%s", proj.Site.Domain)
-		if cfg.Caddy.HTTPPort != 80 {
-			httpURL = fmt.Sprintf("http://%s:%d", proj.Site.Domain, cfg.Caddy.HTTPPort)
+		if cfg.Nginx.HTTPPort != 80 {
+			httpURL = fmt.Sprintf("http://%s:%d", proj.Site.Domain, cfg.Nginx.HTTPPort)
 		}
-		fmt.Printf("  Access: %s\n", httpURL)
-		
+		logger.Info(fmt.Sprintf("Access: %s", httpURL))
+
 		if proj.Site.SSL {
 			httpsURL := fmt.Sprintf("https://%s", proj.Site.Domain)
-			if cfg.Caddy.HTTPSPort != 443 {
-				httpsURL = fmt.Sprintf("https://%s:%d", proj.Site.Domain, cfg.Caddy.HTTPSPort)
+			if cfg.Nginx.HTTPSPort != 443 {
+				httpsURL = fmt.Sprintf("https://%s:%d", proj.Site.Domain, cfg.Nginx.HTTPSPort)
 			}
-			fmt.Printf("  Access Secure: %s\n", httpsURL)
+			logger.Info(fmt.Sprintf("Access Secure: %s", httpsURL))
 		}
-		
-		fmt.Printf("  Note: Use --site <custom-domain> to override default domain\n")
-		if caddyHTTPPort > 0 || caddyHTTPSPort > 0 {
-			fmt.Printf("  Custom ports applied via --caddy-http-port/--caddy-https-port flags\n")
+
+		logger.Info("Note: Use --site <custom-domain> to override default domain")
+		if httpPort > 0 || httpsPort > 0 {
+			logger.Info("Custom ports applied via --http-port/--https-port flags")
 		}
 	}
 
@@ -250,14 +258,14 @@ func printLinkUsage() {
 	fmt.Print(`Chauffeur Project Linking
 
 Usage:
-  chauf link [--site <domain>] [--ssl] [--php <version>] [--caddy-http-port <port>] [--caddy-https-port <port>] [--force]
+  chauf link [--site <domain>] [--ssl] [--php <version>] [--http-port <port>] [--https-port <port>] [--force]
 
 Flags:
   --site <domain>           Register a local domain for the project (default: <slug>.test).
   --ssl                     Enable internal TLS for the domain.
   --php <version>           Override the PHP version for this project (default: global default).
-  --caddy-http-port <port>  Override Caddy HTTP port for this project (default: from config).
-  --caddy-https-port <port> Override Caddy HTTPS port for this project (default: from config).
+  --http-port <port>        Override Nginx HTTP port for this project (default: from config).
+  --https-port <port>       Override Nginx HTTPS port for this project (default: from config).
   --force                   Overwrite existing project configuration.
 
 Port Management:

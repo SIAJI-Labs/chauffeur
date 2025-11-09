@@ -32,10 +32,8 @@ func TestRunInit(t *testing.T) {
 	// Verify configuration content
 	cfg, err := config.Load()
 	require.NoError(t, err)
-	assert.Equal(t, 8080, cfg.Caddy.HTTPPort, "Default Caddy HTTP port should be correct")
-	assert.Equal(t, 8443, cfg.Caddy.HTTPSPort, "Default Caddy HTTPS port should be correct")
-	assert.Equal(t, 8081, cfg.Nginx.HTTPPort, "Default Nginx HTTP port should be correct")
-	assert.Equal(t, 8444, cfg.Nginx.HTTPSPort, "Default Nginx HTTPS port should be correct")
+	assert.Equal(t, 8080, cfg.Nginx.HTTPPort, "Default Nginx HTTP port should be correct")
+	assert.Equal(t, 8443, cfg.Nginx.HTTPSPort, "Default Nginx HTTPS port should be correct")
 	assert.Equal(t, "prompt", cfg.Ports.ConflictResolution, "Default conflict resolution should be prompt")
 	assert.Equal(t, 8080, cfg.Ports.StartRange, "Default start range should be correct")
 	assert.Equal(t, 8099, cfg.Ports.EndRange, "Default end range should be correct")
@@ -52,8 +50,6 @@ func TestRunInit(t *testing.T) {
 		"nginx/sites-enabled",
 		"nginx/conf.d",
 		"nginx/logs",
-		"caddy/bin",
-		"caddy/logs",
 		"bin",
 		"bin/shims",
 	}
@@ -87,14 +83,14 @@ func TestRunInitForce(t *testing.T) {
 	// Modify the config file
 	cfg, err := config.Load()
 	require.NoError(t, err)
-	cfg.Caddy.HTTPPort = 9999
+	cfg.Nginx.HTTPPort = 9999
 	err = config.Save(cfg)
 	require.NoError(t, err)
 
 	// Verify the modification
 	loadedCfg, err := config.Load()
 	require.NoError(t, err)
-	assert.Equal(t, 9999, loadedCfg.Caddy.HTTPPort, "Config should be modified")
+	assert.Equal(t, 9999, loadedCfg.Nginx.HTTPPort, "Config should be modified")
 
 	// Re-run init with --force
 	err = commands.RunInit([]string{"--force"})
@@ -103,7 +99,7 @@ func TestRunInitForce(t *testing.T) {
 	// Verify config is reset to defaults
 	loadedCfg, err = config.Load()
 	require.NoError(t, err)
-	assert.Equal(t, 8080, loadedCfg.Caddy.HTTPPort, "Config should be reset to default")
+	assert.Equal(t, 8080, loadedCfg.Nginx.HTTPPort, "Config should be reset to default")
 }
 
 func TestRunInitQuiet(t *testing.T) {
@@ -146,17 +142,13 @@ func TestDefaultConfigPorts(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify default ports are user-space to avoid conflicts
-	assert.Equal(t, 8080, cfg.Caddy.HTTPPort, "Caddy HTTP should use user-space port")
-	assert.Equal(t, 8443, cfg.Caddy.HTTPSPort, "Caddy HTTPS should use user-space port")
-	assert.Equal(t, 8081, cfg.Nginx.HTTPPort, "Nginx HTTP should use different port from Caddy")
-	assert.Equal(t, 8444, cfg.Nginx.HTTPSPort, "Nginx HTTPS should use different port from Caddy")
+	assert.Equal(t, 8080, cfg.Nginx.HTTPPort, "Nginx HTTP should use user-space port")
+	assert.Equal(t, 8443, cfg.Nginx.HTTPSPort, "Nginx HTTPS should use user-space port")
 
 	// Verify port management configuration
 	assert.Equal(t, "prompt", cfg.Ports.ConflictResolution, "Default should be prompt")
-	assert.Equal(t, 8080, cfg.Ports.CaddyHTTPFallback, "Caddy HTTP fallback should match default")
-	assert.Equal(t, 8443, cfg.Ports.CaddyHTTPSFallback, "Caddy HTTPS fallback should match default")
-	assert.Equal(t, 8081, cfg.Ports.NginxHTTPFallback, "Nginx HTTP fallback should match default")
-	assert.Equal(t, 8444, cfg.Ports.NginxHTTPSFallback, "Nginx HTTPS fallback should match default")
+	assert.Equal(t, 8080, cfg.Ports.NginxHTTPFallback, "Nginx HTTP fallback should match default")
+	assert.Equal(t, 8443, cfg.Ports.NginxHTTPSFallback, "Nginx HTTPS fallback should match default")
 	assert.Equal(t, 9000, cfg.Ports.PHPFPMFallback, "PHP-FPM fallback should be standard")
 }
 
@@ -173,14 +165,8 @@ func TestPortConfigurationInWorkspace(t *testing.T) {
 	require.NoError(t, err)
 
 	// Test that default ports don't conflict with common system ports
-	assert.NotEqual(t, 80, cfg.Caddy.HTTPPort, "Caddy HTTP should not use system port 80")
-	assert.NotEqual(t, 443, cfg.Caddy.HTTPSPort, "Caddy HTTPS should not use system port 443")
 	assert.NotEqual(t, 80, cfg.Nginx.HTTPPort, "Nginx HTTP should not use system port 80")
 	assert.NotEqual(t, 443, cfg.Nginx.HTTPSPort, "Nginx HTTPS should not use system port 443")
-
-	// Test that Caddy and Nginx use different ports to avoid conflicts
-	assert.NotEqual(t, cfg.Caddy.HTTPPort, cfg.Nginx.HTTPPort, "Caddy and Nginx should use different HTTP ports")
-	assert.NotEqual(t, cfg.Caddy.HTTPSPort, cfg.Nginx.HTTPSPort, "Caddy and Nginx should use different HTTPS ports")
 
 	// Test that port range is reasonable for user-space allocation
 	assert.GreaterOrEqual(t, cfg.Ports.StartRange, 8000, "Port range should be in user-space")

@@ -215,9 +215,7 @@ func NewProgressPrinterWithLoggerAndCommand(label string, total int64, logger *L
 func NewProgressPrinterWithLogger(label string, total int64, logger *Logger) *progressPrinter {
 	// Detect command from context of the download operation
 	command := "download" // For download operations, use "download" as the command
-	if strings.Contains(label, "caddy") {
-		command = "caddy"
-	} else if strings.Contains(label, "nginx") {
+	if strings.Contains(label, "nginx") {
 		command = "nginx"
 	} else if strings.Contains(label, "php") {
 		command = "php"
@@ -316,7 +314,7 @@ func (p *progressPrinter) abbreviateLabel(label string) string {
 
 // abbreviateFilename intelligently shortens filenames
 func (p *progressPrinter) abbreviateFilename(filename string) string {
-	// For files like "caddy_2.10.2_linux_amd64.tar.gz"
+	// For files like "nginx_1.25.3_linux_amd64.tar.gz"
 	if strings.Contains(filename, ".tar.gz") {
 		parts := strings.Split(filename, "_")
 		if len(parts) >= 3 {

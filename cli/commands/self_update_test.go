@@ -68,7 +68,7 @@ func TestSelfUpdateCloneAndBuild(t *testing.T) {
 	}
 	t.Cleanup(func() { runCommand = defaultRunCommand })
 
-	goBuild = func(repoDir, output string) error {
+	goBuild = func(repoDir, output, _ string) error {
 		return os.WriteFile(output, []byte("new"), 0o755)
 	}
 	t.Cleanup(func() { goBuild = defaultGoBuild })
@@ -127,7 +127,7 @@ func TestSelfUpdateRequiresCleanRepo(t *testing.T) {
 	}
 	t.Cleanup(func() { runCommand = defaultRunCommand })
 
-	goBuild = func(string, string) error { return nil }
+	goBuild = func(string, string, string) error { return nil }
 	t.Cleanup(func() { goBuild = defaultGoBuild })
 
 	err := RunSelfUpdate(nil)
@@ -181,7 +181,7 @@ func TestSelfUpdateUpToDate(t *testing.T) {
 	}
 	t.Cleanup(func() { runCommand = defaultRunCommand })
 
-	goBuild = func(repoDir, output string) error {
+	goBuild = func(repoDir, output, _ string) error {
 		return os.WriteFile(output, []byte("rebuilt"), fs.FileMode(0o755))
 	}
 	t.Cleanup(func() { goBuild = defaultGoBuild })
@@ -221,13 +221,13 @@ func equalArgs(got []string, want []string) bool {
 func TestSelfUpdateDevMode(t *testing.T) {
 	// Setup temporary directory as a valid chauffeur repo
 	tmpDir := t.TempDir()
-	
+
 	// Create required structure
 	cliDir := filepath.Join(tmpDir, "cli")
 	if err := os.MkdirAll(cliDir, 0o755); err != nil {
 		t.Fatalf("mkdir cli: %v", err)
 	}
-	
+
 	// Create required files
 	if err := os.WriteFile(filepath.Join(tmpDir, "go.mod"), []byte("module github.com/siaji/chauffeur\n"), 0o644); err != nil {
 		t.Fatalf("write go.mod: %v", err)
@@ -238,34 +238,34 @@ func TestSelfUpdateDevMode(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(tmpDir, "AGENTS.md"), []byte("# Chauffeur Agents\n"), 0o644); err != nil {
 		t.Fatalf("write AGENTS.md: %v", err)
 	}
-	
+
 	// Change to the test directory
 	origWd, err := os.Getwd()
 	if err != nil {
 		t.Fatalf("get current dir: %v", err)
 	}
 	defer os.Chdir(origWd)
-	
+
 	if err := os.Chdir(tmpDir); err != nil {
 		t.Fatalf("chdir to test repo: %v", err)
 	}
-	
+
 	// Initialize git repo
 	if err := os.MkdirAll(filepath.Join(tmpDir, ".git"), 0o755); err != nil {
 		t.Fatalf("create .git dir: %v", err)
 	}
-	
+
 	// Setup target binary
 	target := filepath.Join(tmpDir, "chauf")
 	if err := os.WriteFile(target, []byte("old"), 0o755); err != nil {
 		t.Fatalf("write existing binary: %v", err)
 	}
 	t.Setenv("CHAUF_SELF_UPDATE_TARGET", target)
-	
+
 	// Mock git command
 	lookPath = func(string) (string, error) { return "/usr/bin/git", nil }
 	t.Cleanup(func() { lookPath = exec.LookPath })
-	
+
 	runCommand = func(dir, name string, args ...string) (string, error) {
 		if name == "git" && equalArgs(args, []string{"rev-parse", "HEAD"}) {
 			return "abcdef123456\n", nil
@@ -273,13 +273,13 @@ func TestSelfUpdateDevMode(t *testing.T) {
 		return "", nil
 	}
 	t.Cleanup(func() { runCommand = defaultRunCommand })
-	
+
 	// Mock go build
-	goBuild = func(repoDir, output string) error {
+	goBuild = func(repoDir, output, _ string) error {
 		return os.WriteFile(output, []byte("new"), 0o755)
 	}
 	t.Cleanup(func() { goBuild = defaultGoBuild })
-	
+
 	// Test successful dev rebuild
 	output, err := captureSelfUpdateOutput(func() error {
 		return RunSelfUpdate([]string{"--dev"})
@@ -287,7 +287,7 @@ func TestSelfUpdateDevMode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dev rebuild failed: %v", err)
 	}
-	
+
 	if !strings.Contains(output, "validated chauf repo structure") {
 		t.Fatalf("expected repo validation, got %q", output)
 	}
@@ -297,7 +297,7 @@ func TestSelfUpdateDevMode(t *testing.T) {
 	if !strings.Contains(output, "Dev rebuild complete") {
 		t.Fatalf("expected rebuild complete, got %q", output)
 	}
-	
+
 	// Verify binary was replaced
 	data, err := os.ReadFile(target)
 	if err != nil {
@@ -316,15 +316,15 @@ func TestSelfUpdateDevModeInvalidRepo(t *testing.T) {
 		t.Fatalf("get current dir: %v", err)
 	}
 	defer os.Chdir(origWd)
-	
+
 	if err := os.Chdir(tmpDir); err != nil {
 		t.Fatalf("chdir to test dir: %v", err)
 	}
-	
+
 	output, err := captureSelfUpdateOutput(func() error {
 		return RunSelfUpdate([]string{"--dev"})
 	})
-	
+
 	if err == nil {
 		t.Fatalf("expected error in non-git dir")
 	}
@@ -334,17 +334,17 @@ func TestSelfUpdateDevModeInvalidRepo(t *testing.T) {
 	if !strings.Contains(output, "not a git repository") {
 		t.Fatalf("expected failure message, got %q", output)
 	}
-	
+
 	// Test in git repo without required structure
 	gitDir := filepath.Join(tmpDir, ".git")
 	if err := os.MkdirAll(gitDir, 0o755); err != nil {
 		t.Fatalf("create .git: %v", err)
 	}
-	
+
 	output, err = captureSelfUpdateOutput(func() error {
 		return RunSelfUpdate([]string{"--dev"})
 	})
-	
+
 	if err == nil {
 		t.Fatalf("expected error for invalid repo structure")
 	}

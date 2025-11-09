@@ -18,6 +18,9 @@ func TestRunInfoDisplaysWorkspaceAndVersions(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, config.Save(cfg))
 
+	commands.SetBuildTimestamp("test-build")
+	t.Cleanup(func() { commands.SetBuildTimestamp("unknown") })
+
 	commands.OverrideLatestVersionFetcher(func() (string, error) {
 		return "v9.9.9", nil
 	})
@@ -29,4 +32,5 @@ func TestRunInfoDisplaysWorkspaceAndVersions(t *testing.T) {
 
 	assert.Contains(t, output, "Workspace:", "should show workspace path")
 	assert.Contains(t, output, "Latest release: v9.9.9", "should report mocked remote version")
+	assert.Contains(t, output, "Build timestamp: test-build", "should display build timestamp")
 }

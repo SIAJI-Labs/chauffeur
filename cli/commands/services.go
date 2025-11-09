@@ -10,7 +10,7 @@ import (
 	"github.com/siaji/chauffeur/cli/internal/system"
 )
 
-var serviceNames = []string{"caddy", "nginx", "php", "composer"}
+var serviceNames = []string{"nginx", "php", "composer"}
 
 // KnownServices returns a copy of registered service names.
 func KnownServices() []string {
@@ -39,20 +39,6 @@ type ServiceSpec struct {
 // NewServiceSpec returns metadata and installer wiring for a named service.
 func NewServiceSpec(name, prefix string, info system.Info) (ServiceSpec, error) {
 	switch name {
-	case "caddy":
-		target := filepath.Join(prefix, "caddy", "bin", "caddy")
-		return ServiceSpec{
-			Name:        "caddy",
-			Description: "verified tarball from GitHub releases",
-			BinaryPath:  target,
-			installFunc: func(force bool) error {
-				return installers.InstallCaddyTarball(installers.InstallOptions{
-					Prefix: prefix,
-					Force:  force,
-					Info:   info,
-				})
-			},
-		}, nil
 	case "nginx":
 		target := filepath.Join(prefix, "nginx", "sbin", "nginx")
 		return ServiceSpec{

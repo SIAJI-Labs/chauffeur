@@ -76,7 +76,7 @@ Ensure information consistency across all three documentation files:
 - **Name**: Chauffeur (CLI for local PHP dev services)
 - **Owner/Brand**: **SIAJI** (logo initials **SIA**, geometric; dark-blue brand)
 - **Primary OS**: Linux (Arch/Wayland focus), user TZ **Asia/Jakarta (UTC+7)**
-- **Goal**: Simple per-project dev services for PHP using **Nginx**, **PHP & PHP‑FPM**, and **Caddy** (for automatic local domains; avoid editing `/etc/hosts`).
+- **Goal**: Simple per-project dev services for PHP using **Nginx**, **PHP & PHP‑FPM**, and dnsmasq-managed `.test` domains (no `/etc/hosts` editing).
 - **Non‑Goals**: No DB/queue/scheduler/mail providers; users bring their own. No integrations with third‑party orchestrators unless explicitly stated.
 - **Isolation Strategy**: Project‑scoped services that do **not** conflict with host packages; per‑directory version isolation for PHP‑FPM.
 - **Registrations**: Projects are **manually** registered (`chauf link`) rather than auto‑scanned.
@@ -95,17 +95,17 @@ Ensure information consistency across all three documentation files:
 
 | Command | Flags/Args | Description |
 |---|---|---|
-| `chauf init` | `--force`, `--quiet` | Initialize Chauffeur workspace in `~/.chauffeur/` (idempotent). Creates default configuration with user-space ports, directories, and templates. Default ports: Caddy HTTP 8080, Caddy HTTPS 8443, Nginx HTTP 8081, Nginx HTTPS 8444 to avoid system conflicts. |
+| `chauf init` | `--force`, `--quiet` | Initialize Chauffeur workspace in `~/.chauffeur/` (idempotent). Creates default configuration with user-space ports, directories, and templates. Default ports: Nginx HTTP 8080, Nginx HTTPS 8443 (no privileged listeners). |
 | `chauf start` | `--project <path?>`, `--all`, `--dry-run` | Start services for current project (or all registered with `--all`). |
 | `chauf stop` | `--project <path?>`, `--all`, `--dry-run` | Stop services. |
-| `chauf status` | `[service-type]`, `--project <slug>`, `--detail`, `-v` | Show status of Chauffeur services with running state. Can filter by service type (nginx, caddy, php-fpm) or project. Use `--detail` for verbose output. |
-| `chauf remove` | `--force`, `<service>`, `[<version>]` | Remove installed service (php, nginx, caddy). Use `--force` to skip confirmation prompts. PHP version can be specified for per-version removal. For caddy, includes dnsmasq validation with double confirmation to prevent system damage. |
+| `chauf status` | `[service-type]`, `--project <slug>`, `--detail`, `-v` | Show status of Chauffeur services with running state. Can filter by service type (nginx or php-fpm) or project. Use `--detail` for verbose output. |
+| `chauf remove` | `--force`, `<service>`, `[<version>]` | Remove installed service (php, nginx, composer). Use `--force` to skip confirmation prompts. PHP version can be specified for per-version removal. |
 | `chauf uninstall` | `--purge` | Remove Chauffeur workspace. `--purge` also deletes caches and installed runtimes. |
-| `chauf link` | `--site <domain>`, `--ssl`, `--php <version>`, `--caddy-http-port <port>`, `--caddy-https-port <port>`, `--force` | Register **PWD** as a project. Creates `project.yaml`, prepares runtime/log dirs, automatically assigns `<slug>.test` domain unless `--site` specified, map local domain via Caddy, set default PHP for this project. Validates specified PHP version is installed. Includes automatic port conflict detection and resolution with configurable fallback behavior. |
+| `chauf link` | `--site <domain>`, `--ssl`, `--php <version>`, `--http-port <port>`, `--https-port <port>`, `--force` | Register **PWD** as a project. Creates `project.yaml`, prepares runtime/log dirs, automatically assigns `<slug>.test` domain unless `--site` specified (dnsmasq-based resolution), generates nginx vhosts, and sets default PHP for this project. Validates specified PHP version is installed. Includes automatic port conflict detection and resolution with configurable fallback behavior. |
 | `chauf links` | _none_ | List all registered projects and their metadata. |
 | `chauf unlink` | `--force`, `--slug <slug>`, `--site <domain>`, `--project <path>`, `--all` | Remove a registered project. Can unlink by slug, domain, path, all projects with proper confirmation unless --force is used. |
 | `chauf self-update` | `--dev` | Pull latest Chauffeur git changes via SSH and rebuild the CLI binary in-place (services unaffected; requires git & go). With --dev, rebuild from current directory if it's a valid chauffeur repository. |
-| `chauf info` | _none_ | Display Chauffeur workspace details: binary/config paths, current vs. latest release, installed services (caddy/nginx/php/composer) with version output, and port configuration (Caddy/Nginx bindings, port range, PHP-FPM fallback). |
+| `chauf info` | _none_ | Display Chauffeur workspace details: binary/config paths, current vs. latest release, build timestamp, installed services (nginx/php/composer) with version output, and port configuration (nginx bindings, port range, PHP-FPM fallback). |
 
 ### PHP Management
 
@@ -149,7 +149,7 @@ Ensure information consistency across all three documentation files:
       project.yaml          # per-project config: path, php, domain, ssl, created_at
       runtime/
         php-fpm/            # per-project php-fpm sockets/configs
-      logs/                 # nginx, php-fpm, caddy (if not global)
+      logs/                 # nginx/php-fpm logs (if not global)
   php/
     8.3/                    # installed runtimes (bin, lib, etc.) — within workspace
     8.2/
@@ -160,12 +160,10 @@ Ensure information consistency across all three documentation files:
     sites-available/
     sites-enabled/
     conf.d/
-  caddy/
-    bin/                    # caddy binary if installed by Chauffeur
-    Caddyfile               # domain routing to per-project services
+    certs/                  # TLS assets for SSL-enabled sites
   bin/
     chauf                   # the installed CLI (if self-managed)
-    shims/                  # wrapper scripts exposed on PATH (php-8.3, nginx, caddy)
+    shims/                  # wrapper scripts exposed on PATH (php-8.3, nginx, composer)
   cli/
     templates/
       nginx/                # nginx template files (laravel.conf, wordpress.conf, general.conf)
@@ -177,24 +175,18 @@ Ensure information consistency across all three documentation files:
 version: 1
 telemetry: false
 workspace_dir: ~/.chauffeur
-caddy:
+nginx:
   enable: true
   http_port: 8080   # User-space port to avoid system conflicts
   https_port: 8443  # User-space port to avoid system conflicts
-nginx:
-  enable: true
-  http_port: 8081   # Different from Caddy to avoid conflicts
-  https_port: 8444  # Different from Caddy to avoid conflicts
 php:
   default: 8.3
 ports:
   start_range: 8080       # Port range for auto-allocation
   end_range: 8099
   conflict_resolution: "prompt"  # Options: "prompt", "auto", "fail"
-  caddy_http_fallback: 8080
-  caddy_https_fallback: 8443
-  nginx_http_fallback: 8081
-  nginx_https_fallback: 8444
+  nginx_http_fallback: 8080
+  nginx_https_fallback: 8443
   php_fpm_fallback: 9000
 projects_dir: ~/.chauffeur/projects
 ```
@@ -221,14 +213,15 @@ created_at: 2025-10-30T12:00:00+07:00
 - **No system prefix writes**: Never touch `/usr/bin`, `/usr/local`, or system service units by default.
 - **Development Update Workflow**: During development phase, use incremental rebuilds instead of full reinstalls. Navigate to the local git repository and run `chauf self-update --dev` to rebuild the binary in-place. Only perform fresh installation when dealing with breaking changes. For service removal, use the built-in `chauf remove <service>` command (e.g., `chauf remove nginx`).
 - `chauf link` registers **PWD** unless `--project` explicitly provided elsewhere. Automatically assigns `<slug>.test` as default domain when `--site` flag is not specified.
-- Using **Caddy** avoids editing `/etc/hosts`; Codex should generate Caddyfile entries that route `site.test` → local upstream.
-- Services must **not conflict** with host services or ports; prefer per‑project Unix sockets and reverse proxy fan‑out via Caddy/Nginx.
-- **Port Conflict Management**: Chauffeur automatically detects port conflicts and provides configurable resolution strategies. The system uses user-space ports by default (Caddy: 8080/8443, Nginx: 8081/8444, PHP-FPM: 9000) to avoid system service conflicts. Three resolution modes are available:
+- Using dnsmasq avoids editing `/etc/hosts`; Chauffeur writes nginx configs that route `<slug>.test` → local upstreams.
+- Services must **not conflict** with host services or ports; prefer per‑project Unix sockets and reverse proxy fan‑out via nginx.
+- **Port Conflict Management**: Chauffeur automatically detects port conflicts and provides configurable resolution strategies. The system uses user-space ports by default (Nginx: 8080/8443, PHP-FPM: 9000) to avoid system service conflicts. Three resolution modes are available:
   - **"prompt"** (default): Interactive prompts asking user to select alternative ports
   - **"auto"**: Automatically selects available ports within the configured range
   - **"fail"**: Fails immediately if port conflicts are detected
   - Port ranges can be configured via `start_range` and `end_range` in `chauffeur.yaml`
-  - Custom ports can be specified per-project using `--caddy-http-port` and `--caddy-https-port` flags
+  - Custom ports can be specified per-project using `--http-port` and `--https-port` flags
+- **Port Forwarding Automation**: `chauf start` automatically configures iptables OUTPUT redirects for `127.0.0.1:80 → <http_port>` and `127.0.0.1:443 → <https_port>` whenever `chauf-nginx` is started and the configured ports differ from 80/443. The managed rules are tracked under `~/.chauffeur/system/port-forwarding.json` and cleaned up by `chauf stop` (when nginx stops) and `chauf remove nginx`.
 - PHP isolation: `use` sets **global** default; `isolate` writes **project.yaml** override.
 - When the configured default PHP runtime is missing from disk, the Chauffeur PHP shim scans installed versions under `~/.chauffeur/php/`, prompts the user to promote an existing version (highest installed by default), and, upon confirmation, runs `chauf php use <version>` automatically before re-running the command.
 - PHP shims are **project-aware**: the `php` command automatically detects project context and uses appropriate PHP version (project isolation + global default fallback).
@@ -237,15 +230,18 @@ created_at: 2025-10-30T12:00:00+07:00
 - **WordPress**: Detects `wp-config.php`, `wp-admin`, and `wp-includes`; nginx config includes WordPress-specific security and routing rules  
 - **General**: Fallback template for standard PHP applications with security headers and proper PHP-FPM integration
 
-Templates are stored under `cli/templates/nginx/` with variable substitution using `{{PROJECT_SLUG}}`, `{{SERVER_NAME}}`, `{{PROJECT_ROOT}}`, `{{PHP_FPM_SOCKET}}`, `{{LOGS_DIR}}`, and conditional SSL blocks with `{{#SSL}}...{{/SSL}}`. All configurations use **user-space ports** (HTTP: 8080, HTTPS: 8443) to avoid conflicts with system services, but port forwarding from 80 to 8080 provides natural URL access. Generated nginx configs are placed in `~/.chauffeur/nginx/sites-available/` and symlinked to `~/.chauffeur/nginx/sites-enabled/`.
+Templates are stored under `cli/templates/nginx/` with variable substitution using `{{PROJECT_SLUG}}`, `{{SERVER_NAME}}`, `{{PROJECT_ROOT}}`, `{{PHP_FPM_SOCKET}}`, `{{LOGS_DIR}}`, and conditional SSL blocks with `{{#SSL}}...{{/SSL}}`. All configurations use **user-space ports** (HTTP: 8080, HTTPS: 8443) to avoid conflicts with system services, but optional port forwarding from 80→8080 and 443→8443 provides natural URL access. Generated nginx configs are placed in `~/.chauffeur/nginx/sites-available/` and symlinked to `~/.chauffeur/nginx/sites-enabled/`, and `nginx.conf` must include `~/.chauffeur/nginx/sites-enabled/*.conf`.
+Laravel templates ship only with stock nginx variables (no custom `$time_start`) so nginx never errors with "unknown variable" during boot.
 - `chauf unlink` removes project registrations and their directories; when run without flags and inside a registered project directory, it unlinks that project by default; explicit flags include `--slug <slug>` to unlink by project slug, `--site <domain>` to unlink by site domain, `--project <path>` to unlink by absolute path, and `--all` to unlink all projects; requires confirmation unless `--force` is provided.
 - `chauf php isolate <version>` validates that the requested runtime is installed and the current directory is linked before updating the project configuration.
 - `chauf remove` removes installed services from the Chauffeur workspace. By default, prompts for confirmation before deletion. With `--force`, removes without prompts. For PHP, can remove specific versions (`chauf remove php 8.3`) or all versions (`chauf remove php`). Automatically removes corresponding shims and updates default PHP if removed version was the default.
-- **Caddy Removal Safety**: When removing caddy, the command detects if dnsmasq is installed and provides risk warnings about potential system damage. Users must provide double confirmation (including typing "REMOVE") to remove dnsmasq, ensuring other applications dependent on it are not broken. The flow is streamlined - after initial caddy confirmation, it goes directly to the dnsmasq prompt without redundant intermediate steps. The `--force` flag only removes caddy and never touches system packages. **Improved dnsmasq removal flow**: When removing dnsmasq, the command first asks if the user wants to delete the chauffeur dnsmasq configuration before package removal. If they want to delete the config, it offers to restart dnsmasq to apply changes before package removal. If not, it proceeds directly to package removal. If the user chooses to keep dnsmasq installed, it still offers to remove the chauffeur configuration file. The restart step includes safety checking to ensure dnsmasq is still installed before attempting restart.
+- **dnsmasq Validation**: `chauf start` detects missing dnsmasq configuration for `.test` domains and offers to install/update `/etc/dnsmasq.d/chauffeur.conf` safely. Chauffeur never uninstalls system packages; even with `--force`, destructive actions only remove files under `~/.chauffeur/` and still require explicit confirmation for PHP runtime deletions.
 - `chauf self-update` ensures a clean git workspace, fast-forwards the Chauffeur repo under `~/.chauffeur/src/chauffeur` using the SSH remote `git@github.com:SIAJI-Labs/chauffeur.git` by default (override via `CHAUF_REPO_URL`), then rebuilds the CLI binary; service runtimes remain untouched (use `chauf install <service> --force` to refresh runtimes).
 - With `--dev` flag, `chauf self-update --dev` rebuilds the CLI binary from the current working directory if it's a valid Chauffeur repository (must be a git repo containing `cli/main.go`, `go.mod`, and `AGENTS.md`).
 - First install must handle not‑on‑PATH scenario: provide shell one‑liner to add `~/.chauffeur/bin` to PATH in `~/.bashrc`/`~/.zshrc`.
 - **DNS Management**: Commands that start services or require local domain resolution check for dnsmasq configuration in `/etc/dnsmasq.d/chauffeur.conf`. If missing, commands prompt users to automatically install the configuration with `.test` domain resolution to `127.0.0.1`. The configuration includes: `address=/.test/127.0.0.1`, `listen-address=127.0.0.1`, and `bind-interfaces` for secure local-only operation. Commands automatically restart dnsmasq after configuration changes.
+- **Resolver Health Check**: `chauf start` resolves the synthetic domain `chauffeur-dns-probe.test` and expects `127.0.0.1`. If resolution fails, Chauffeur restarts dnsmasq/NetworkManager and aborts with instructions when the system resolver is not pointed at the local dnsmasq instance.
+- **Host DNS Conflict Detection**: When `systemd-resolved`'s stub listener already holds port 53 (127.0.0.53), Chauffeur first attempts to enable NetworkManager's dnsmasq integration automatically (`/etc/NetworkManager/conf.d/90-chauffeur-dns.conf`, `/etc/NetworkManager/dnsmasq.d/chauffeur.conf`, plus `/etc/systemd/resolved.conf.d/90-chauffeur-disable-stub.conf`). If NetworkManager is unavailable, the CLI halts with explicit manual guidance. `chauf remove nginx`/`chauf uninstall --purge` must remove these drop-ins to leave the host resolver untouched.
 
 ---
 
@@ -597,18 +593,31 @@ php_admin_value[error_log] = <logdir>/php-fpm-error.log
 php_admin_flag[log_errors] = on
 ```
 
-### 6.2 Caddy v2 site block for project domain
+### 6.2 Nginx HTTPS server block for project domain
 
-**Prompt**: "Route `myproj.test` to Unix socket `<socket>` via FastCGI, enable TLS internal if `ssl: true`."
+**Prompt**: "Serve `myproj.test` over HTTPS on user-space ports, proxying to Unix socket `<socket>`, and reference certificates stored under `~/.chauffeur/nginx/certs`."
 
-**Target** (`Caddyfile`):
+**Target** (`nginx.conf` fragment):
 ```
-myproj.test {
-	encode gzip
-	tls internal
-	php_fastcgi unix/<socket>
-	file_server
-	root * /absolute/path/to/project/public
+server {
+    listen 8443 ssl http2;
+    server_name myproj.test;
+    root /absolute/path/to/project/public;
+    index index.php index.html;
+
+    ssl_certificate ~/.chauffeur/nginx/certs/myproj.test.crt;
+    ssl_certificate_key ~/.chauffeur/nginx/certs/myproj.test.key;
+    ssl_protocols TLSv1.2 TLSv1.3;
+
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    location ~ \.php$ {
+        fastcgi_pass unix:<socket>;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        include fastcgi_params;
+    }
 }
 ```
 
@@ -633,7 +642,7 @@ tests/
 ├── install/
 │   ├── php_test.go          # PHP installation tests
 │   ├── nginx_test.go        # Nginx installation tests
-│   └── caddy_test.go        # Caddy installation tests
+│   └── composer_test.go     # Composer installation tests
 ├── remove/
 │   └── remove_command_test.go # Service removal tests
 ├── link/
@@ -838,7 +847,7 @@ go test -v -race -cover ./tests/ && \
 ```go
 // Package install tests the chauffeur installation commands.
 // These tests verify:
-// - Service installation (php, nginx, caddy)
+// - Service installation (php, nginx, composer)
 // - Configuration file generation
 // - Error handling for various failure scenarios
 // - File system interaction and permission handling
@@ -895,7 +904,7 @@ func TestRemove_MissingArguments(t *testing.T) {
 
 func TestRemove_UnknownService(t *testing.T) {
     // Tests validation of unknown service names
-    // Ensures only known services (php, nginx, caddy) can be removed
+    // Ensures only known services (php, nginx, composer) can be removed
 }
 
 func TestRemove_PHPAllVersions(t *testing.T) {
@@ -942,13 +951,13 @@ func TestRemove_MultipleServices(t *testing.T) {
 ## 8) ADRs (Architecture Decision Records)
 
 1. **ADR‑001: Manual Registration**  – Accepted 2025‑10‑30  
-2. **ADR‑002: Caddy for Local Domains** – Accepted 2025‑10‑30  
+2. **ADR‑002: Nginx + dnsmasq for Local Domains** – Accepted 2025‑10‑30  
 3. **ADR‑003: PHP Isolation Model** – Accepted 2025‑10‑30  
 4. **ADR‑004: No DB/Queues** – Accepted 2025‑10‑30  
 5. **ADR‑005: Go as Primary Language** – Accepted 2025‑10‑30  
 6. **ADR‑006: No Devbox; Host-Scoped Install Prefix** – Accepted 2025‑11‑02  
    - **Context**: Avoid external dependencies and system conflicts.  
-   - **Decision**: Manage all tool binaries (PHP, Nginx, Caddy, etc.) inside `~/.chauffeur/` with shims; do not modify `/usr/bin`.  
+   - **Decision**: Manage all tool binaries (PHP, Nginx, Composer, etc.) inside `~/.chauffeur/` with shims; do not modify `/usr/bin`.  
    - **Consequences**: Reproducible, user-space installs; zero collision with distro package managers.
 
 ---
@@ -1121,7 +1130,6 @@ confirm := prompt.Confirm("This will permanently delete all PHP installations. C
 6. `chauf self-update` fast-forwards the workspace git clone and rebuilds the CLI binary in-place.
 7. `chauf start` in project directory boots required services; `stop` halts them cleanly.
 8. **Project-aware PHP shim**: `php -v` inside linked project uses isolated version; `php -v` outside uses global default.  
-9. **Template Workflow**: `chauf unlink` removes the project registration AND the associated nginx and Caddy configurations.
 9. **Template workflow**: `chauf unlink` removes the project registration **and** the associated nginx configuration.
 
 ---

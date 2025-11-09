@@ -11,6 +11,7 @@ import (
 	"github.com/siaji/chauffeur/cli/internal/projects"
 	"github.com/siaji/chauffeur/cli/internal/templates"
 	"github.com/siaji/chauffeur/cli/internal/workspace"
+	"github.com/siaji/chauffeur/cli/lib"
 )
 
 // RunPHP routes php subcommands or falls back to executing the default PHP binary.
@@ -39,6 +40,8 @@ func RunPHP(args []string) error {
 }
 
 func runPHPUse(version string) error {
+	logger := lib.NewCommandLogger("php")
+
 	if !installers.IsPHPVersionSupported(version) {
 		return fmt.Errorf("PHP version %s is not supported. Supported versions: %s", version, installers.GetSupportedVersionsList())
 	}
@@ -51,8 +54,10 @@ func runPHPUse(version string) error {
 	binary := filepath.Join(prefix, "php", version, "bin", "php")
 	if _, err := os.Stat(binary); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			fmt.Printf("PHP %s is not installed. Run 'chauf install php %s' first.\n", version, version)
-			return fmt.Errorf("php %s not installed", version)
+			return logger.Error(
+				fmt.Sprintf("PHP %s is not installed", version),
+				fmt.Sprintf("Run 'chauf install php %s' first", version),
+			)
 		}
 		return fmt.Errorf("check php binary: %w", err)
 	}
@@ -65,7 +70,7 @@ func runPHPUse(version string) error {
 	// Check if config file actually exists to avoid false positive "already default"
 	configFile := filepath.Join(prefix, "config", "chauffeur.yaml")
 	if _, err := os.Stat(configFile); err == nil && current == version {
-		fmt.Printf("PHP %s is already the default.\n", version)
+		logger.Info(fmt.Sprintf("PHP %s is already the default", version))
 		return nil
 	}
 
@@ -77,11 +82,13 @@ func runPHPUse(version string) error {
 		return fmt.Errorf("update php shim: %w", err)
 	}
 
-	fmt.Printf("Default PHP version updated to %s.\n", version)
+	logger.Success(fmt.Sprintf("Default PHP version updated to %s", version), "")
 	return nil
 }
 
 func runPHPIsolate(version string) error {
+	logger := lib.NewCommandLogger("php")
+
 	if !installers.IsPHPVersionSupported(version) {
 		return fmt.Errorf("PHP version %s is not supported. Supported versions: %s", version, installers.GetSupportedVersionsList())
 	}
@@ -94,8 +101,10 @@ func runPHPIsolate(version string) error {
 	binary := filepath.Join(prefix, "php", version, "bin", "php")
 	if _, err := os.Stat(binary); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			fmt.Printf("PHP %s is not installed. Run 'chauf install php %s' first.\n", version, version)
-			return fmt.Errorf("php %s not installed", version)
+			return logger.Error(
+				fmt.Sprintf("PHP %s is not installed", version),
+				fmt.Sprintf("Run 'chauf install php %s' first", version),
+			)
 		}
 		return fmt.Errorf("check php binary: %w", err)
 	}
@@ -141,31 +150,47 @@ func runPHPIsolate(version string) error {
 	templateType := templateEngine.DetectTemplateType(projectCfg.Path)
 	
 	// Update nginx configuration with new PHP version
-	if err := templateEngine.WriteNginxConfig(projectCfg, layout, templateType); err != nil {
+	nginxOptions := templates.NginxConfigOptions{
+		HTTPPort:  cfg.Nginx.HTTPPort,
+		HTTPSPort: cfg.Nginx.HTTPSPort,
+	}
+	if projectCfg.Site != nil && projectCfg.Site.SSL {
+		certBase := projectCfg.Site.Domain
+		if certBase == "" {
+			certBase = filepath.Base(layout.Root)
+		}
+		certDir := filepath.Join(cfg.WorkspaceDir, "nginx", "certs")
+		nginxOptions.SSLCertPath = filepath.Join(certDir, fmt.Sprintf("%s.crt", certBase))
+		nginxOptions.SSLKeyPath = filepath.Join(certDir, fmt.Sprintf("%s.key", certBase))
+	}
+
+	if err := templateEngine.WriteNginxConfig(projectCfg, layout, templateType, nginxOptions); err != nil {
 		return fmt.Errorf("update nginx configuration: %w", err)
 	}
 
-	fmt.Printf("Project PHP version pinned to %s (config: %s)\n", version, layout.ConfigPath)
-	fmt.Printf("Nginx configuration updated for new PHP version %s\n", version)
-	
-	// Update Caddy template to reflect new PHP version
-	if err := templateEngine.WriteCaddyConfig(projectCfg, layout, templateEngine.DetectTemplateType(projectCfg.Path)); err != nil {
-		fmt.Printf("Warning: Failed to update Caddy configuration: %v\n", err)
-		// Continue even if Caddy generation fails
-	}
-	
-	fmt.Printf("Caddy configuration updated for new PHP version %s\n", version)
-	
+	logger.Success(fmt.Sprintf("Project PHP version pinned to %s", version), layout.ConfigPath)
+	logger.Info(fmt.Sprintf("Nginx configuration updated for PHP %s", version))
+
 	// Show access URLs for the isolated project
+	domain := "localhost"
 	if projectCfg.Site != nil && projectCfg.Site.Domain != "" {
-		fmt.Printf("  Access: http://%s:8080\n", projectCfg.Site.Domain)
-		if projectCfg.Site.SSL {
-			fmt.Printf("Access Secure: https://%s:8443\n", projectCfg.Site.Domain)
-		}
-	} else {
-		fmt.Printf("Access: http://localhost:8080\n")
+		domain = projectCfg.Site.Domain
 	}
-	
+
+	httpURL := fmt.Sprintf("http://%s", domain)
+	if cfg.Nginx.HTTPPort != 80 {
+		httpURL = fmt.Sprintf("http://%s:%d", domain, cfg.Nginx.HTTPPort)
+	}
+	logger.Info(fmt.Sprintf("Access: %s", httpURL))
+
+	if projectCfg.Site != nil && projectCfg.Site.SSL {
+		httpsURL := fmt.Sprintf("https://%s", domain)
+		if cfg.Nginx.HTTPSPort != 443 {
+			httpsURL = fmt.Sprintf("https://%s:%d", domain, cfg.Nginx.HTTPSPort)
+		}
+		logger.Info(fmt.Sprintf("Access Secure: %s", httpsURL))
+	}
+
 	return nil
 }
 
