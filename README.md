@@ -41,7 +41,7 @@ Design themes borrowed from Valet/Herd:
 | PHP runtimes (`chauf php install/use/isolate`) | 🚧 | Core flows exist but need more testing and logging parity. |
 | Service orchestration (`chauf start/stop/status`) | 🚧 | Basic process management exists; dnsmasq integration still evolving. |
 | Composer integration | ✅ | Installs Composer PHAR tied to Chauffeur’s PHP shim. |
-| Logging revamp | 🚧 | New logger exists, but several commands still print directly—contributions welcome. |
+| Logging revamp | ✅ | All user-facing commands now route output through `lib.Logger`; only help/usage text stays raw. |
 | Testing | 🚧 | Unit tests exist for link/links, but `go test ./...` currently fails; more coverage needed. |
 
 ## Architecture at a Glance

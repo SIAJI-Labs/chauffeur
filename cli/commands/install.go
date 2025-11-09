@@ -227,10 +227,10 @@ func selectPHPVersion() (string, error) {
 		if versionMeta.EndOfLife {
 			status += " (EOL)"
 		}
-		fmt.Printf("  %d) PHP %s%s\n", i+1, versionMeta.Version, status)
+		logger.Info(fmt.Sprintf("  %d) PHP %s%s", i+1, versionMeta.Version, status))
 	}
 
-	fmt.Printf("Enter your choice (1-%d): ", len(versions))
+	logger.Info(fmt.Sprintf("Enter your choice (1-%d):", len(versions)))
 
 	reader := bufio.NewReader(os.Stdin)
 	input, err := reader.ReadString('\n')

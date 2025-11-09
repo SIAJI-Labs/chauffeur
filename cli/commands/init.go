@@ -34,7 +34,7 @@ func RunInit(args []string) error {
 	}
 
 	logger := lib.NewCommandLogger("init")
-	
+
 	if !quiet {
 		logger.Info("Initializing Chauffeur workspace...")
 	}
@@ -53,10 +53,7 @@ func RunInit(args []string) error {
 	configPath := filepath.Join(wsDir, "config", "chauffeur.yaml")
 	if _, err := os.Stat(configPath); err == nil && !force {
 		// Config already exists and --force not specified
-		logger.Warn("Workspace already initialized", "Use --force to overwrite")
-		if !quiet {
-			fmt.Printf("Configuration file exists: %s\n", configPath)
-		}
+		logger.Warn("Workspace already initialized", fmt.Sprintf("Configuration file exists: %s (use --force to overwrite)", configPath))
 		return nil
 	}
 
@@ -82,7 +79,7 @@ func RunInit(args []string) error {
 		if !quiet {
 			logger.Info(fmt.Sprintf("Creating directory: %s", dir))
 		}
-		
+
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			return fmt.Errorf("create directory %s: %w", dir, err)
 		}
@@ -127,7 +124,7 @@ tmp/
 		logger.Info("Checking PATH configuration...")
 		logger.Info(fmt.Sprintf("Chauffeur bin directory: %s", binDir))
 		logger.Info("Add this to your shell profile (~/.bashrc or ~/.zshrc):")
-		fmt.Printf("\nexport PATH=\"%s:$PATH\"\n\n", binDir)
+		logger.Info(fmt.Sprintf("  export PATH=\"%s:$PATH\"", binDir))
 		logger.Info("Then restart your shell or run: source ~/.bashrc")
 	}
 
@@ -139,7 +136,7 @@ tmp/
 		logger.Info("  3. Create your first project: cd /path/to/project && chauf link")
 		logger.Info("  4. Start services: chauf start")
 	} else {
-		fmt.Printf("Workspace initialized at: %s\n", wsDir)
+		logger.Success("Workspace initialized", wsDir)
 	}
 
 	return nil
@@ -168,8 +165,8 @@ func createDefaultConfig(wsDir string, logger *lib.Logger, quiet bool) error {
 	if !quiet {
 		logger.Success("Configuration file created", configPath)
 		logger.Info("Default settings used:")
-	logger.Info(fmt.Sprintf("  Nginx HTTP port: %d", cfg.Nginx.HTTPPort))
-	logger.Info(fmt.Sprintf("  Nginx HTTPS port: %d", cfg.Nginx.HTTPSPort))
+		logger.Info(fmt.Sprintf("  Nginx HTTP port: %d", cfg.Nginx.HTTPPort))
+		logger.Info(fmt.Sprintf("  Nginx HTTPS port: %d", cfg.Nginx.HTTPSPort))
 		logger.Info(fmt.Sprintf("  Port range: %d-%d", cfg.Ports.StartRange, cfg.Ports.EndRange))
 		logger.Info(fmt.Sprintf("  Conflict resolution: %s", cfg.Ports.ConflictResolution))
 	}

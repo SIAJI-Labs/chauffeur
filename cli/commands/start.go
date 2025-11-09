@@ -95,18 +95,23 @@ func checkDnsmasqConfiguration(logger *lib.Logger) error {
 	dnsLogger.Info("Chauffeur requires dnsmasq configuration to resolve .test domains")
 	dnsLogger.Info("Add this configuration to make .test domains resolve to localhost:")
 
-	fmt.Printf("\n%s\n", colorize(colorYellow, "Required dnsmasq configuration:"))
-	fmt.Printf("sudo install -d -m 755 /etc/dnsmasq.d\n")
-	fmt.Printf("sudo tee /etc/dnsmasq.d/chauffeur.conf >/dev/null <<'EOF'\n")
-	fmt.Printf("# Chauffeur local development resolver\n")
-	fmt.Printf("# Redirect all *.test domains to localhost\n")
-	fmt.Printf("address=/.test/127.0.0.1\n")
-	fmt.Printf("# Only listen locally\n")
-	fmt.Printf("listen-address=127.0.0.1\n")
-	fmt.Printf("bind-interfaces\n")
-	fmt.Printf("EOF\n")
+	dnsLogger.PrintSection("Required dnsmasq configuration")
+	configLines := []string{
+		"sudo install -d -m 755 /etc/dnsmasq.d",
+		"sudo tee /etc/dnsmasq.d/chauffeur.conf >/dev/null <<'EOF'",
+		"# Chauffeur local development resolver",
+		"# Redirect all *.test domains to localhost",
+		"address=/.test/127.0.0.1",
+		"# Only listen locally",
+		"listen-address=127.0.0.1",
+		"bind-interfaces",
+		"EOF",
+	}
+	for _, line := range configLines {
+		dnsLogger.Info(line)
+	}
 
-	fmt.Printf("\n%s", colorize(colorYellow, "Do you want to add this configuration now? [y/N]: "))
+	dnsLogger.Warn("Do you want to add this configuration now?", "Type 'y' to continue")
 	// SENSITIVE: User input confirmation - system configuration consent
 	var response string
 	fmt.Scanln(&response)
@@ -279,7 +284,7 @@ func RunStart(args []string) error {
 	}
 
 	if len(servicesToStart) == 0 {
-		fmt.Println("No services to start.")
+		logger.Info("No services to start.")
 		return nil
 	}
 
@@ -313,7 +318,7 @@ func RunStart(args []string) error {
 		logger.Info(fmt.Sprintf("Would start %d services:", len(servicesToStart)))
 		for _, service := range servicesToStart {
 			status, _ := manager.GetStatus(service)
-			fmt.Printf("  - %s (%s)\n", service.Name, status)
+			logger.Info(fmt.Sprintf("  - %s (%s)", service.Name, status))
 		}
 		return nil
 	}
@@ -325,7 +330,7 @@ func RunStart(args []string) error {
 		if err != nil {
 			logger.Warn(fmt.Sprintf("Could not check status of %s", service.Name), fmt.Sprintf("error: %v", err))
 		} else if status != "stopped" {
-			fmt.Printf("  ✓ %s is already %s\n", service.Name, status)
+			logger.Success(fmt.Sprintf("%s already %s", service.Name, status), "")
 			continue
 		}
 

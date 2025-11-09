@@ -150,12 +150,8 @@ func runRemovePHP(version string, force bool, logger *lib.Logger) error {
 		}
 
 		if !force {
-			logger.Warn("Removing all PHP versions", "this will remove ~/.chauffeur/php/ directory")
-			// SENSITIVE: Destructive operation - user confirmation for removing all PHP installations
-			fmt.Printf("This will remove all installed PHP versions. Continue? (y/N): ")
-			var response string
-			fmt.Scanln(&response)
-			if strings.ToLower(response) != "y" && strings.ToLower(response) != "yes" {
+			logger.Warn("Removing all PHP versions", "this will remove ~/.chauffeur/php/")
+			if !confirmDestructiveAction(logger, "This will remove all installed PHP versions. Continue?") {
 				logger.Success("Operation cancelled", "")
 				return nil
 			}
@@ -177,11 +173,7 @@ func runRemovePHP(version string, force bool, logger *lib.Logger) error {
 	}
 
 	if !force {
-		// SENSITIVE: Destructive operation - user confirmation for removing specific PHP version
-		fmt.Printf("Remove PHP %s? This will delete %s. Continue? (y/N): ", version, phpVersionDir)
-		var response string
-		fmt.Scanln(&response)
-		if strings.ToLower(response) != "y" && strings.ToLower(response) != "yes" {
+		if !confirmDestructiveAction(logger, fmt.Sprintf("Remove PHP %s? This will delete %s. Continue?", version, phpVersionDir)) {
 			logger.Success("Operation cancelled", "")
 			return nil
 		}
@@ -200,7 +192,7 @@ func runRemovePHP(version string, force bool, logger *lib.Logger) error {
 	}
 
 	// Check if this was the default PHP version and update if needed
-	updateDefaultPHPAfterRemoval(prefix, version)
+	updateDefaultPHPAfterRemoval(logger, prefix, version)
 
 	return nil
 }
@@ -217,11 +209,7 @@ func runRemoveComposer(prefix string, force bool, logger *lib.Logger) error {
 	}
 
 	if !force {
-		fmt.Print("Remove Composer installation? This deletes the shim and Composer PHAR. Continue? (y/N): ")
-		var response string
-		fmt.Scanln(&response)
-		response = strings.ToLower(strings.TrimSpace(response))
-		if response != "y" && response != "yes" {
+		if !confirmDestructiveAction(logger, "Remove Composer installation? This deletes the shim and Composer PHAR. Continue?") {
 			logger.Success("Operation cancelled", "")
 			return nil
 		}
@@ -253,11 +241,7 @@ func runRemoveService(spec ServiceSpec, force bool, logger *lib.Logger) error {
 	}
 
 	if !force {
-		// SENSITIVE: Destructive operation - user confirmation for removing service binaries
-		fmt.Printf("Remove %s? This will delete %s. Continue? (y/N): ", spec.Name, spec.BinaryPath)
-		var response string
-		fmt.Scanln(&response)
-		if strings.ToLower(response) != "y" && strings.ToLower(response) != "yes" {
+		if !confirmDestructiveAction(logger, fmt.Sprintf("Remove %s? This will delete %s. Continue?", spec.Name, spec.BinaryPath)) {
 			logger.Success("Operation cancelled", "")
 			return nil
 		}
@@ -326,7 +310,7 @@ func removePHPSHIMs(prefix string) {
 }
 
 // updateDefaultPHPAfterRemoval updates the default PHP if the removed version was the default
-func updateDefaultPHPAfterRemoval(prefix, removedVersion string) {
+func updateDefaultPHPAfterRemoval(logger *lib.Logger, prefix, removedVersion string) {
 	configPath := filepath.Join(prefix, "config", "chauffeur.yaml")
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		return
@@ -352,12 +336,21 @@ func updateDefaultPHPAfterRemoval(prefix, removedVersion string) {
 					// Simple string replacement - in production you'd use a proper YAML parser
 					newContent := strings.Replace(content, "default: "+removedVersion, "default: "+newDefault, 1)
 					os.WriteFile(configPath, []byte(newContent), 0644)
-					fmt.Printf("Switched default PHP to %s\n", newDefault)
+					logger.Success("Default PHP updated", newDefault)
 					break
 				}
 			}
 		}
 	}
+}
+
+// confirmDestructiveAction displays a destructive warning and reads user confirmation.
+func confirmDestructiveAction(logger *lib.Logger, prompt string) bool {
+	logger.Warn(prompt, "Type 'y' to continue, anything else cancels")
+	var response string
+	fmt.Scanln(&response)
+	response = strings.ToLower(strings.TrimSpace(response))
+	return response == "y" || response == "yes"
 }
 
 func printRemoveUsage() {

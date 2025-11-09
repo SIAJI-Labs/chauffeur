@@ -47,17 +47,17 @@ func RunLinks(args []string) error {
 	}
 
 	if len(allProjects) == 0 {
-		fmt.Println("No projects linked yet.")
-		fmt.Println("Use 'chauf link' in a project directory to register it.")
+		logger.Info("No projects linked yet.")
+		logger.Info("Use 'chauf link' in a project directory to register it.")
 		return nil
 	}
 
-	logger.Info(fmt.Sprintf("Linked Projects (%d):", len(allProjects)))
-	
+	logger.PrintSection(fmt.Sprintf("Linked Projects (%d)", len(allProjects)))
+
 	maxPath := 20
 	maxDomain := 10
 	maxSlug := 10
-	
+
 	// First pass to determine column widths and prepare domain defaults
 	projectsWithDomains := make([]linkedProject, len(allProjects))
 	for i, project := range allProjects {
@@ -67,7 +67,7 @@ func RunLinks(args []string) error {
 		if len(project.Slug) > maxSlug {
 			maxSlug = len(project.Slug)
 		}
-		
+
 		// Copy the project and set default domain if needed
 		projectsWithDomains[i] = project
 		if projectsWithDomains[i].Site == nil {
@@ -76,24 +76,26 @@ func RunLinks(args []string) error {
 				SSL:    false,
 			}
 		}
-		
+
 		domain := projectsWithDomains[i].Site.Domain
 		if len(domain) > maxDomain {
 			maxDomain = len(domain)
 		}
 	}
 
-	// Header
-	fmt.Printf("%-*s  %-*s  %-*s  %-3s  %s  %s\n", 
-		maxSlug, "SLUG", 
-		maxPath, "PATH", 
-		maxDomain, "DOMAIN", 
+	header := fmt.Sprintf("%-*s  %-*s  %-*s  %-3s  %-4s  %s",
+		maxSlug, "SLUG",
+		maxPath, "PATH",
+		maxDomain, "DOMAIN",
 		"SSL", "PHP", "CREATED")
-	fmt.Printf("%s  %s  %s  ---  ----  %s\n",
+	divider := fmt.Sprintf("%s  %s  %s  ---  ----  %s",
 		strings.Repeat("-", maxSlug),
 		strings.Repeat("-", maxPath),
 		strings.Repeat("-", maxDomain),
 		strings.Repeat("-", 19))
+
+	logger.Info(header)
+	logger.Info(divider)
 
 	// Project rows
 	for _, project := range projectsWithDomains {
@@ -101,16 +103,17 @@ func RunLinks(args []string) error {
 		if project.Site.SSL {
 			ssl = "*"
 		}
-		
+
 		created := project.CreatedAt.Format("2006-01-02 15:04")
-		
-		fmt.Printf("%-*s  %-*s  %-*s  %-3s  %-4s  %s\n",
+
+		row := fmt.Sprintf("%-*s  %-*s  %-*s  %-3s  %-4s  %s",
 			maxSlug, project.Slug,
 			maxPath, project.Path,
 			maxDomain, project.Site.Domain,
 			ssl,
 			project.PHP,
 			created)
+		logger.Info(row)
 	}
 
 	return nil

@@ -19,60 +19,6 @@ const (
 	defaultGitBranch = "main"
 )
 
-const statusPrefix = "[ self-update ]"
-
-// ANSI color codes
-const (
-	colorReset  = "\033[0m"
-	colorRed    = "\033[31m"
-	colorGreen  = "\033[32m"
-	colorYellow = "\033[33m"
-	colorBlue   = "\033[34m"
-	colorGray   = "\033[90m"
-	colorBold   = "\033[1m"
-)
-
-// Color functions
-func colorize(color, text string) string {
-	if !isTerminal(os.Stdout) {
-		return text
-	}
-	return color + text + colorReset
-}
-
-// isTerminal checks if the output is a terminal
-func isTerminal(f *os.File) bool {
-	info, err := f.Stat()
-	if err != nil {
-		return false
-	}
-	return (info.Mode() & os.ModeCharDevice) != 0
-}
-
-func green(text string) string {
-	return colorize(colorGreen, text)
-}
-
-func red(text string) string {
-	return colorize(colorRed, text)
-}
-
-func yellow(text string) string {
-	return colorize(colorYellow, text)
-}
-
-func blue(text string) string {
-	return colorize(colorBlue, text)
-}
-
-func gray(text string) string {
-	return colorize(colorGray, text)
-}
-
-func bold(text string) string {
-	return colorize(colorBold, text)
-}
-
 var (
 	runCommand = defaultRunCommand
 	goBuild    = defaultGoBuild
@@ -80,7 +26,7 @@ var (
 )
 
 // runDevUpdate rebuilds the CLI binary from the current working directory
-func runDevUpdate() error {
+func runDevUpdate(logger *lib.Logger) error {
 	// Verify we're in a valid git repository
 	spin := lib.NewSpinner("self-update", "Verifying chauffeur repository")
 	repoDir, err := os.Getwd()
@@ -151,10 +97,10 @@ func runDevUpdate() error {
 		return err
 	}
 
-	fmt.Printf("\n%s %s from development directory\n", blue(statusPrefix), bold(green("Dev rebuild complete")))
-	fmt.Printf("%s Built from current working directory: %s\n", blue(statusPrefix), gray(repoDir))
-	fmt.Printf("%s Using commit: %s\n", blue(statusPrefix), gray(shortSHA(currentSHA)))
-	fmt.Printf("%s Installed to: %s\n", blue(statusPrefix), gray(target))
+	logger.PrintSection("Dev Rebuild Summary")
+	logger.Success("Dev rebuild complete", fmt.Sprintf("commit %s", shortSHA(currentSHA)))
+	logger.Info(fmt.Sprintf("Built from: %s", repoDir))
+	logger.Info(fmt.Sprintf("Installed to: %s", target))
 
 	return nil
 }
@@ -211,6 +157,7 @@ func buildFromSource(repoDir, target, commitSHA string) error {
 
 // RunSelfUpdate handles `chauf self-update`.
 func RunSelfUpdate(args []string) error {
+	logger := lib.NewCommandLogger("self-update")
 	var isDev bool
 	remainingArgs := []string{}
 
@@ -227,10 +174,10 @@ func RunSelfUpdate(args []string) error {
 	}
 
 	if isDev {
-		return runDevUpdate()
+		return runDevUpdate(logger)
 	}
 
-	updater, err := newGitSelfUpdater()
+	updater, err := newGitSelfUpdater(logger)
 	if err != nil {
 		return err
 	}
@@ -246,9 +193,10 @@ type gitSelfUpdater struct {
 	executable    string
 	currentSHA    string
 	targetVersion string
+	logger        *lib.Logger
 }
 
-func newGitSelfUpdater() (*gitSelfUpdater, error) {
+func newGitSelfUpdater(logger *lib.Logger) (*gitSelfUpdater, error) {
 	if _, err := lookPath("git"); err != nil {
 		return nil, fmt.Errorf("git is required by self-update: %w", err)
 	}
@@ -296,12 +244,13 @@ func newGitSelfUpdater() (*gitSelfUpdater, error) {
 		sourceDir:     sourceDir,
 		executable:    target,
 		targetVersion: getCLIVersion(),
+		logger:        logger,
 	}, nil
 }
 
 func (su *gitSelfUpdater) Execute() error {
 	overallStart := time.Now()
-	fmt.Printf("%s %s...\n", blue(statusPrefix), bold("Starting self-update process"))
+	su.logger.Info("Starting self-update process...")
 
 	created, err := su.ensureRepository()
 	if err != nil {
@@ -335,32 +284,32 @@ func (su *gitSelfUpdater) Execute() error {
 
 	// Print final summary
 	overallDuration := time.Since(overallStart)
-	fmt.Printf("\n%s %s:\n", blue(statusPrefix), bold("Summary"))
-	fmt.Printf("  └── %s: %s\n", yellow("Duration"), formatDuration(overallDuration))
-	fmt.Printf("  └── %s: %s\n", gray("Previous"), func() string {
+	su.logger.PrintSection("Summary")
+	su.logger.Info(fmt.Sprintf("  Duration: %s", formatDuration(overallDuration)))
+	su.logger.Info(fmt.Sprintf("  Previous: %s", func() string {
 		if beforeSHA != "" {
-			return gray(shortSHA(beforeSHA))
+			return shortSHA(beforeSHA)
 		}
-		return gray("fresh clone")
-	}())
-	fmt.Printf("  └── %s:  %s\n", gray("Current"), gray(shortSHA(afterSHA)))
-	fmt.Printf("  └── %s:   %s\n", gray("Changes"), func() string {
+		return "fresh clone"
+	}()))
+	su.logger.Info(fmt.Sprintf("  Current: %s", shortSHA(afterSHA)))
+	su.logger.Info(fmt.Sprintf("  Changes: %s", func() string {
 		if created {
-			return green("fresh installation")
-		} else if changed {
-			return yellow("updated")
-		} else {
-			return gray("rebuilt only")
+			return "fresh installation"
 		}
-	}())
+		if changed {
+			return "updated"
+		}
+		return "rebuilt only"
+	}()))
 
 	switch {
 	case created:
-		fmt.Printf("\n%s %s from fresh clone (commit %s).\n", blue(statusPrefix), bold(green("Self-update complete")), gray(shortSHA(afterSHA)))
+		su.logger.Success("Self-update complete", fmt.Sprintf("fresh clone @ %s", shortSHA(afterSHA)))
 	case changed:
-		fmt.Printf("\n%s %s (commit %s).\n", blue(statusPrefix), bold(green("Self-update complete")), gray(shortSHA(afterSHA)))
+		su.logger.Success("Self-update complete", fmt.Sprintf("commit %s", shortSHA(afterSHA)))
 	default:
-		fmt.Printf("\n%s %s at commit %s (no source changes).\n", blue(statusPrefix), bold(blue("Binary rebuilt")), gray(shortSHA(afterSHA)))
+		su.logger.Success("Binary rebuilt", fmt.Sprintf("commit %s (no source changes)", shortSHA(afterSHA)))
 	}
 	return nil
 }
@@ -383,7 +332,7 @@ func (su *gitSelfUpdater) ensureRepository() (bool, error) {
 	} else if err != nil {
 		return false, fmt.Errorf("check repository: %w", err)
 	}
-	fmt.Printf("%s Using existing sources at %s\n", blue(statusPrefix), gray(su.repoDir))
+	su.logger.Info(fmt.Sprintf("Using existing sources at %s", su.repoDir))
 	return false, nil
 }
 

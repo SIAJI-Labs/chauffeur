@@ -10,6 +10,7 @@ import (
 	"github.com/siaji/chauffeur/cli/internal/projects"
 	"github.com/siaji/chauffeur/cli/internal/system"
 	"github.com/siaji/chauffeur/cli/internal/workspace"
+	"github.com/siaji/chauffeur/cli/lib"
 )
 
 /**
@@ -24,6 +25,8 @@ func RunServiceCommand(name string, args []string) error {
 		return fmt.Errorf("unknown service %s", name)
 	}
 
+	logger := lib.NewCommandLogger(name)
+
 	prefix, err := workspace.Dir()
 	if err != nil {
 		return err
@@ -36,7 +39,7 @@ func RunServiceCommand(name string, args []string) error {
 
 	// Special handling for PHP to support project isolation
 	if name == "php" {
-		binaryPath, err := getProjectAwarePHPBinary(prefix)
+		binaryPath, err := getProjectAwarePHPBinary(prefix, logger)
 		if err != nil {
 			return err
 		}
@@ -65,7 +68,7 @@ func RunServiceCommand(name string, args []string) error {
  * @param prefix Chauffeur workspace prefix.
  * @return path to PHP binary that should be executed.
  */
-func getProjectAwarePHPBinary(prefix string) (string, error) {
+func getProjectAwarePHPBinary(prefix string, logger *lib.Logger) (string, error) {
 	// Check if current directory is part of a linked project
 	cfg, err := config.Load()
 	if err != nil {
@@ -113,15 +116,17 @@ func getProjectAwarePHPBinary(prefix string) (string, error) {
 		if _, err := os.Stat(isolatedBinary); err == nil {
 			// Isolated PHP version is installed, use it
 			return isolatedBinary, nil
-		} else {
-			// Isolated PHP version is not installed, warn and fall back to default
-			fmt.Printf("Warning: Project PHP version %s is not installed. Using default PHP instead.\n", projectCfg.PHP)
-			spec, specErr := NewServiceSpec("php", prefix, system.Info{})
-			if specErr != nil {
-				return "", specErr
-			}
-			return spec.BinaryPath, nil
 		}
+
+		// Isolated PHP version is not installed, warn and fall back to default
+		if logger != nil {
+			logger.Warn("Project PHP version is not installed", fmt.Sprintf("%s not found, falling back to default PHP", projectCfg.PHP))
+		}
+		spec, specErr := NewServiceSpec("php", prefix, system.Info{})
+		if specErr != nil {
+			return "", specErr
+		}
+		return spec.BinaryPath, nil
 	}
 
 	// No isolation or no specific version, use default behavior
