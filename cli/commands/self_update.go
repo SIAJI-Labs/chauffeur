@@ -88,21 +88,21 @@ func runDevUpdate() error {
 		spin.Fail("get working directory")
 		return fmt.Errorf("get working directory: %w", err)
 	}
-	
+
 	// Check if this is a git repository
 	gitDir := filepath.Join(repoDir, ".git")
 	if _, err := os.Stat(gitDir); err != nil {
 		spin.Fail("not a git repository")
 		return fmt.Errorf("current directory is not a git repository")
 	}
-	
+
 	// Check if it has the required structure for a chauffeur repo
 	requiredPaths := []string{
 		"cli/main.go",
 		"go.mod",
 		"AGENTS.md",
 	}
-	
+
 	for _, path := range requiredPaths {
 		fullPath := filepath.Join(repoDir, path)
 		if _, err := os.Stat(fullPath); err != nil {
@@ -111,11 +111,11 @@ func runDevUpdate() error {
 		}
 	}
 	spin.Success("validated chauf repo structure")
-	
+
 	// Get the current working directory info
 	spin = lib.NewSpinner("self-update", "Preparing rebuild environment")
 	start := time.Now()
-	
+
 	// Get current git HEAD for reference
 	currentSHA, err := runCommand(repoDir, "git", "rev-parse", "HEAD")
 	if err != nil {
@@ -123,7 +123,7 @@ func runDevUpdate() error {
 		return fmt.Errorf("get current commit: %w", err)
 	}
 	currentSHA = strings.TrimSpace(currentSHA)
-	
+
 	// Get target executable path
 	target := os.Getenv("CHAUF_SELF_UPDATE_TARGET")
 	if target == "" {
@@ -136,26 +136,26 @@ func runDevUpdate() error {
 			target = resolved
 		}
 	}
-	
+
 	// Ensure target directory exists
 	dir := filepath.Dir(target)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		spin.Fail("prepare target directory")
 		return fmt.Errorf("ensure binary directory: %w", err)
 	}
-	
+
 	spin.Success(fmt.Sprintf("ready to rebuild (commit %s, %s)", shortSHA(currentSHA), formatDuration(time.Since(start))))
-	
+
 	// Build the new binary
 	if err := buildFromSource(repoDir, target, currentSHA); err != nil {
 		return err
 	}
-	
+
 	fmt.Printf("\n%s %s from development directory\n", blue(statusPrefix), bold(green("Dev rebuild complete")))
 	fmt.Printf("%s Built from current working directory: %s\n", blue(statusPrefix), gray(repoDir))
 	fmt.Printf("%s Using commit: %s\n", blue(statusPrefix), gray(shortSHA(currentSHA)))
 	fmt.Printf("%s Installed to: %s\n", blue(statusPrefix), gray(target))
-	
+
 	return nil
 }
 
@@ -170,40 +170,42 @@ func buildFromSource(repoDir, target, commitSHA string) error {
 	tmpPath := tmpFile.Name()
 	_ = tmpFile.Close()
 	defer func() { _ = os.Remove(tmpPath) }()
-	
+
 	spin := lib.NewSpinner("self-update", fmt.Sprintf("Building from source (@%s)", shortSHA(commitSHA)))
 	start := time.Now()
-	
+
+	buildTS := time.Now().UTC().Format(time.RFC3339)
+
 	// Build the binary
-	if err := goBuild(repoDir, tmpPath); err != nil {
+	if err := goBuild(repoDir, tmpPath, buildTS); err != nil {
 		spin.Fail("build failed")
 		return fmt.Errorf("go build: %w", err)
 	}
-	
+
 	// Set executable permissions
 	if err := os.Chmod(tmpPath, 0o755); err != nil {
 		spin.Fail("set permissions failed")
 		return fmt.Errorf("set binary permissions: %w", err)
 	}
-	
+
 	// Backup existing binary
 	backupPath := target + ".bak"
 	if err := os.Rename(target, backupPath); err != nil && !errors.Is(err, os.ErrNotExist) {
 		spin.Fail("backup failed")
 		return fmt.Errorf("backup existing binary: %w", err)
 	}
-	
+
 	// Install new binary
 	if err := os.Rename(tmpPath, target); err != nil {
 		_ = os.Rename(backupPath, target)
 		spin.Fail("install failed")
 		return fmt.Errorf("install new binary: %w", err)
 	}
-	
+
 	// Clean up backup
 	_ = os.Remove(backupPath)
 	spin.Success(fmt.Sprintf("installed to %s (%s)", target, formatDuration(time.Since(start))))
-	
+
 	return nil
 }
 
@@ -211,7 +213,7 @@ func buildFromSource(repoDir, target, commitSHA string) error {
 func RunSelfUpdate(args []string) error {
 	var isDev bool
 	remainingArgs := []string{}
-	
+
 	for _, arg := range args {
 		switch arg {
 		case "--help", "-h":
@@ -351,7 +353,7 @@ func (su *gitSelfUpdater) Execute() error {
 			return gray("rebuilt only")
 		}
 	}())
-	
+
 	switch {
 	case created:
 		fmt.Printf("\n%s %s from fresh clone (commit %s).\n", blue(statusPrefix), bold(green("Self-update complete")), gray(shortSHA(afterSHA)))
@@ -458,7 +460,9 @@ func (su *gitSelfUpdater) buildAndInstall() error {
 	spin := lib.NewSpinner("self-update", "Building Chauffeur CLI")
 	start := time.Now()
 
-	if err := goBuild(su.repoDir, tmpPath); err != nil {
+	buildTS := time.Now().UTC().Format(time.RFC3339)
+
+	if err := goBuild(su.repoDir, tmpPath, buildTS); err != nil {
 		spin.Fail("build failed")
 		return fmt.Errorf("go build: %w", err)
 	}
@@ -505,8 +509,13 @@ func defaultRunCommand(dir, name string, args ...string) (string, error) {
 	return stdout.String(), nil
 }
 
-func defaultGoBuild(repoDir, output string) error {
-	cmd := exec.Command("go", "build", "-o", output, "./cli")
+func defaultGoBuild(repoDir, output, buildTimestamp string) error {
+	args := []string{"build"}
+	if ts := strings.TrimSpace(buildTimestamp); ts != "" {
+		args = append(args, "-ldflags", fmt.Sprintf("-X main.buildTimestamp=%s", ts))
+	}
+	args = append(args, "-o", output, "./cli")
+	cmd := exec.Command("go", args...)
 	cmd.Dir = repoDir
 	cmd.Env = append(os.Environ(), "GOMODCACHE="+filepath.Join(repoDir, ".gomodcache"))
 	var stderr bytes.Buffer
@@ -534,8 +543,6 @@ func formatDuration(d time.Duration) string {
 	}
 	return d.Round(time.Millisecond).String()
 }
-
-
 
 func printSelfUpdateUsage() {
 	fmt.Print(`Chauffeur Self-Update

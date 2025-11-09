@@ -168,7 +168,6 @@ ensure_directories() {
     "${WORKSPACE}/nginx/sites-available"
     "${WORKSPACE}/nginx/sites-enabled"
     "${WORKSPACE}/nginx/conf.d"
-    "${WORKSPACE}/caddy/bin"
   )
 
   for dir in "${dirs[@]}"; do
@@ -266,7 +265,10 @@ build_local_chauf() {
 
   local tmp_binary
   tmp_binary="$(mktemp)"
-  if (cd "${SCRIPT_DIR}" && GO111MODULE=on go build -o "${tmp_binary}" ./cli); then
+  local build_ts
+  build_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+  if (cd "${SCRIPT_DIR}" && GO111MODULE=on go build -ldflags "-X main.buildTimestamp=${build_ts}" -o "${tmp_binary}" ./cli); then
     install -m 0755 "${tmp_binary}" "${output_path}"
     rm -f "${tmp_binary}"
     success "Built chauf binary from Go sources"
@@ -359,19 +361,12 @@ telemetry: false
 # Workspace directory where Chauffeur stores its data
 workspace_dir: ~/.chauffeur
 
-# Caddy web server configuration
-caddy:
+# Nginx web server configuration  
+nginx:
   enable: true
   # Custom ports to avoid conflicts with system services
   http_port: 8080     # HTTP port (user-space)
   https_port: 8443    # HTTPS port (user-space)
-
-# Nginx web server configuration  
-nginx:
-  enable: true
-  # Different ports from Caddy to avoid conflicts
-  http_port: 8081     # HTTP port (user-space)
-  https_port: 8444    # HTTPS port (user-space)
 
 # PHP runtime configuration
 php:
@@ -390,10 +385,8 @@ ports:
   conflict_resolution: "prompt"
   
   # Fallback ports for each service
-  caddy_http_fallback: 8080
-  caddy_https_fallback: 8443
-  nginx_http_fallback: 8081
-  nginx_https_fallback: 8444
+  nginx_http_fallback: 8080
+  nginx_https_fallback: 8443
   php_fpm_fallback: 9000
 
 # Directory where Chauffeur stores project configurations
@@ -402,7 +395,7 @@ EOF
   
   info "Created basic configuration with user-space ports"
   success "Configuration file created: ${config_file}"
-  info "Default ports: Caddy HTTP 8080, Caddy HTTPS 8443, Nginx HTTP 8081, Nginx HTTPS 8444"
+  info "Default ports: Nginx HTTP 8080, Nginx HTTPS 8443"
 }
 
 is_git_repo() {

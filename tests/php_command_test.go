@@ -262,16 +262,14 @@ func writeConfigWithDefault(t *testing.T, home, version string) {
 	content := fmt.Sprintf(`version: %d
 telemetry: %t
 workspace_dir: %s
-caddy:
+nginx:
   enable: %t
   http_port: %d
   https_port: %d
-nginx:
-  enable: %t
 php:
   default: %s
 projects_dir: %s
-`, 1, false, root, true, 80, 443, true, version, projectsDir)
+`, 1, false, root, true, 8080, 8443, version, projectsDir)
 
 	cfgFile := filepath.Join(cfgDir, "chauffeur.yaml")
 	if err := os.WriteFile(cfgFile, []byte(content), 0o644); err != nil {

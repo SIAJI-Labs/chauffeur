@@ -1,6 +1,6 @@
 # Chauffeur
 
-Chauffeur is a host-based CLI for managing per-project PHP development services on Linux. It installs everything into `~/.chauffeur/`, isolates runtimes (PHP-FPM, Nginx, Caddy), and keeps system packages untouched.
+Chauffeur is a host-based CLI for managing per-project PHP development services on Linux. It installs everything into `~/.chauffeur/`, isolates runtimes (PHP-FPM, Nginx, dnsmasq-managed domains), and keeps system packages untouched.
 
 ## Status
 
@@ -8,7 +8,6 @@ Chauffeur is a host-based CLI for managing per-project PHP development services 
 - ✅ **PHP Management**: `chauf php install/use/isolate` with version switching and workspace setup
 - ✅ **Project-Aware PHP Shims**: Automatic PHP version detection based on project context  
 - ✅ **CLI Bootstrap**: Both repository cloning and curl-based installation methods
-- ✅ **Safe Caddy Removal**: dnsmasq validation with double confirmation to prevent system damage  
 - ✅ **Self-Update**: `chauf self-update` pulls latest git changes and rebuilds the CLI binary (services untouched)  
 - ✅ **Dev Mode**: `chauf self-update --dev` rebuilds CLI from current directory for development  
 - ✅ **Shell Integration**: Clean PATH management with no whitespace pollution  
@@ -25,8 +24,8 @@ Chauffeur is a host-based CLI for managing per-project PHP development services 
 - ✅ **Comprehensive Testing**: Full test suite with operation-based structure and 80% coverage standards  
 - ✅ **Service Orchestration**: `chauf start/stop` with dnsmasq validation  
 - ✅ **Environment Insights**: `chauf info` surfaces workspace paths, versions, installed services, and port configuration at a glance  
-- ✅ **Site Accessibility**: Caddy integration for local domain routing with port 80/8080 access
-- 🚧 **Port Forwarding Automation**: Port 80 to 8080 redirection setup (manual implementation complete)
+- ✅ **Valet-Style Routing**: dnsmasq + nginx provide `.test` domains over user-space ports (no privileged listeners)
+- ✅ **Port Forwarding Automation**: iptables-based port 80/443 redirection handled automatically by `chauf start`
 - Linux-focused workflow (Arch/Ubuntu/Debian friendly); other OS targets are not yet supported
 
 ## Background & Inspiration
@@ -145,14 +144,12 @@ Once installed, you can manage services:
 # Install services
 chauf install php 8.3
 chauf install nginx
-chauf install caddy
 chauf install composer
 
 # Remove services
 chauf remove php 8.3        # Remove specific PHP version
 chauf remove php           # Remove all PHP versions
 chauf remove nginx         # Remove nginx
-chauf remove caddy         # Remove caddy (with dnsmasq validation)
 chauf remove composer      # Remove Composer shim + PHAR
 
 # Remove without confirmation
@@ -183,10 +180,17 @@ sudo systemctl restart dnsmasq
 ```
 
 **Automated Setup Features:**
-- **Configuration Validation**: Checks for dnsmasq setup during `chauf start` and `chauf install caddy`
+- **Configuration Validation**: Checks for dnsmasq setup during `chauf start`
 - **Interactive Prompts**: Offers to automatically install dnsmasq configuration when missing
 - **Service Restart**: Automatically restarts dnsmasq to apply configuration changes
+- **Active Resolver Health Check**: Probes `.test` resolution and restarts dnsmasq/NetworkManager when the resolver stops pointing to localhost
+- **NetworkManager Auto-Integration**: When `systemd-resolved` owns port 53, Chauffeur now writes the required NetworkManager drop-ins (`/etc/NetworkManager/conf.d/90-chauffeur-dns.conf` and `/etc/NetworkManager/dnsmasq.d/chauffeur.conf`) plus a `systemd-resolved` drop-in to disable the stub listener, then reloads both services via `sudo`
+- **Host Resolver Detection**: Detects when `systemd-resolved`'s stub listener already occupies port 53 and, if NetworkManager is unavailable, surfaces the exact manual steps so Chauffeur never fights the host DNS stack
 - **Domain Resolution**: Ensures `.test` domains resolve to localhost for local development
+
+If the probe (`chauffeur-dns-probe.test`) does not resolve to `127.0.0.1`, `chauf start` now aborts with actionable guidance so you can point `/etc/resolv.conf` or NetworkManager to the local dnsmasq stub before services come online.
+
+> **Heads-up for `systemd-resolved` users:** Chauffeur now attempts to reconfigure NetworkManager for you (with `sudo`) and drops a `/etc/systemd/resolved.conf.d/90-chauffeur-disable-stub.conf` file so dnsmasq can own `127.0.0.1:53`. If NetworkManager is missing, the CLI still stops with the exact manual instructions rather than touching the host blindly. Running `chauf remove nginx` or `chauf uninstall --purge` cleans up those host drop-ins automatically.
 
 ### Site Accessibility & Domain Routing
 
@@ -200,56 +204,46 @@ chauf link
 # With custom domain
 chauf link --site myapp.test --ssl
 
-# Override user-space Caddy ports if needed
-chauf link --caddy-http-port 8090 --caddy-https-port 8543
+# Override user-space nginx ports if needed
+chauf link --http-port 8090 --https-port 8543
 
 # Start services
 chauf start
 
 # Access your site
 curl http://my-project.test  # Works via port 80
-curl http://my-project.test:8080  # Direct access to Caddy
+curl http://my-project.test:8080  # Direct access to nginx user-space listener
 ```
 
-Chauffeur validates every configured port during linking. The default `~/.chauffeur/config/chauffeur.yaml` created by `chauf init` pins user-space ports (Caddy 8080/8443, Nginx 8081/8444, PHP-FPM 9000) and defines a conflict-resolution strategy (`prompt`, `auto`, or `fail`). You can override ports per project with `--caddy-http-port` / `--caddy-https-port`, and the CLI will either prompt for alternatives, auto-select the next free port inside the configured range, or stop with an actionable error based on that strategy.
+Chauffeur validates every configured port during linking. The default `~/.chauffeur/config/chauffeur.yaml` created by `chauf init` pins user-space ports (Nginx 8080/8443, PHP-FPM 9000) and defines a conflict-resolution strategy (`prompt`, `auto`, or `fail`). You can override ports per project with `--http-port` / `--https-port`, and the CLI will either prompt for alternatives, auto-select the next free port inside the configured range, or stop with an actionable error based on that strategy.
 
 #### Site Access Features
 
 - **Standard Port Access**: `http://project-name.test` (port 80) - works automatically
 - **Direct Port Access**: `http://project-name.test:8080` (port 8080) - for debugging
 - **DNS Resolution**: All `.test` domains resolve to `127.0.0.1` via NetworkManager dnsmasq
+- **Sites-Enabled Layout**: Every project vhost lives under `~/.chauffeur/nginx/sites-enabled/*.conf` and is automatically included by nginx
 - **Port Forwarding**: Port 80 traffic is transparently redirected to port 8080
 - **PHP Processing**: Full PHP-FPM integration with per-project isolation
 - **Static Files**: Automatic static file serving with proper headers
+- **Laravel Template Safety**: Embedded Laravel nginx template now uses only stock variables (no more `$time_start` dependency), so `nginx` never fails with “unknown variable” errors
 
 #### Port Forwarding Setup
 
-For the best user experience, Chauffeur includes port forwarding from port 80 to 8080:
+`chauf start` automatically configures `iptables` OUTPUT rules that redirect localhost traffic on privileged ports to the configured nginx listeners (e.g., `80 → 8081`, `443 → 8443`). The rules live only while Chauffeur is running—`chauf stop`/`chauf remove nginx` remove them so the host firewall stays clean.
+
+If you need to tweak the behavior manually (or prefer to manage forwarding yourself), these are the exact commands Chauffeur uses under the hood:
 
 ```bash
-# Manual setup (if not automated in your installation)
 sudo iptables -t nat -A OUTPUT -p tcp --dport 80 -d 127.0.0.1 -j REDIRECT --to-port 8080
+sudo iptables -t nat -A OUTPUT -p tcp --dport 443 -d 127.0.0.1 -j REDIRECT --to-port 8443
 ```
 
-This allows you to access sites using natural URLs without port specifications while keeping Caddy running on the non-privileged port 8080 for security and compatibility.
+This keeps nginx on safe ports (8080/8443 by default) while still allowing natural `http://project.test` and `https://project.test` access. When `--ssl` is supplied during `chauf link`, Chauffeur writes nginx configurations that reference certificates inside `~/.chauffeur/nginx/certs/<domain>.{crt,key}`—generate or copy certificates into that directory using `mkcert`, `step`, or your preferred tooling.
 
-#### Safe Caddy Removal with dnsmasq Validation
+#### dnsmasq Safety Validation
 
-When removing Caddy, Chauffeur includes safety validation for `dnsmasq`:
-
-```bash
-chauf remove caddy           # Interactive removal with dnsmasq warnings
-chauf remove caddy --force    # Remove caddy only (without touching dnsmasq)
-```
-
-**Safety Features:**
-- **dnsmasq Detection**: Automatically checks if dnsmasq is installed on the system
-- **Risk Warning**: Warns users that removing dnsmasq may break other applications
-- **Double Confirmation**: Requires typing "REMOVE" to confirm dnsmasq deletion
-- **Streamlined Flow**: After initial caddy confirmation, goes directly to dnsmasq prompt without redundant intermediate step
-- **Safe Default**: `--force` flag only removes Caddy, never touches system packages
-- **User Choice**: Users can keep dnsmasq while removing Caddy
-- **Configuration Cleanup**: Offers to remove chauffeur dnsmasq configuration file
+`chauf start` validates the dnsmasq configuration before launching services. If `.test` domain forwarding is missing, Chauffeur offers to create the configuration for you and restarts dnsmasq so the change takes effect immediately. Use `--force` flags on destructive commands (e.g., `chauf remove nginx`) to bypass prompts, but Chauffeur will never uninstall system packages on your behalf.
 
 ### Inspecting Your Chauffeur Environment
 
@@ -263,9 +257,10 @@ The command reports:
 
 - Workspace location, projects directory, and config file path
 - Current CLI version alongside the latest GitHub release (with update hints)
-- Installed services (Caddy, Nginx, Composer) and their reported versions/paths
+- Build timestamp of the installed binary (UTC)
+- Installed services (Nginx, Composer) and their reported versions/paths
 - Installed PHP runtimes and the active default version
-- Port configuration (Caddy/Nginx bindings, port range, PHP-FPM fallback)
+- Port configuration (Nginx bindings, port range, PHP-FPM fallback)
 
 This makes it easy to confirm whether a machine is up to date before sharing instructions or reproducing an issue.
 ```
@@ -359,11 +354,11 @@ The uninstaller cleanly removes PATH entries without leaving whitespace pollutio
 ### Current Focus 🎯
 **Priority 1: Complete Service Orchestration**
 - ✅ `chauf start` and `chauf stop` commands for managing services
-- ✅ Integration with Nginx, PHP-FPM, and Caddy processes
+- ✅ Integration with Nginx + PHP-FPM processes alongside dnsmasq validation
 - ✅ Service process monitoring and health checks
 
 **Priority 2: Site Accessibility Implementation**
-- ✅ Caddy integration for local domain resolution with port 80/8080 access
+- ✅ dnsmasq-powered `.test` domain resolution with optional iptables forwarding
 - ✅ Nginx virtual host configuration for registered domains
 - ✅ DNS resolution via NetworkManager dnsmasq for `.test` domains
 - 🚧 Port forwarding automation (port 80 to 8080 redirection)
@@ -374,8 +369,7 @@ The uninstaller cleanly removes PATH entries without leaving whitespace pollutio
 - Enhanced error reporting with log file paths on failures
 
 ### In Progress 🚧
-- Service orchestration (`chauf start`, `chauf stop`) for Nginx, PHP-FPM, and Caddy
-- Caddy integration for local domain resolution (no `/etc/hosts` editing)
+- Service orchestration (`chauf start`, `chauf stop`) for Nginx, PHP-FPM, and dnsmasq verification
 - Service process monitoring and health checks
 
 ### Planned 📋
@@ -393,10 +387,10 @@ See [TODO_STATUS.md](docs/TODO_STATUS.md) for comprehensive project status and r
   - **Laravel**: Detects `artisan` and `composer.json` with Laravel structure for optimized routing
   - **WordPress**: Detects `wp-config.php`, `wp-admin`, and `wp-includes` for WordPress-specific settings
   - **General**: Fallback for standard PHP applications with security headers and proper PHP-FPM integration
-- **SSL Support**: When `--ssl` is provided with `--site`, templates include HTTPS configuration with internal TLS on port 8443
+- **SSL Support**: When `--ssl` is provided with `--site`, templates include HTTPS configuration on port 8443 and reference certificates stored under `~/.chauffeur/nginx/certs/<domain>.crt|.key`
 - **User-Space Ports**: All configurations use non-privileged ports (HTTP: 8080, HTTPS: 8443) to avoid conflicts with system services
 - Use `--php <version>` to pin a per-project PHP version without touching global defaults.
-- Use `--caddy-http-port` and `--caddy-https-port` to override Caddy listener ports per project; Chauffeur validates ports according to the configured conflict-resolution strategy before writing project metadata.
+- Use `--http-port` and `--https-port` to override nginx listener ports per project; Chauffeur validates ports according to the configured conflict-resolution strategy before writing project metadata.
 - Run `chauf php isolate <version>` in the project directory to switch the linked PHP runtime (requires the version to be installed). This automatically updates the nginx configuration to use the new PHP-FPM socket.
 - Re-run with `--force` when intentionally overwriting an existing project registration.
 - Run `chauf unlink` to remove a project registration (defaults to current directory when no flags provided). This also removes the associated nginx configuration.

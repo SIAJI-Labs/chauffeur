@@ -84,13 +84,6 @@ func RunStatus(args []string) error {
 					servicesToCheck = append(servicesToCheck, svc)
 				}
 			}
-		case "caddy", "chauf-caddy":
-			globalServices := manager.ListGlobalServices()
-			for _, svc := range globalServices {
-				if strings.Contains(svc.Name, "caddy") {
-					servicesToCheck = append(servicesToCheck, svc)
-				}
-			}
 		case "php-fpm", "php":
 			// Show all PHP-FPM services for all projects
 
@@ -247,7 +240,7 @@ func printStatusUsage() {
 Shows the status of Chauffeur services with chauf- prefix.
 
 Arguments:
-  service-type        Show status for specific service type (nginx, caddy, php-fpm).
+  service-type        Show status for specific service type (nginx, php-fpm).
 
 Flags:
   --project <slug>     Show status for specific project only.
@@ -263,6 +256,5 @@ Examples:
 
 Service Names:
   - chauf-nginx              # Global Nginx service
-  - chauf-caddy              # Global Caddy service  
   - chauf-php-fpm-<slug>     # Project-specific PHP-FPM service`)
 }

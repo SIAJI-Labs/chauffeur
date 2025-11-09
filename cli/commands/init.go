@@ -74,8 +74,6 @@ func RunInit(args []string) error {
 		filepath.Join(wsDir, "nginx", "sites-enabled"),
 		filepath.Join(wsDir, "nginx", "conf.d"),
 		filepath.Join(wsDir, "nginx", "logs"),
-		filepath.Join(wsDir, "caddy", "bin"),
-		filepath.Join(wsDir, "caddy", "logs"),
 		filepath.Join(wsDir, "bin"),
 		filepath.Join(wsDir, "bin", "shims"),
 	}
@@ -137,7 +135,7 @@ tmp/
 		logger.Success("Chauffeur workspace initialized successfully", fmt.Sprintf("at %s", wsDir))
 		logger.Info("Next steps:")
 		logger.Info("  1. Source the shell PATH configuration or restart your shell")
-		logger.Info("  2. Install services: chauf install caddy nginx php")
+		logger.Info("  2. Install services: chauf install nginx php")
 		logger.Info("  3. Create your first project: cd /path/to/project && chauf link")
 		logger.Info("  4. Start services: chauf start")
 	} else {
@@ -170,10 +168,8 @@ func createDefaultConfig(wsDir string, logger *lib.Logger, quiet bool) error {
 	if !quiet {
 		logger.Success("Configuration file created", configPath)
 		logger.Info("Default settings used:")
-		logger.Info(fmt.Sprintf("  Caddy HTTP port: %d", cfg.Caddy.HTTPPort))
-		logger.Info(fmt.Sprintf("  Caddy HTTPS port: %d", cfg.Caddy.HTTPSPort))
-		logger.Info(fmt.Sprintf("  Nginx HTTP port: %d", cfg.Nginx.HTTPPort))
-		logger.Info(fmt.Sprintf("  Nginx HTTPS port: %d", cfg.Nginx.HTTPSPort))
+	logger.Info(fmt.Sprintf("  Nginx HTTP port: %d", cfg.Nginx.HTTPPort))
+	logger.Info(fmt.Sprintf("  Nginx HTTPS port: %d", cfg.Nginx.HTTPSPort))
 		logger.Info(fmt.Sprintf("  Port range: %d-%d", cfg.Ports.StartRange, cfg.Ports.EndRange))
 		logger.Info(fmt.Sprintf("  Conflict resolution: %s", cfg.Ports.ConflictResolution))
 	}
@@ -204,10 +200,8 @@ Description:
   service-specific directories.
 
 Default Configuration:
-  - Caddy HTTP port: 8080 (user-space to avoid system conflicts)
-  - Caddy HTTPS port: 8443
-  - Nginx HTTP port: 8081 (different from Caddy)
-  - Nginx HTTPS port: 8444
+  - Nginx HTTP port: 8080 (user-space to avoid system conflicts)
+  - Nginx HTTPS port: 8443
   - Port range for auto-allocation: 8080-8099
   - Conflict resolution: prompt (interactive)
 

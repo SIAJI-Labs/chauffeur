@@ -59,6 +59,7 @@ func RunInfo(args []string) error {
 	logger.PrintSection("Versions")
 	currentVersion := getCLIVersion()
 	logger.Info(fmt.Sprintf("Current CLI: %s", currentVersion))
+	logger.Info(fmt.Sprintf("Build timestamp: %s", getBuildTimestamp()))
 
 	if version, err := fetchLatestCLIVersion(); err == nil && version != "" {
 		status := "up to date"
@@ -82,8 +83,6 @@ func RunInfo(args []string) error {
 	}
 
 	logger.PrintSection("Port Configuration")
-	logger.Info(fmt.Sprintf("Caddy HTTP: %d", cfg.Caddy.HTTPPort))
-	logger.Info(fmt.Sprintf("Caddy HTTPS: %d", cfg.Caddy.HTTPSPort))
 	logger.Info(fmt.Sprintf("Nginx HTTP: %d", cfg.Nginx.HTTPPort))
 	logger.Info(fmt.Sprintf("Nginx HTTPS: %d", cfg.Nginx.HTTPSPort))
 	logger.Info(fmt.Sprintf("Port range: %d-%d (%s)", cfg.Ports.StartRange, cfg.Ports.EndRange, strings.ToUpper(cfg.Ports.ConflictResolution)))
@@ -115,7 +114,6 @@ func gatherBinaryServices(prefix string) []serviceStatus {
 		path string
 		args []string
 	}{
-		{"Caddy", filepath.Join(prefix, "caddy", "bin", "caddy"), []string{"version"}},
 		{"Nginx", filepath.Join(prefix, "nginx", "sbin", "nginx"), []string{"-v"}},
 		{"Composer", filepath.Join(prefix, "bin", "composer"), []string{"--version"}},
 	}

@@ -23,17 +23,10 @@ type Config struct {
 	Version      int
 	Telemetry    bool
 	WorkspaceDir string
-	Caddy        CaddyConfig
 	Nginx        NginxConfig
 	PHP          PHPConfig
 	Ports        PortConfig
 	ProjectsDir  string
-}
-
-type CaddyConfig struct {
-	Enable    bool
-	HTTPPort  int
-	HTTPSPort int
 }
 
 type NginxConfig struct {
@@ -55,8 +48,6 @@ type PortConfig struct {
 	ConflictResolution string `yaml:"conflict_resolution"` // "prompt", "auto", "fail"
 
 	// Preferred ports for each service (fallback if not set in service configs)
-	CaddyHTTPFallback  int `yaml:"caddy_http_fallback"`
-	CaddyHTTPSFallback int `yaml:"caddy_https_fallback"`
 	NginxHTTPFallback  int `yaml:"nginx_http_fallback"`
 	NginxHTTPSFallback int `yaml:"nginx_https_fallback"`
 	PHPFPMFallback     int `yaml:"php_fpm_fallback"`
@@ -148,15 +139,10 @@ func DefaultConfig() (Config, error) {
 		Version:      configVersion,
 		Telemetry:    false,
 		WorkspaceDir: root,
-		Caddy: CaddyConfig{
-			Enable:    true,
-			HTTPPort:  8080, // User-space port to avoid system conflicts
-			HTTPSPort: 8443, // User-space port to avoid system conflicts
-		},
 		Nginx: NginxConfig{
 			Enable:    true,
-			HTTPPort:  8081, // Different from Caddy to avoid conflicts
-			HTTPSPort: 8444, // Different from Caddy to avoid conflicts
+			HTTPPort:  8080,
+			HTTPSPort: 8443,
 		},
 		PHP:         PHPConfig{Default: "8.3"},
 		ProjectsDir: filepath.Join(root, "projects"),
@@ -164,10 +150,8 @@ func DefaultConfig() (Config, error) {
 			StartRange:         8080,
 			EndRange:           8099,
 			ConflictResolution: "prompt",
-			CaddyHTTPFallback:  8080,
-			CaddyHTTPSFallback: 8443,
-			NginxHTTPFallback:  8081,
-			NginxHTTPSFallback: 8444,
+			NginxHTTPFallback:  8080,
+			NginxHTTPSFallback: 8443,
 			PHPFPMFallback:     9000,
 		},
 	}, nil
@@ -177,6 +161,7 @@ func (c *Config) applyDefaults() {
 	if c.Version == 0 {
 		c.Version = configVersion
 	}
+	c.WorkspaceDir = expandUserPath(c.WorkspaceDir)
 	if c.WorkspaceDir == "" {
 		if root, err := workspace.Dir(); err == nil {
 			c.WorkspaceDir = root
@@ -185,19 +170,17 @@ func (c *Config) applyDefaults() {
 	if c.ProjectsDir == "" {
 		c.ProjectsDir = filepath.Join(c.WorkspaceDir, "projects")
 	}
+	c.ProjectsDir = expandUserPath(c.ProjectsDir)
+	if !filepath.IsAbs(c.ProjectsDir) && c.WorkspaceDir != "" {
+		c.ProjectsDir = filepath.Join(c.WorkspaceDir, c.ProjectsDir)
+	}
 
 	// Apply user-space port defaults to avoid system conflicts
-	if c.Caddy.HTTPPort == 0 {
-		c.Caddy.HTTPPort = 8080
-	}
-	if c.Caddy.HTTPSPort == 0 {
-		c.Caddy.HTTPSPort = 8443
-	}
 	if c.Nginx.HTTPPort == 0 {
-		c.Nginx.HTTPPort = 8081
+		c.Nginx.HTTPPort = 8080
 	}
 	if c.Nginx.HTTPSPort == 0 {
-		c.Nginx.HTTPSPort = 8444
+		c.Nginx.HTTPSPort = 8443
 	}
 	if c.PHP.Default == "" {
 		c.PHP.Default = "8.3"
@@ -218,6 +201,25 @@ func (c *Config) applyDefaults() {
 // ApplyDefaults exposes applyDefaults for external callers (tests/tools).
 func (c *Config) ApplyDefaults() {
 	c.applyDefaults()
+}
+
+func expandUserPath(p string) string {
+	if p == "" {
+		return p
+	}
+	if strings.HasPrefix(p, "~") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return p
+		}
+		if p == "~" {
+			return home
+		}
+		if strings.HasPrefix(p, "~/") {
+			return filepath.Join(home, p[2:])
+		}
+	}
+	return p
 }
 
 func parseIntoConfig(data []byte, cfg *Config) error {
@@ -265,28 +267,13 @@ func parseIntoConfig(data []byte, cfg *Config) error {
 				if value != "" {
 					cfg.ProjectsDir = value
 				}
-			case "caddy", "nginx", "php":
+			case "nginx", "php":
 				currentSection = key
 			}
 			continue
 		}
 
 		switch currentSection {
-		case "caddy":
-			switch key {
-			case "enable":
-				if v, err := strconv.ParseBool(value); err == nil {
-					cfg.Caddy.Enable = v
-				}
-			case "http_port":
-				if v, err := strconv.Atoi(value); err == nil {
-					cfg.Caddy.HTTPPort = v
-				}
-			case "https_port":
-				if v, err := strconv.Atoi(value); err == nil {
-					cfg.Caddy.HTTPSPort = v
-				}
-			}
 		case "nginx":
 			switch key {
 			case "enable":
@@ -320,14 +307,6 @@ func parseIntoConfig(data []byte, cfg *Config) error {
 				if value != "" {
 					cfg.Ports.ConflictResolution = value
 				}
-			case "caddy_http_fallback":
-				if v, err := strconv.Atoi(value); err == nil {
-					cfg.Ports.CaddyHTTPFallback = v
-				}
-			case "caddy_https_fallback":
-				if v, err := strconv.Atoi(value); err == nil {
-					cfg.Ports.CaddyHTTPSFallback = v
-				}
 			case "nginx_http_fallback":
 				if v, err := strconv.Atoi(value); err == nil {
 					cfg.Ports.NginxHTTPFallback = v
@@ -353,10 +332,6 @@ func renderYAML(cfg Config) string {
 	return fmt.Sprintf(`version: %d
 telemetry: %t
 workspace_dir: %s
-caddy:
-  enable: %t
-  http_port: %d
-  https_port: %d
 nginx:
   enable: %t
   http_port: %d
@@ -367,8 +342,6 @@ ports:
   start_range: %d
   end_range: %d
   conflict_resolution: %s
-  caddy_http_fallback: %d
-  caddy_https_fallback: %d
   nginx_http_fallback: %d
   nginx_https_fallback: %d
   php_fpm_fallback: %d
@@ -377,9 +350,6 @@ projects_dir: %s
 		cfg.Version,
 		cfg.Telemetry,
 		cfg.WorkspaceDir,
-		cfg.Caddy.Enable,
-		cfg.Caddy.HTTPPort,
-		cfg.Caddy.HTTPSPort,
 		cfg.Nginx.Enable,
 		cfg.Nginx.HTTPPort,
 		cfg.Nginx.HTTPSPort,
@@ -387,8 +357,6 @@ projects_dir: %s
 		cfg.Ports.StartRange,
 		cfg.Ports.EndRange,
 		cfg.Ports.ConflictResolution,
-		cfg.Ports.CaddyHTTPFallback,
-		cfg.Ports.CaddyHTTPSFallback,
 		cfg.Ports.NginxHTTPFallback,
 		cfg.Ports.NginxHTTPSFallback,
 		cfg.Ports.PHPFPMFallback,

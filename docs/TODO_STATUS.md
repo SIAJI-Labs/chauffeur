@@ -12,7 +12,11 @@ This document tracks the current status of features and improvements for the Cha
 - [x] **Clean PATH Management**: No whitespace pollution in shell config files
 - [x] **Idempotent Installation**: Safe to run multiple times
 - [x] **Service Removal**: `chauf remove` command for uninstalling individual services with version support and confirmation prompts
-- [x] **Safe Caddy Removal**: dnsmasq validation with double confirmation and user choice to prevent system damage
+- [x] **dnsmasq Validation**: Automated `.test` resolver setup with clear prompts and user confirmations
+- [x] **Resolver Health Check**: `.test` domain probe ensures dnsmasq-backed resolution before services start
+- [x] **Host DNS Conflict Detection**: Detects `systemd-resolved`/NetworkManager listeners on port 53 and surfaces remediation instructions before touching dnsmasq
+- [x] **NetworkManager Auto-Integration**: Chauffeur can enable/disable NetworkManager's dnsmasq plugin and matching systemd-resolved drop-ins automatically, with cleanup during service removal
+- [x] **Laravel Template Hardening**: Removed reliance on undefined `$time_start` fastcgi variables so nginx never fails during startup
 - [x] **Workspace Initialization**: `chauf init` command bootstraps directory structure, templates, default config, and PATH guidance with user-space ports
 
 ### PHP Management
@@ -35,6 +39,7 @@ This document tracks the current status of features and improvements for the Cha
 - [x] **Self-Update**: `chauf self-update` pulls latest git changes and rebuilds the CLI binary  
 - [x] **Dev Mode**: `chauf self-update --dev` rebuilds from current directory when it's a valid chauffeur repository
 - [x] **Environment Reporting**: `chauf info` displays workspace paths, local/remote versions, installed services, and port configuration
+- [x] **Build Metadata**: CLI embeds build timestamps surfaced via `chauf --version` and `chauf info`
 
 ### Composer Integration
 - [x] **Composer Installer**: `chauf install composer` downloads the latest Composer release, verifies SHA256 checksums, and stores the PHAR under the Chauffeur workspace
@@ -57,26 +62,27 @@ This document tracks the current status of features and improvements for the Cha
 - [x] **Enhanced Link Output**: Link command now displays detected template type in output
 - [x] **DNS Resolution Integration**: dnsmasq configuration validation and automated setup for local .test domains
 - [x] **Service Start DNS Validation**: dnsmasq configuration check during `chauf start` with interactive setup
+- [x] **Sites-Enabled Include Fix**: Main nginx config now includes `~/.chauffeur/nginx/sites-enabled/*.conf` so project vhosts bind to the expected ports
 - [x] **Enhanced Service Removal**: Comprehensive dnsmasq safety checks and configuration cleanup during service removal
 - [x] **Template Testing**: Comprehensive tests for nginx template functionality including detection, generation, and updates
 - [x] **Fallback Support**: Basic nginx configuration generation when templates are unavailable (testing environments)
 - [x] **User-Space Ports**: All nginx configurations use non-privileged ports (HTTP: 8080, HTTPS: 8443) to avoid system service conflicts
 - [x] **Default Domain Assignment**: `chauf link` automatically assigns `<slug>.test` domain when `--site` flag is omitted, simplifying project setup for local development
-- [x] **Port Conflict Management**: Configurable port range (default 8080-8099) with prompt/auto/fail strategies plus per-project overrides via --caddy-http-port/--caddy-https-port
+- [x] **Port Conflict Management**: Configurable port range (default 8080-8099) with prompt/auto/fail strategies plus per-project overrides via `--http-port` / `--https-port`
 
 ## 🎯 Current Focus Areas
 
 ### Priority 1: Complete Service Orchestration
 - [ ] **Service Lifecycle**: Complete `chauf start/stop/restart` commands for service management
-- [ ] **Process Management**: Service monitoring and automatic restarts (Nginx, PHP-FPM, Caddy)
+- [ ] **Process Management**: Service monitoring and automatic restarts (Nginx, PHP-FPM)
 - [ ] **Health Monitoring**: Service status tracking and startup coordination
 
 ### Priority 2: Site Accessibility Implementation
 - [ ] **Nginx Virtual Hosts**: Automatic configuration for registered project domains
-- [ ] **Caddy Integration**: Local domain resolution (no `/etc/hosts` editing required)
+- [x] **dnsmasq Integration**: Local domain resolution (no `/etc/hosts` editing required)
 - [ ] **SSL Certificate Management**: Local SSL setup for development domains
 - [ ] **Domain Routing**: Ensure projects are accessible via configured domains
-- [ ] **Port Consistency**: Consistent port usage across nginx (8080) and Caddy (8080/8443) for seamless integration
+- [ ] **Port Consistency**: Ensure nginx HTTP (8080) and HTTPS (8443) defaults stay consistent across code, templates, and docs
 - [ ] **Domain Routing**: Ensure projects are accessible via configured domains
 
 ### Priority 4: Log File Management
@@ -153,27 +159,25 @@ This document tracks the current status of features and improvements for the Cha
 
 ### High Priority (Next Sprint - Code Quality & Automation)
 1. **Priority 1**: Code refactoring for better structure and organization
-2. **Priority 2**: Automate port 80 to 8080 forwarding setup in installer
-3. **Priority 2**: Improve error messages and user feedback during service startup
-4. **Priority 3**: Add comprehensive logging for troubleshooting connectivity issues
-5. **Priority 4**: Continue expanding test coverage for new features
-6. **Priority 4**: Add service health checks and startup coordination
+2. **Priority 2**: Improve error messages and user feedback during service startup
+3. **Priority 3**: Add comprehensive logging for troubleshooting connectivity issues
+4. **Priority 4**: Continue expanding test coverage for new features
+5. **Priority 4**: Add service health checks and startup coordination
 
 ### Medium Priority (Following Sprint - User Experience)
-1. **Priority 1**: Automated port forwarding setup for seamless port 80 access
-2. **Priority 2**: Create SSL certificate management for local domains
-3. **Priority 3**: Refactor duplicate code for improved maintainability
-4. **Priority 3**: Add comprehensive error recovery and guidance
-5. **Priority 4**: Complete uninstallation cleanup utilities
+1. **Priority 1**: Create SSL certificate management for local domains
+2. **Priority 2**: Refactor duplicate code for improved maintainability
+3. **Priority 3**: Add comprehensive error recovery and guidance
+4. **Priority 4**: Complete uninstallation cleanup utilities
 
 ### Recently Completed ✅ (Site Accessibility Focus)
 1. **✅ Complete service orchestration implementation (`chauf start`/`chauf stop`)**
-2. **✅ Service process monitoring and status reporting for Nginx, PHP-FPM, Caddy**
+2. **✅ Service process monitoring and status reporting for Nginx and PHP-FPM**
 3. **✅ Automatic configuration template generation for linked projects**
 4. **✅ Nginx virtual host configuration for registered project domains**
-5. **✅ Implement Caddy integration for local domain resolution**
+5. **✅ Implement dnsmasq integration for local domain resolution**
 6. **✅ Progress bar cleanup - fixed duplicate implementations and output spam**
-7. **✅ Port forwarding setup - port 80 redirects to port 8080 for natural URLs**
+7. **✅ Port forwarding automation - `chauf start` now manages iptables 80/443 redirects for natural URLs**
 8. **✅ DNS resolution via NetworkManager dnsmasq for .test domains**
 9. **✅ PHP-FPM integration with proper FastCGI socket connectivity**
 10. **✅ Build system fixes for successful `chauf self-update --dev` functionality**
@@ -196,7 +200,7 @@ This document tracks the current status of features and improvements for the Cha
 - **System build tools**: gcc, make, etc. for PHP compilation
 
 ### Technical blockers
-- **Service Integration Complexity**: Coordinating multiple services (Nginx, PHP-FPM, Caddy)
+- **Service Integration Complexity**: Coordinating multiple services (Nginx, PHP-FPM, dnsmasq)
 - **Permission Management**: Non-root user constraints for system services
 - **Port Conflicts**: Avoiding conflicts with existing services
 - **Configuration Drift**: Managing configuration updates over time
@@ -212,7 +216,7 @@ This document tracks the current status of features and improvements for the Cha
 - ✅ Enhanced CLI logging specification with visual feedback standards
 - ✅ Comprehensive testing framework standards with 80% coverage requirements
 - ✅ Service Removal Command: `chauf remove` with version support and confirmation prompts
-- ✅ Safe Caddy Removal: dnsmasq validation with risk warnings and double confirmation
+- ✅ dnsmasq Validation: `.test` resolver setup with clear prompts and double confirmation for destructive operations
 
 ### v0.1.1 (Planned - Project Focus)
 - ✅ **Priority 1**: Per-project PHP isolation (`chauf php isolate`)
@@ -226,7 +230,7 @@ This document tracks the current status of features and improvements for the Cha
 - ✅ **Enhanced Safety**: Comprehensive dnsmasq validation during service removal and startup
 
 ### v0.1.2 (Planned - Access Focus)
-- 🎯 **Priority 2**: Site accessibility with Nginx & Caddy
+- 🎯 **Priority 2**: Site accessibility with Nginx & dnsmasq
 - 🔗 Automatic domain resolution and SSL management
 - 🚧 Service orchestration completion (start/stop/health)
 

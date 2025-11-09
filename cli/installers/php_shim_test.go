@@ -115,13 +115,9 @@ func TestPHPShimDefaultFallback(t *testing.T) {
 		t.Fatalf("create config dir: %v", err)
 	}
 	
-	configContent := `version: 1
+configContent := `version: 1
 telemetry: false
 workspace_dir: ` + workspaceDir + `
-caddy:
-  enable: true
-  http_port: 80
-  https_port: 443
 nginx:
   enable: true
 php:

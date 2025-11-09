@@ -58,7 +58,7 @@ func NewServiceManager() (*ServiceManager, error) {
 	}, nil
 }
 
-// ListGlobalServices returns all global services (nginx, caddy)
+// ListGlobalServices returns all global services (nginx)
 func (sm *ServiceManager) ListGlobalServices() []Service {
 	services := []Service{}
 
@@ -79,27 +79,6 @@ func (sm *ServiceManager) ListGlobalServices() []Service {
 			Binary:   nginxPath,
 			PIDFile:  filepath.Join(sm.workspaceDir, "nginx", "logs", "nginx.pid"),
 			Args:     []string{"-g", "daemon off;", "-c", nginxConfigPath},
-			Env:      []string{},
-		})
-	}
-
-	// Caddy service
-	caddyPath := filepath.Join(sm.workspaceDir, "caddy", "bin", "caddy")
-	if _, err := os.Stat(caddyPath); err == nil {
-		// Generate custom Caddyfile if it doesn't exist
-		caddyfilePath := filepath.Join(sm.workspaceDir, "caddy", "Caddyfile")
-		if _, err := os.Stat(caddyfilePath); os.IsNotExist(err) {
-			if err := sm.generateCaddyfile(); err != nil {
-				// Continue even if config generation fails
-			}
-		}
-		
-		services = append(services, Service{
-			Name:     "chauf-caddy",
-			Type:     ServiceTypeGlobal,
-			Binary:   caddyPath,
-			PIDFile:  filepath.Join(sm.workspaceDir, "caddy", "logs", "caddy.pid"),
-			Args:     []string{"run", "--config", caddyfilePath},
 			Env:      []string{},
 		})
 	}
@@ -416,61 +395,5 @@ http {
 	)
 
 	configPath := filepath.Join(etcDir, "nginx.conf")
-	return os.WriteFile(configPath, []byte(config), 0644)
-}
-
-// generateCaddyfile creates a basic Caddyfile with custom ports
-func (sm *ServiceManager) generateCaddyfile() error {
-	caddyDir := filepath.Join(sm.workspaceDir, "caddy")
-	logsDir := filepath.Join(caddyDir, "logs")
-
-	// Ensure directory exists
-	if err := os.MkdirAll(logsDir, 0755); err != nil {
-		return fmt.Errorf("create caddy directory %s: %w", logsDir, err)
-	}
-
-	config := fmt.Sprintf(`# Chauffeur Caddy Configuration
-# Custom ports to avoid conflicts with system services
-
-{
-	# Admin interface for Caddy
-	admin localhost:2019
-
-	# Disable automatic HTTPS since we use custom ports
-	auto_https off
-
-	# Global settings
-	log {
-		output file %s/caddy.log {
-			roll_size 100mb
-			roll_keep 5
-			roll_local_time
-		}
-		format json
-	}
-}
-
-# HTTP server on custom port (outside global block)
-:8080 {
-	# Default response for root requests
-	respond "Chauffeur Caddy Server is running!" 200
-
-	# Health check endpoint  
-	health {
-		port 8790
-	}
-}
-
-# Projects will be automatically added here when linked
-# Example: project-name.test {
-#   root /path/to/project
-#   file_server
-#   php_fastcgi unix:/path/to/php-fpm.sock
-# }
-`,
-		logsDir,
-	)
-
-	configPath := filepath.Join(caddyDir, "Caddyfile")
 	return os.WriteFile(configPath, []byte(config), 0644)
 }

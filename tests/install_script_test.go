@@ -49,10 +49,8 @@ func TestBasicConfigContent(t *testing.T) {
 	configContent := string(content)
 	
 	// Verify user-space ports are set correctly
-	assert.Contains(t, configContent, "http_port: 8080", "Caddy HTTP should use user-space port")
-	assert.Contains(t, configContent, "https_port: 8443", "Caddy HTTPS should use user-space port")
-	assert.Contains(t, configContent, "http_port: 8081", "Nginx HTTP should use different port")
-	assert.Contains(t, configContent, "https_port: 8444", "Nginx HTTPS should use different port")
+	assert.Contains(t, configContent, "http_port: 8080", "Nginx HTTP should use user-space port")
+	assert.Contains(t, configContent, "https_port: 8443", "Nginx HTTPS should use user-space port")
 	
 	// Verify port management settings
 	assert.Contains(t, configContent, "conflict_resolution: \"prompt\"", "Default conflict resolution should be prompt")
@@ -131,17 +129,8 @@ func TestPortConflictPrevention(t *testing.T) {
 	}
 
 	// Verify no conflicts with common system ports
-	assert.NotEqual(t, 80, portMap["caddy_http_port"], "Caddy HTTP shouldn't use system port 80")
-	assert.NotEqual(t, 443, portMap["caddy_https_port"], "Caddy HTTPS shouldn't use system port 443")
-	assert.NotEqual(t, 80, portMap["nginx_http_port"], "Nginx HTTP shouldn't use system port 80")
-	assert.NotEqual(t, 443, portMap["nginx_https_port"], "Nginx HTTPS shouldn't use system port 443")
-	
-	// Verify Caddy and Nginx use different ports
-	if caddyHttp, ok := portMap["caddy_http_port"]; ok {
-		if nginxHttp, ok2 := portMap["nginx_http_port"]; ok2 {
-			assert.NotEqual(t, caddyHttp, nginxHttp, "Caddy and Nginx should use different HTTP ports")
-		}
-	}
+	assert.NotEqual(t, 80, portMap["http_port"], "Nginx HTTP shouldn't use system port 80")
+	assert.NotEqual(t, 443, portMap["https_port"], "Nginx HTTPS shouldn't use system port 443")
 }
 
 // createBasicConfigForTest simulates the basic config creation from install.sh
@@ -164,19 +153,12 @@ telemetry: false
 # Workspace directory where Chauffeur stores its data
 workspace_dir: ~/.chauffeur
 
-# Caddy web server configuration
-caddy:
+# Nginx web server configuration  
+nginx:
   enable: true
   # Custom ports to avoid conflicts with system services
   http_port: 8080     # HTTP port (user-space)
   https_port: 8443    # HTTPS port (user-space)
-
-# Nginx web server configuration  
-nginx:
-  enable: true
-  # Different ports from Caddy to avoid conflicts
-  http_port: 8081     # HTTP port (user-space)
-  https_port: 8444    # HTTPS port (user-space)
 
 # PHP runtime configuration
 php:
@@ -195,10 +177,8 @@ ports:
   conflict_resolution: "prompt"
   
   # Fallback ports for each service
-  caddy_http_fallback: 8080
-  caddy_https_fallback: 8443
-  nginx_http_fallback: 8081
-  nginx_https_fallback: 8444
+  nginx_http_fallback: 8080
+  nginx_https_fallback: 8443
   php_fpm_fallback: 9000
 
 # Directory where Chauffeur stores project configurations

@@ -108,7 +108,7 @@ func RunInstall(args []string) error {
 				logger.Success("Composer installed successfully", "Uses Chauffeur PHP version isolation")
 			}
 		} else {
-			// Handle other services (nginx, caddy)
+			// Handle other services (nginx)
 			spec, err := NewServiceSpec(name, prefix, info)
 			if err != nil {
 				return err
@@ -294,7 +294,6 @@ Options:
   -h, --help Show this message.
 
 Services:
-  caddy      Verified tarball from GitHub releases.
   composer   PHP dependency manager with Chauffeur PHP version isolation.
   nginx      Source build from the latest GitHub release.
   php        Source build with development extensions.

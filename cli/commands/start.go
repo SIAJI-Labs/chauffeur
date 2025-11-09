@@ -21,35 +21,80 @@ import (
  */
 func checkDnsmasqConfiguration(logger *lib.Logger) error {
 	logger.Info("Checking dnsmasq configuration for local domain resolution...")
-	
+
 	dnsLogger := logger.NewChildLogger("dns")
-	
+
 	// Check if dnsmasq is available (NetworkManager or standalone)
 	if !system.IsDnsmasqAvailable() {
 		return dnsLogger.Fail("dnsmasq not available", "Install dnsmasq first")
 	}
-	
+
 	// Check if chauffeur.conf exists in either location
 	configPaths := []string{
 		"/etc/dnsmasq.d/chauffeur.conf",
 		"/etc/NetworkManager/dnsmasq.d/chauffeur.conf",
 	}
-	
-	for _, configPath := range configPaths {
-		if _, err := os.Stat(configPath); err == nil {
-			if strings.Contains(configPath, "NetworkManager") {
-				dnsLogger.Success("dnsmasq configuration found", configPath+" (NetworkManager)")
+
+	var (
+		configPath   string
+		configSource string
+	)
+
+	for _, path := range configPaths {
+		if _, err := os.Stat(path); err == nil {
+			configPath = path
+			if strings.Contains(path, "NetworkManager") {
+				configSource = "NetworkManager"
 			} else {
-				dnsLogger.Success("dnsmasq configuration found", configPath+" (standalone)")
+				configSource = "standalone"
 			}
-			return nil
+			break
 		}
 	}
-	
+
+	if configPath != "" {
+		dnsLogger.Info(fmt.Sprintf("dnsmasq configuration found at %s (%s)", configPath, configSource))
+
+		resolves, ips, err := system.VerifyLocalDNSResolution()
+		if err != nil {
+			dnsLogger.Warn("dns probe failed", err.Error())
+		}
+
+		if !resolves {
+			dnsLogger.Warn(".test domains are not resolving to localhost", "Attempting to restart dnsmasq/NetworkManager")
+
+			if err := system.SetupLocalDNSResolution(); err != nil {
+				if system.IsNetworkManagerDnsmasqRunning() {
+					dnsLogger.Warn("dnsmasq restart reported warnings", err.Error())
+				} else {
+					return dnsLogger.Fail("restart dnsmasq", err.Error())
+				}
+			}
+
+			var retryErr error
+			resolves, ips, retryErr = system.VerifyLocalDNSResolution()
+			if retryErr != nil {
+				return dnsLogger.Fail("verify .test domain resolution", retryErr.Error())
+			}
+
+			if !resolves {
+				dnsLogger.Warn("Local resolver is not using dnsmasq", "Ensure /etc/resolv.conf points to 127.0.0.1 or configure NetworkManager to use dnsmasq for .test domains")
+				return dnsLogger.Fail("local .test domain resolution unavailable", "Update your resolver configuration or follow the README dnsmasq instructions")
+			}
+		}
+
+		resolvedIPs := "127.0.0.1"
+		if len(ips) > 0 {
+			resolvedIPs = strings.Join(ips, ", ")
+		}
+		dnsLogger.Success("dnsmasq configuration validated", fmt.Sprintf("%s resolves to %s", system.DNSProbeDomain, resolvedIPs))
+		return nil
+	}
+
 	dnsLogger.Warn("dnsmasq configuration not found", "Local .test domains won't resolve")
 	dnsLogger.Info("Chauffeur requires dnsmasq configuration to resolve .test domains")
 	dnsLogger.Info("Add this configuration to make .test domains resolve to localhost:")
-	
+
 	fmt.Printf("\n%s\n", colorize(colorYellow, "Required dnsmasq configuration:"))
 	fmt.Printf("sudo install -d -m 755 /etc/dnsmasq.d\n")
 	fmt.Printf("sudo tee /etc/dnsmasq.d/chauffeur.conf >/dev/null <<'EOF'\n")
@@ -60,16 +105,16 @@ func checkDnsmasqConfiguration(logger *lib.Logger) error {
 	fmt.Printf("listen-address=127.0.0.1\n")
 	fmt.Printf("bind-interfaces\n")
 	fmt.Printf("EOF\n")
-	
+
 	fmt.Printf("\n%s", colorize(colorYellow, "Do you want to add this configuration now? [y/N]: "))
 	// SENSITIVE: User input confirmation - system configuration consent
 	var response string
 	fmt.Scanln(&response)
-	
+
 	if strings.ToLower(response) != "y" && strings.ToLower(response) != "yes" {
 		return dnsLogger.Fail("configuration declined", "Local .test domains will not work without this configuration")
 	}
-	
+
 	// Use the new unified setup function
 	if err := system.SetupLocalDNSResolution(); err != nil {
 		if system.IsNetworkManagerDnsmasqRunning() {
@@ -82,7 +127,7 @@ func checkDnsmasqConfiguration(logger *lib.Logger) error {
 	} else {
 		dnsLogger.Success("dnsmasq configuration completed", "Local .test domains should now resolve to localhost")
 	}
-	
+
 	return nil
 }
 
@@ -94,7 +139,7 @@ func checkDnsmasqConfiguration(logger *lib.Logger) error {
  */
 func RunStart(args []string) error {
 	var (
-		serviceNames []string
+		serviceNames  []string
 		filterProject string
 		all           bool
 		dryRun        bool
@@ -187,13 +232,6 @@ func RunStart(args []string) error {
 						servicesToStart = append(servicesToStart, svc)
 					}
 				}
-			case "caddy", "chauf-caddy":
-				globalServices := manager.ListGlobalServices()
-				for _, svc := range globalServices {
-					if strings.Contains(svc.Name, "caddy") {
-						servicesToStart = append(servicesToStart, svc)
-					}
-				}
 			case "php-fpm", "php":
 				// Start specific project's PHP-FPM or all if no project filter
 
@@ -223,7 +261,7 @@ func RunStart(args []string) error {
 				// Check if it's a specific project slug for php-fpm
 				projectServices, err := manager.ListProjectServices(serviceName)
 				if err != nil {
-					return fmt.Errorf("invalid service name: %s (try nginx, caddy, php-fpm, or a project slug)", serviceName)
+					return fmt.Errorf("invalid service name: %s (try nginx, php-fpm, or a project slug)", serviceName)
 				}
 				servicesToStart = append(servicesToStart, projectServices...)
 			}
@@ -243,6 +281,32 @@ func RunStart(args []string) error {
 	if len(servicesToStart) == 0 {
 		fmt.Println("No services to start.")
 		return nil
+	}
+
+	needsPortForwarding := false
+	for _, svc := range servicesToStart {
+		if svc.Name == "chauf-nginx" {
+			needsPortForwarding = true
+			break
+		}
+	}
+
+	if needsPortForwarding {
+		cfg, cfgErr := config.Load()
+		if cfgErr != nil {
+			logger.Warn("Port forwarding skipped", cfgErr.Error())
+		} else {
+			forwardingNeeded := (cfg.Nginx.HTTPPort > 0 && cfg.Nginx.HTTPPort != 80) ||
+				(cfg.Nginx.HTTPSPort > 0 && cfg.Nginx.HTTPSPort != 443)
+			if forwardingNeeded {
+				portsLogger := logger.NewChildLogger("ports")
+				if err := system.EnsurePortForwarding(cfg.WorkspaceDir, cfg.Nginx.HTTPPort, cfg.Nginx.HTTPSPort); err != nil {
+					portsLogger.Warn("Port forwarding not configured", err.Error())
+				} else {
+					portsLogger.Success("Port forwarding active", fmt.Sprintf("80→%d, 443→%d", cfg.Nginx.HTTPPort, cfg.Nginx.HTTPSPort))
+				}
+			}
+		}
 	}
 
 	if dryRun {
@@ -267,7 +331,7 @@ func RunStart(args []string) error {
 
 		// Start with spinner for active processes
 		spin := lib.NewSpinner("start", fmt.Sprintf("Starting %s", service.Name))
-		
+
 		if err := manager.Start(service); err != nil {
 			spin.Fail("failed to start")
 			logger.Error(fmt.Sprintf("Failed to start %s", service.Name), err.Error())
@@ -331,7 +395,7 @@ func printStartUsage() {
 Starts Chauffeur services with chauf- prefix to avoid conflicts with system services.
 
 Arguments:
-  service           Start specific service(s): nginx, caddy, php-fpm, or project slug.
+  service           Start specific service(s): nginx, php-fpm, or project slug.
 
 Flags:
   --project <slug>  Start services for specific project (global + project services).
@@ -342,13 +406,11 @@ Flags:
 Examples:
   chauf start                 # Start all Chauffeur services
   chauf start nginx           # Start chauf-nginx only
-  chauf start nginx caddy     # Start chauf-nginx and chauf-caddy
   chauf start php-fpm         # Start all chauf-php-fpm-* services
-  chauf start --project hja-cms  # Start nginx, caddy, and hja-cms's php-fpm
+  chauf start --project hja-cms  # Start nginx and hja-cms's php-fpm
   chauf start hja-cms         # Start php-fpm for hja-cms project only
 
 Service Names:
   - chauf-nginx              # Global Nginx service
-  - chauf-caddy              # Global Caddy service  
   - chauf-php-fpm-<slug>     # Project-specific PHP-FPM service`)
 }

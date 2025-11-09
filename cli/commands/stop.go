@@ -8,6 +8,7 @@ import (
 	"github.com/siaji/chauffeur/cli/internal/config"
 	"github.com/siaji/chauffeur/cli/internal/projects"
 	"github.com/siaji/chauffeur/cli/internal/services"
+	"github.com/siaji/chauffeur/cli/internal/system"
 	"github.com/siaji/chauffeur/cli/internal/workspace"
 	"github.com/siaji/chauffeur/cli/lib"
 )
@@ -151,6 +152,7 @@ func RunStop(args []string) error {
 
 	// Stop services
 	fmt.Printf("Stopping %d services...\n", len(servicesToStop))
+	nginxStopped := false
 	for _, service := range servicesToStop {
 		// Check if service is already stopped
 		status, err := manager.GetStatus(service)
@@ -158,6 +160,9 @@ func RunStop(args []string) error {
 			fmt.Printf("Warning: Could not check status of %s: %v\n", service.Name, err)
 		} else if status == "stopped" {
 			fmt.Printf("  ✓ %s is already stopped\n", service.Name)
+			if service.Name == "chauf-nginx" {
+				nginxStopped = true
+			}
 			continue
 		}
 
@@ -177,13 +182,22 @@ func RunStop(args []string) error {
 			fmt.Printf("  ⚠ Stopped %s but could not verify status\n", service.Name)
 		} else {
 			spin.Success(status + " stopped successfully")
+			if service.Name == "chauf-nginx" {
+				nginxStopped = true
+			}
+		}
+	}
+
+	if nginxStopped {
+		if root, err := workspace.Dir(); err == nil {
+			if err := system.CleanupPortForwarding(root); err != nil {
+				fmt.Printf("Warning: Failed to clean up port forwarding: %v\n", err)
+			}
 		}
 	}
 
 	return nil
 }
-
-
 
 /**
  * printStopUsage renders CLI help for the stop command.
@@ -206,6 +220,5 @@ Examples:
 
 Service Names:
   - chauf-nginx              # Global Nginx service
-  - chauf-caddy              # Global Caddy service  
   - chauf-php-fpm-<slug>     # Project-specific PHP-FPM service`)
 }
