@@ -1,251 +1,74 @@
-# Chauffeur TODO Status
+# Chauffeur Development Tracker
 
-This document tracks the current status of features and improvements for the Chauffeur project.
+_A living status board for features, debt, and priorities. Keep this in sync with README.md and AGENTS.md._
 
-## ✅ Completed Features
+## 1. Snapshot
+- **Maintainer**: @siegg (solo, learning Go; heavy AI assistance)
+- **Stability**: Experimental – validated mostly on one Arch-based workstation
+- **CI**: `go test ./...` currently red; needs attention before public release
+- **Work focus**: Logging overhaul, service orchestration polish, test coverage
 
-### Installation & Setup
-- [x] **Smart Installer** with Go requirement checking
-- [x] **Multiple Installation Methods**: Repository cloning and curl-based installation
-- [x] **Existing Installation Detection**: Detects and guides for existing Chauffeur installations
-- [x] **Shell Integration**: Automatic PATH management for Bash and Zsh
-- [x] **Clean PATH Management**: No whitespace pollution in shell config files
-- [x] **Idempotent Installation**: Safe to run multiple times
-- [x] **Service Removal**: `chauf remove` command for uninstalling individual services with version support and confirmation prompts
-- [x] **dnsmasq Validation**: Automated `.test` resolver setup with clear prompts and user confirmations
-- [x] **Resolver Health Check**: `.test` domain probe ensures dnsmasq-backed resolution before services start
-- [x] **Host DNS Conflict Detection**: Detects `systemd-resolved`/NetworkManager listeners on port 53 and surfaces remediation instructions before touching dnsmasq
-- [x] **NetworkManager Auto-Integration**: Chauffeur can enable/disable NetworkManager's dnsmasq plugin and matching systemd-resolved drop-ins automatically, with cleanup during service removal
-- [x] **Laravel Template Hardening**: Removed reliance on undefined `$time_start` fastcgi variables so nginx never fails during startup
-- [x] **Workspace Initialization**: `chauf init` command bootstraps directory structure, templates, default config, and PATH guidance with user-space ports
+## 2. Completed ✅
+### Workspace & Bootstrap
+- Smart installer (`install.sh`) with Go prerequisite checks
+- `chauf init` scaffolds `~/.chauffeur` with default config, templates, PATH guidance
+- Workspace layout contracts documented in AGENTS.md
 
-### PHP Management
-- [x] **PHP Installation**: `chauf php install <version>` for building from source
-- [x] **PHP Version Switching**: `chauf php use <version>` for global default switching
-- [x] **PHP Version Detection**: Smart detection of installed versions
-- [x] **Configuration Management**: Automatic config file creation and updates
-- [x] **Legacy PHP Support**: PHP 7.4 with OpenSSL 1.1.1w vendor
-- [x] **Per-Project Override**: `chauf php isolate <version>` command for project-local defaults
-- [x] **Project-Aware PHP Shims**: Automatic PHP version detection based on project context for both `php` and `chauf php` commands
+### Project Registration
+- `chauf link` / `links` / `unlink` end-to-end
+- Project type detection (Laravel, WordPress, general)
+- Nginx template generation + symlinks in `sites-available/enabled`
+- Table-formatted `chauf links`
 
-### CLI Infrastructure
-- [x] **Command Structure**: Modular Go packages in `cli/commands/*`
-- [x] **Version Command**: `chauf --version` and `chauf php -v`
-- [x] **Uninstall Command**: `chauf uninstall [--purge]` with clean PATH removal
-- [x] **Error Handling**: Graceful error messages and guidance
-- [x] **Logging System**: Structured logging for installer operations
-- [x] **Enhanced CLI Logging**: Standardized logging specification with color-coded output, progress bars, spinners, and detailed timing information (fully implemented and tested)
-- [x] **Testing Standards**: Comprehensive testing framework with operation-based structure, 80% coverage requirements, and integration test patterns
-- [x] **Self-Update**: `chauf self-update` pulls latest git changes and rebuilds the CLI binary  
-- [x] **Dev Mode**: `chauf self-update --dev` rebuilds from current directory when it's a valid chauffeur repository
-- [x] **Environment Reporting**: `chauf info` displays workspace paths, local/remote versions, installed services, and port configuration
-- [x] **Build Metadata**: CLI embeds build timestamps surfaced via `chauf --version` and `chauf info`
+### PHP & Composer Fundamentals
+- `chauf php install/use/isolate`
+- Project-aware PHP shim
+- Composer installer + shim that reuses Chauffeur PHP
 
-### Composer Integration
-- [x] **Composer Installer**: `chauf install composer` downloads the latest Composer release, verifies SHA256 checksums, and stores the PHAR under the Chauffeur workspace
-- [x] **Project-Aware Composer Shim**: Installed shims automatically invoke the Chauffeur PHP shim, honoring per-project PHP isolation and global defaults
-- [x] **Composer Removal**: `chauf remove composer` cleans the managed PHAR and shims without touching system Composer installations
+### Self-update
+- `chauf self-update` fetches latest git release
+- `chauf self-update --dev` rebuilds from current repo when run inside it
 
-### Project Registration Foundation
-- [x] **Complete Project Registration System**: `chauf link`, `chauf links`, and `chauf unlink` commands fully implemented
-- [x] **Project Configuration Writer**: `chauf link` generates `.chauffeur/projects/<slug>/project.yaml` with per-project PHP metadata
-- [x] **Project Layout Scaffolding**: Runtime socket and log directories created alongside project configuration
-- [x] **Test Coverage**: Comprehensive tests for `chauf link`, `chauf links`, and `chauf unlink` commands  
-- [x] **Formatted Project Listing**: `chauf links` displays projects in formatted table with domains, SSL status, PHP versions, and creation timestamps
-- [x] **Intuitive Unlink**: `chauf unlink` defaults to current directory with confirmation
-- [x] **PHP Validation**: Link command validates specified PHP version is installed
-- [x] **Project Removal**: `chauf unlink` command with smart defaults (current directory when no flags) and multiple ways to remove projects (by slug, domain, path, or all) with proper confirmation
-- [x] **Nginx Template System**: Automatic nginx configuration generation with Laravel, WordPress, and general templates
-- [x] **Template Detection Engine**: Smart project type detection for optimal nginx configuration
-- [x] **Template Update Integration**: Automatic nginx config updates on PHP version changes via `chauf php isolate`
-- [x] **Template Removal**: Automatic nginx configuration removal on project unlink
-- [x] **Enhanced Link Output**: Link command now displays detected template type in output
-- [x] **DNS Resolution Integration**: dnsmasq configuration validation and automated setup for local .test domains
-- [x] **Service Start DNS Validation**: dnsmasq configuration check during `chauf start` with interactive setup
-- [x] **Sites-Enabled Include Fix**: Main nginx config now includes `~/.chauffeur/nginx/sites-enabled/*.conf` so project vhosts bind to the expected ports
-- [x] **Enhanced Service Removal**: Comprehensive dnsmasq safety checks and configuration cleanup during service removal
-- [x] **Template Testing**: Comprehensive tests for nginx template functionality including detection, generation, and updates
-- [x] **Fallback Support**: Basic nginx configuration generation when templates are unavailable (testing environments)
-- [x] **User-Space Ports**: All nginx configurations use non-privileged ports (HTTP: 8080, HTTPS: 8443) to avoid system service conflicts
-- [x] **Default Domain Assignment**: `chauf link` automatically assigns `<slug>.test` domain when `--site` flag is omitted, simplifying project setup for local development
-- [x] **Port Conflict Management**: Configurable port range (default 8080-8099) with prompt/auto/fail strategies plus per-project overrides via `--http-port` / `--https-port`
+## 3. In Progress 🚧
+1. **Structured logging compliance** – many commands still use `fmt.Printf`; need to migrate to `lib.Logger` helpers
+2. **Service orchestration stability** – refine `chauf start/stop/status` to handle mixed project states, better error surfacing
+3. **dnsmasq/NetworkManager automation** – ensure instructions are clear, reversible, and logged
+4. **Test suite repair** – fix current failures (e.g., tests importing `cli/internal/...`) and restore passing `go test ./...`
+5. **Documentation sync discipline** – ongoing effort to keep README, AGENTS, and this tracker aligned
 
-## 🎯 Current Focus Areas
+## 4. Planned 📋
+| Priority | Item | Notes |
+|----------|------|-------|
+| P1 | Replace all direct `fmt.Printf` output with logger calls | Blocking for polished release |
+| P1 | Rework tests to avoid importing internal packages | Required for Go module hygiene |
+| P1 | Stabilize `chauf start/stop` interaction with dnsmasq & port forwarding | Needs integration tests |
+| P2 | Expand PHP installer matrix (8.2/8.1/7.4 legacy deps) | Ensure workspace fallback works |
+| P2 | Improve `chauf status --detail` output (tables, health info) | Align with logging spec |
+| P3 | Add onboarding docs for contributors (Go basics + AI workflow) | Help new maintainers |
+| P3 | Publish release checklist (binary build, docs sync, testing) | Needed for first public release |
 
-### Priority 1: Complete Service Orchestration
-- [ ] **Service Lifecycle**: Complete `chauf start/stop/restart` commands for service management
-- [ ] **Process Management**: Service monitoring and automatic restarts (Nginx, PHP-FPM)
-- [ ] **Health Monitoring**: Service status tracking and startup coordination
+## 5. Known Issues / Tech Debt
+- `go test ./...` fails due to tests importing `cli/internal/config` (Go disallows external packages from accessing internal)
+- `chauf status` and `links` still use raw prints; violates AGENTS logging policy
+- Repo currently contains built binaries (`chauf`, `main`) checked in by mistake – remove and add to `.gitignore`
+- DNS setup path requires clearer rollback instructions when NetworkManager/systemd-resolved changes are applied manually
 
-### Priority 2: Site Accessibility Implementation
-- [ ] **Nginx Virtual Hosts**: Automatic configuration for registered project domains
-- [x] **dnsmasq Integration**: Local domain resolution (no `/etc/hosts` editing required)
-- [ ] **SSL Certificate Management**: Local SSL setup for development domains
-- [ ] **Domain Routing**: Ensure projects are accessible via configured domains
-- [ ] **Port Consistency**: Ensure nginx HTTP (8080) and HTTPS (8443) defaults stay consistent across code, templates, and docs
-- [ ] **Domain Routing**: Ensure projects are accessible via configured domains
+## 6. Testing & QA
+- Target: `go test ./...` green on Go 1.22+
+- Integration tests should stub HOME to temp directories, avoiding host mutation
+- Add smoke test workflow (start/link/status) once logging and dnsmasq flow stabilize
 
-### Priority 4: Log File Management
-- [ ] **Detailed Failure Logging**: Implement structured log files for command failures with timestamps and stack traces
-- [ ] **Log Rotation**: Add automatic log rotation and maintenance utilities
-- [ ] **Enhanced Error Reporting**: Display log file paths on failures with user-friendly error messages
+## 7. Release Readiness Checklist
+- [ ] `go test ./...` passes locally
+- [ ] README.md / docs/TODO_STATUS.md / AGENTS.md agree on feature status
+- [ ] No compiled binaries or caches tracked in git
+- [ ] Logging contract enforced across commands
+- [ ] dnsmasq/NetworkManager instructions reviewed and verified
 
-## 🚧 In Progress (Supporting Work)
+## 8. How to Help
+- Contribute logging refactors (replace `fmt.Printf` with `lib.Logger` calls)
+- Improve tests around `chauf link`/`links` to avoid double-run conflicts
+- Document real-world setups (distro, Go version, dnsmasq config) in issues to broaden coverage
+- Review AGENTS.md and propose clarifications before building new features
 
-### Service Orchestration  
-- [ ] **Service Lifecycle**: `chauf start/stop/restart` commands for service management (in progress)
-- [ ] **Process Management**: Service monitoring and automatic restarts  
-- [ ] **Automated Shims**: Path management for installed services
-
-### Foundation Components
-- [x] **Testing Framework**: Comprehensive testing structure with operation-based organization
-- [ ] **Error Handling**: Robust error reporting and recovery mechanisms
-- [ ] **Test Coverage**: Achieving 80% coverage across all packages as per new standards
-- [ ] **Configuration Validation**: Validate project configs and service settings
-
-## 📋 Planned Features
-
-### Advanced PHP Features
-- [ ] **Extension Management**: Install PHP extensions during build
-- [ ] **PHP Configuration**: Custom php.ini per project
-- [ ] **Multiple PHP Versions**: Run multiple versions simultaneously
-- [ ] **Performance Tuning**: Optimized PHP-FPM pool settings
-
-### Service Configuration
-- [ ] **Custom Nginx Configs**: User-provided nginx.conf templates
-- [ ] **SSL Certificate Management**: Automatic local SSL setup
-- [ ] **Reverse Proxy Configuration**: Advanced routing rules
-- [ ] **Service Dependencies**: Start services in correct order
-
-### Advanced PHP Features
-- [ ] **Extension Management**: Install PHP extensions during build
-- [ ] **PHP Configuration**: Custom php.ini per project
-- [ ] **Multiple PHP Versions**: Run multiple versions simultaneously
-- [ ] **Performance Tuning**: Optimized PHP-FPM pool settings
-
-### Developer Experience
-- [ ] **Health Checks**: Service status monitoring
-- [ ] **Log Management**: Centralized log viewing and rotation
-- [ ] **Performance Metrics**: Resource usage monitoring
-- [ ] **Debug Tools**: Development utilities and diagnostics
-
-### Distribution & Packaging
-- [ ] **Pre-built Binaries**: Reduce build requirements for end users
-- [ ] **Package Managers**: Support for system package managers
-- [ ] **CI/CD Pipeline**: Automated testing and releases
-- [ ] **Documentation**: Comprehensive user and developer guides
-
-## Technical Debt & Improvements
-
-### Code Quality
-- [ ] **Unit Tests**: Comprehensive test suite for all commands
-- [ ] **Integration Tests**: End-to-end testing of installation flows
-- [ ] **Code Coverage**: Aim for high test coverage
-- [ ] **Linting**: Consistent code style and formatting
-
-### Architecture
-- [ ] **Plugin System**: Extensible architecture for future features
-- [ ] **Configuration Schema**: Formal configuration validation
-- [ ] **Error Handling**: More granular error types and recovery
-- [ ] **Performance**: Optimized startup and operation times
-
-### Documentation
-- [ ] **API Documentation**: Complete API reference
-- [ ] **User Guides**: Step-by-step tutorials
-- [ ] **Contributing Guide**: Development setup and contribution process
-- [ ] **Architecture Docs**: System design and decision records
-
-## Priority Queue
-
-### High Priority (Next Sprint - Code Quality & Automation)
-1. **Priority 1**: Code refactoring for better structure and organization
-2. **Priority 2**: Improve error messages and user feedback during service startup
-3. **Priority 3**: Add comprehensive logging for troubleshooting connectivity issues
-4. **Priority 4**: Continue expanding test coverage for new features
-5. **Priority 4**: Add service health checks and startup coordination
-
-### Medium Priority (Following Sprint - User Experience)
-1. **Priority 1**: Create SSL certificate management for local domains
-2. **Priority 2**: Refactor duplicate code for improved maintainability
-3. **Priority 3**: Add comprehensive error recovery and guidance
-4. **Priority 4**: Complete uninstallation cleanup utilities
-
-### Recently Completed ✅ (Site Accessibility Focus)
-1. **✅ Complete service orchestration implementation (`chauf start`/`chauf stop`)**
-2. **✅ Service process monitoring and status reporting for Nginx and PHP-FPM**
-3. **✅ Automatic configuration template generation for linked projects**
-4. **✅ Nginx virtual host configuration for registered project domains**
-5. **✅ Implement dnsmasq integration for local domain resolution**
-6. **✅ Progress bar cleanup - fixed duplicate implementations and output spam**
-7. **✅ Port forwarding automation - `chauf start` now manages iptables 80/443 redirects for natural URLs**
-8. **✅ DNS resolution via NetworkManager dnsmasq for .test domains**
-9. **✅ PHP-FPM integration with proper FastCGI socket connectivity**
-10. **✅ Build system fixes for successful `chauf self-update --dev` functionality**
-11. **✅ Sensitive code marking - implemented `// SENSITIVE: {reason}` comment structure throughout codebase**
-
-### Low Priority (Infrastructure & Polish)
-1. Complete service orchestration framework (`chauf start/stop`)
-2. Create comprehensive test suite for new features
-3. Add service health monitoring and log management
-4. Implement automated shims for all managed binaries
-5. Add PHP extension management capabilities
-6. Pre-built binary distribution strategy
-7. Update `chauf self-update` defaults to public HTTPS remote and release branch once repository is published
-
-## blockers & Dependencies
-
-### External Dependencies
-- **Go 1.22+**: Required for CLI compilation
-- **Git**: Required for curl installation method
-- **System build tools**: gcc, make, etc. for PHP compilation
-
-### Technical blockers
-- **Service Integration Complexity**: Coordinating multiple services (Nginx, PHP-FPM, dnsmasq)
-- **Permission Management**: Non-root user constraints for system services
-- **Port Conflicts**: Avoiding conflicts with existing services
-- **Configuration Drift**: Managing configuration updates over time
-
-## Release Notes
-
-### v0.1.0 (Current)
-- ✅ Installer with Go requirement checking
-- ✅ Installation detection and guidance
-- ✅ Clean PATH management
-- ✅ PHP version management
-- ✅ Multiple installation methods
-- ✅ Enhanced CLI logging specification with visual feedback standards
-- ✅ Comprehensive testing framework standards with 80% coverage requirements
-- ✅ Service Removal Command: `chauf remove` with version support and confirmation prompts
-- ✅ dnsmasq Validation: `.test` resolver setup with clear prompts and double confirmation for destructive operations
-
-### v0.1.1 (Planned - Project Focus)
-- ✅ **Priority 1**: Per-project PHP isolation (`chauf php isolate`)
-- ✅ **Priority 1**: CLI self-update command (`chauf self-update`)
-- ✅ **Priority 2**: Complete project linking system (`chauf link`/`chauf links`/`chauf unlink`)
-- ✅ **Testing Standards**: Comprehensive testing framework with operation-based structure and 80% coverage requirements
-- ✅ **Priority 3**: Enhanced logging framework implementation (fully tested and verified)
-- ✅ **Priority 1**: Project-aware PHP shims with automatic context detection
-- ✅ **Priority 1**: Service orchestration implementation (`chauf start`/`chauf stop`)
-- ✅ **DNS Integration**: dnsmasq configuration validation and automated setup for local .test domains
-- ✅ **Enhanced Safety**: Comprehensive dnsmasq validation during service removal and startup
-
-### v0.1.2 (Planned - Access Focus)
-- 🎯 **Priority 2**: Site accessibility with Nginx & dnsmasq
-- 🔗 Automatic domain resolution and SSL management
-- 🚧 Service orchestration completion (start/stop/health)
-
-### v0.2.0 (Future)
-- 📋 Complete service management and monitoring
-- 📋 Advanced project features and multi-project support
-- 📋 Performance monitoring and optimization tools
-
-### Future
-- Add support for custom port via chauf config file
-- Refactor existing code, make it more direct and robust
-- Scan which planned command that not yet exists
-- There's a spinner animation beside yours Thinking... right? can I apply that to my process? so user know that there's active process -> already implemented in `[ self-update ] Building from source (@d140f41)`. When they finish, it's changing the spinner to checkmark
-
----
-
-*Last Updated: 2025-11-05*
-*Status reflects current development progress and priorities with completed project registration system, project-aware PHP shims, and testing framework*
+_Last updated: 2025-11-09T16:05:48Z_

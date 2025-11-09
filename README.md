@@ -1,407 +1,131 @@
 # Chauffeur
 
-Chauffeur is a host-based CLI for managing per-project PHP development services on Linux. It installs everything into `~/.chauffeur/`, isolates runtimes (PHP-FPM, Nginx, dnsmasq-managed domains), and keeps system packages untouched.
+> Linux-first valet-style CLI for per-project PHP services, inspired by Valet & Herd.
 
-## Status
+## Project Snapshot
+| Item | Detail |
+|------|--------|
+| Purpose | Host-based CLI that installs nginx, PHP-FPM, and dnsmasq-managed `.test` routing inside `~/.chauffeur` so each project has isolated services. |
+| Scope | Linux (Arch/Ubuntu/Debian focus). Manual `chauf link` registration per project; no DB/queue helpers. |
+| Inspiration | [Laravel Valet](https://laravel.com/docs/valet) & [Beyond Code Herd](https://herd.laravel.com/). |
+| Author | @siegg — single maintainer learning Go. |
+| Status | Early adopter preview. Tested mainly on one Linux machine; expect rough edges. |
 
-- ✅ **Installer & Configuration**: Smart installer with Go requirement checking, existing installation detection, and PATH management  
-- ✅ **PHP Management**: `chauf php install/use/isolate` with version switching and workspace setup
-- ✅ **Project-Aware PHP Shims**: Automatic PHP version detection based on project context  
-- ✅ **CLI Bootstrap**: Both repository cloning and curl-based installation methods
-- ✅ **Self-Update**: `chauf self-update` pulls latest git changes and rebuilds the CLI binary (services untouched)  
-- ✅ **Dev Mode**: `chauf self-update --dev` rebuilds CLI from current directory for development  
-- ✅ **Shell Integration**: Clean PATH management with no whitespace pollution  
-- ✅ **Enhanced Logging**: Structured CLI output with color-coded status, progress indicators, and detailed timing information - fully implemented and tested  
-- ✅ **Project Registration**: Complete `chauf link`, `chauf links`, and `chauf unlink` commands with comprehensive project management
-- ✅ **Composer Integration**: `chauf install composer` installs a verified Composer PHAR with project-aware PHP shims
-- ✅ **Port Management**: Workspace defaults live on user-space ports with automatic conflict detection and per-project overrides
-- ✅ **Smart PHP Defaults**: When the config points to a missing PHP runtime, Chauffeur detects installed versions and offers to switch the default automatically
-- ✅ **Nginx Template System**: Automatic nginx configuration generation with Laravel, WordPress, and general templates  
-- ✅ **Template Detection**: Smart project type detection for optimal nginx configuration  
-- ✅ **Template Updates**: Automatic nginx config updates on PHP version changes  
-- ✅ **DNS Management**: dnsmasq integration for local .test domain resolution with configuration validation
-- ✅ **Safe Removal**: Comprehensive service removal with dnsmasq safety checks and user confirmation  
-- ✅ **Comprehensive Testing**: Full test suite with operation-based structure and 80% coverage standards  
-- ✅ **Service Orchestration**: `chauf start/stop` with dnsmasq validation  
-- ✅ **Environment Insights**: `chauf info` surfaces workspace paths, versions, installed services, and port configuration at a glance  
-- ✅ **Valet-Style Routing**: dnsmasq + nginx provide `.test` domains over user-space ports (no privileged listeners)
-- ✅ **Port Forwarding Automation**: iptables-based port 80/443 redirection handled automatically by `chauf start`
-- Linux-focused workflow (Arch/Ubuntu/Debian friendly); other OS targets are not yet supported
+## Transparency & Expectations
+- **AI-assisted codebase**: Most Go code was generated with AI coding agents following the contracts in `AGENTS.md`. Each feature is guided and reviewed manually, but there will be inconsistencies until more eyes are on the project.
+- **Learning-in-public**: I am new to Go. Contributions, reviews, and bug reports from experienced Go developers are extremely welcome.
+- **Experimental support**: Chauffeur currently "works on my machine". CI and cross-distro testing are still being built out, so please treat releases as experimental until we grow community coverage.
+- **Documentation parity**: The AGENT handbook, README, and docs/TODO_STATUS are kept in sync. If you notice drift, open an issue or PR—accuracy matters more than marketing.
 
 ## Background & Inspiration
+Chauffeur was born after migrating from macOS to Linux and missing the simplicity of Valet/Herd. Rather than containerizing everything, Chauffeur keeps services on the host but isolates them per project inside `~/.chauffeur`. dnsmasq handles `.test` domains, nginx proxies to per-project PHP-FPM pools, and shims ensure `php` understands which version to use based on your current directory.
 
-Chauffeur emerged from a practical need for reliable development environment management on Linux. The project's journey began when I switched from macOS to Linux and found myself missing the elegant development environment tools that made other platforms so productive.
+Design themes borrowed from Valet/Herd:
+- One command per action (`chauf link`, `chauf start`, `chauf stop`).
+- Automatic nginx template selection (Laravel, WordPress, general).
+- DNS-based routing with friendly domains like `myapp.test`.
 
-### Previous Experience
-- **macOS with Valet**: Valet's seamless PHP version management and virtual host configuration made local development effortless
-- **Windows & macOS with Herd**: Herd provided similar convenience for both Windows and macOS development environments
-- **Linux Gap**: Upon moving to Linux, I discovered there was no equivalent tool with the same simplicity and reliability
+## Core Principles
+1. **Workspace-first**: Everything lives under `~/.chauffeur`—binaries, configs, sockets, logs, templates.
+2. **Minimal host impact**: Only print `sudo` steps for `/etc` edits (dnsmasq, NetworkManager). Track change instructions so users can undo them.
+3. **Manual project registration**: Chauffeur never auto-scans. `chauf link` registers the current working directory unless flags say otherwise.
+4. **Idempotent commands**: Re-running `init`, `install`, `link`, etc. should be safe. Destructive actions require `--force`.
+5. **Go-first implementation**: CLI is written in Go 1.22+, with helpers in `cli/lib` and `cli/internal/**`.
+6. **Documentation synchronization**: README, docs/TODO_STATUS.md, and AGENTS.md must describe the current code behavior—no aspirational features marked as done.
 
-### The Linux Challenge
-While Linux offers powerful development capabilities, the ecosystem lacked a Valet/Herd equivalent:
-- Existing Linux solutions were often complex or required manual configuration
-- Most tools focused on Docker containers or virtualization, adding unnecessary overhead
-- Forked ports of Valet existed but weren't actively maintained, creating reliability concerns
+## Feature Overview
+| Area | Status | Notes |
+|------|--------|-------|
+| Workspace bootstrap (`chauf init`) | ✅ | Creates `~/.chauffeur` directories, default config, PATH guidance. |
+| Project linking (`chauf link/links/unlink`) | ✅ | Registers projects, writes `project.yaml`, generates nginx configs. |
+| PHP runtimes (`chauf php install/use/isolate`) | 🚧 | Core flows exist but need more testing and logging parity. |
+| Service orchestration (`chauf start/stop/status`) | 🚧 | Basic process management exists; dnsmasq integration still evolving. |
+| Composer integration | ✅ | Installs Composer PHAR tied to Chauffeur’s PHP shim. |
+| Logging revamp | 🚧 | New logger exists, but several commands still print directly—contributions welcome. |
+| Testing | 🚧 | Unit tests exist for link/links, but `go test ./...` currently fails; more coverage needed. |
 
-### Project Philosophy
-Chauffeur was created to fill this gap with a principled approach:
-- **Host-based**: Runs services directly on the host system without virtualization overhead
-- **Project-isolated**: Each project gets its own isolated environment without conflicts
-- **Simple yet Powerful**: Complex functionality hidden behind straightforward commands
-- **Reliable**: Built with robust error handling and clear failure messages
-- **Host Configuration Minimization**: Isolated environments minimize impact on host system configuration - configs and services are focused in project-specific directories to prevent conflicts with other packages and system-wide installations
+## Architecture at a Glance
+```
+~/.chauffeur/
+  bin/                 # shims (php, composer, nginx helpers)
+  config/chauffeur.yaml
+  projects/<slug>/
+    project.yaml
+    runtime/php-fpm/
+    logs/
+  php/<version>/       # compiled runtimes
+  nginx/{bin,etc,sites-available,sites-enabled,conf.d,certs}
+  logs/
+```
+- `php` shim: Detects whether you’re inside a linked project and selects the project’s PHP version; otherwise uses the global default (fallback 8.3).
+- `chauf link`: Detects Laravel/WordPress/general layout and renders the appropriate nginx template.
+- `chauf start`: Validates dnsmasq `.test` routing, offers auto-generated `sudo` commands if the host needs configuration, and manages iptables redirects recorded in `~/.chauffeur/system/port-forwarding.json`.
 
-## Development Approach
-
-This project is unique in its development methodology. The majority of the codebase was written with assistance from AI tools, guided by architectural direction and project management. This approach allows for rapid development while maintaining high code quality through clear specifications and requirements.
-
-### AI-Assisted Development
-- **AI Coding**: AI tools generate the bulk of the implementation based on detailed specifications
-- **Human Direction**: I manage the architecture, design decisions, and overall project vision
-- **Iterative Refinement**: Code is reviewed, tested, and refined through collaboration
-
-### Why This Approach?
-The AI-assisted methodology enables:
-- **Rapid Prototyping**: Quickly test architectural ideas and implementation approaches
-- **Consistent Code Quality**: AI tools generate code that follows established patterns and requirements
-- **Focus on Architecture**: More time spent on design decisions and less on boilerplate implementation
-- **Documentation-First**: Comprehensive documentation written alongside code development
-
-### AI Collaboration Model
-The AI-assisted development approach is open to all contributors, not just for CLI development beginners. This methodology allows developers with varying experience levels to contribute meaningfully:
-
-- **For All Contributors**: Anyone can use AI tools to help generate code while following the `AGENTS.md` specifications and contracts
-- **Structured Process**: AI generates implementation based on detailed requirements and architectural direction
-- **Quality Assurance**: All AI-generated code should be reviewed, tested, and refined before integration
-- **Learning Opportunity**: Contributors gain experience by reviewing AI output and understanding system architecture
-
-### Contribution Guidelines
-Chauffeur is open source and welcomes diverse contribution approaches:
-
-- **AI-Assisted Development**: Follow the same methodology used for the core codebase - generate with AI while managing architecture
-- **Traditional Development**: Experienced CLI developers are highly valued for architectural insights and code reviews
-- **Mixed Approach**: Use AI where helpful, but focus on producing high-quality, well-tested code
-- **AGENTS.md Compliance**: All contributions must respect the contracts and specifications in the project knowledge base
-
-### Project Structure
-Given the unique development approach, the project is structured to succeed with various collaboration models:
-- **Solid Foundation**: AI-generated core functionality provides working CLI tools and installation system
-- **Extensible Architecture**: Well-defined contracts and modular structure support future enhancements
-- **Community Integration**: Open source model allows collective improvement and innovation
-- **Forking Option**: Community members can propose alternative approaches through forks if desired
-
-**Note**: While the AI-assisted nature means the project may not be perfect, it provides a solid starting point that the community can collectively improve. The combination of AI generation and human management creates a unique opportunity for rapid development while maintaining architectural integrity.
-
-## Requirements
-
-- **Go 1.22 or newer** - Chauffeur CLI is built with Go and requires a compatible Go installation
-- **Git** - Required for cloning the repository during curl installation
-- **Linux** - Currently Linux-focused (Arch/Ubuntu/Debian friendly)
+## Command Reference
+| Command | Key Flags | Summary |
+|---------|-----------|---------|
+| `chauf init` | `--force`, `--quiet` | Bootstrap the workspace under `~/.chauffeur/`. |
+| `chauf start` | `--project <path>`, `--all`, `--dry-run` | Start nginx/PHP-FPM (optionally all linked projects). |
+| `chauf stop` | `--project <path>`, `--all`, `--dry-run` | Stop services and clean redirects. |
+| `chauf status` | `[service-type]`, `--project`, `--detail`, `-v` | Inspect global or per-project services. |
+| `chauf link` | `--site`, `--ssl`, `--php`, `--http-port`, `--https-port`, `--force` | Register PWD as a project and generate configs. |
+| `chauf links` | — | Table of all registered projects. |
+| `chauf unlink` | `--slug`, `--site`, `--project`, `--all`, `--force` | Remove registrations; defaults to current directory. |
+| `chauf php install <ver>` | `--force`, `--no-ext`, `--from` | Install PHP runtimes into the workspace. |
+| `chauf php use <ver>` | — | Set global default PHP version. |
+| `chauf php isolate <ver>` | — | Pin the current linked project to a version. |
+| `chauf remove <service> [ver]` | `--force` | Remove installed runtimes (php/nginx/composer). |
+| `chauf install composer` | — | Download Composer PHAR + shim. |
+| `chauf self-update` | `--dev` | Pull latest release or rebuild from current repo. |
+| `chauf uninstall` | `--purge` | Remove workspace (optionally runtimes/caches). |
+| `chauf info` | — | Show workspace paths, installed services, and port config. |
 
 ## Getting Started
-
-### Method 1: Clone Repository (Recommended for Development)
-
-```bash
-# First, ensure you have Go 1.22+ installed
-go version
-
-git clone https://github.com/SIAJI-Labs/chauffeur.git
-cd chauffeur
-./install.sh
-# Reload your shell or run: source ~/.zshrc
-chauf --version
-```
-
-### Method 2: Direct Install (Public Repository)
-
-For quick installation without cloning the repository:
-
-```bash
-# First, ensure you have Go 1.22+ and Git installed
-go version
-git --version
-
-curl -fsSL https://raw.githubusercontent.com/SIAJI-Labs/chauffeur/refs/heads/main/install.sh | bash
-# Reload your shell or run: source ~/.zshrc
-chauf --version
-```
-
-### Installer Features
-
-- **Smart Installation Detection**: Detects existing Chauffeur installations and provides guidance
-- **Go Requirement Checking**: Validates Go 1.22+ availability with clear installation instructions
-- **Clean PATH Management**: Automatically manages shell PATH without creating whitespace pollution
-- **Idempotent Installation**: Safe to run multiple times; handles upgrades gracefully
-- **Multiple Shell Support**: Works with Bash and Zsh with proper rc file handling
-- **Enhanced Logging**: Structured output with progress indicators, timing, and visual feedback
-
-### Service Management
-
-Once installed, you can manage services:
-
-```bash
-# Install services
-chauf install php 8.3
-chauf install nginx
-chauf install composer
-
-# Remove services
-chauf remove php 8.3        # Remove specific PHP version
-chauf remove php           # Remove all PHP versions
-chauf remove nginx         # Remove nginx
-chauf remove composer      # Remove Composer shim + PHAR
-
-# Remove without confirmation
-chauf remove nginx --force
-
-# Inspect current installation
-chauf info
-```
-
-#### dnsmasq Integration for Local DNS Resolution
-
-Chauffeur requires dnsmasq configuration to resolve local `.test` domains:
-
-```bash
-# Manual dnsmasq setup (if not using Chauffeur's automated prompts)
-sudo install -d -m 755 /etc/dnsmasq.d
-sudo tee /etc/dnsmasq.d/chauffeur.conf >/dev/null <<'EOF'
-# Chauffeur local development resolver
-# Redirect all *.test domains to localhost
-address=/.test/127.0.0.1
-
-# Only listen locally
-listen-address=127.0.0.1
-bind-interfaces
-EOF
-
-sudo systemctl restart dnsmasq
-```
-
-**Automated Setup Features:**
-- **Configuration Validation**: Checks for dnsmasq setup during `chauf start`
-- **Interactive Prompts**: Offers to automatically install dnsmasq configuration when missing
-- **Service Restart**: Automatically restarts dnsmasq to apply configuration changes
-- **Active Resolver Health Check**: Probes `.test` resolution and restarts dnsmasq/NetworkManager when the resolver stops pointing to localhost
-- **NetworkManager Auto-Integration**: When `systemd-resolved` owns port 53, Chauffeur now writes the required NetworkManager drop-ins (`/etc/NetworkManager/conf.d/90-chauffeur-dns.conf` and `/etc/NetworkManager/dnsmasq.d/chauffeur.conf`) plus a `systemd-resolved` drop-in to disable the stub listener, then reloads both services via `sudo`
-- **Host Resolver Detection**: Detects when `systemd-resolved`'s stub listener already occupies port 53 and, if NetworkManager is unavailable, surfaces the exact manual steps so Chauffeur never fights the host DNS stack
-- **Domain Resolution**: Ensures `.test` domains resolve to localhost for local development
-
-If the probe (`chauffeur-dns-probe.test`) does not resolve to `127.0.0.1`, `chauf start` now aborts with actionable guidance so you can point `/etc/resolv.conf` or NetworkManager to the local dnsmasq stub before services come online.
-
-> **Heads-up for `systemd-resolved` users:** Chauffeur now attempts to reconfigure NetworkManager for you (with `sudo`) and drops a `/etc/systemd/resolved.conf.d/90-chauffeur-disable-stub.conf` file so dnsmasq can own `127.0.0.1:53`. If NetworkManager is missing, the CLI still stops with the exact manual instructions rather than touching the host blindly. Running `chauf remove nginx` or `chauf uninstall --purge` cleans up those host drop-ins automatically.
-
-### Site Accessibility & Domain Routing
-
-Once you have services installed and dnsmasq configured, you can access your projects:
-
-```bash
-# Link your project (automatically assigns <project-name>.test domain)
-cd /path/to/my-laravel-project
-chauf link
-
-# With custom domain
-chauf link --site myapp.test --ssl
-
-# Override user-space nginx ports if needed
-chauf link --http-port 8090 --https-port 8543
-
-# Start services
-chauf start
-
-# Access your site
-curl http://my-project.test  # Works via port 80
-curl http://my-project.test:8080  # Direct access to nginx user-space listener
-```
-
-Chauffeur validates every configured port during linking. The default `~/.chauffeur/config/chauffeur.yaml` created by `chauf init` pins user-space ports (Nginx 8080/8443, PHP-FPM 9000) and defines a conflict-resolution strategy (`prompt`, `auto`, or `fail`). You can override ports per project with `--http-port` / `--https-port`, and the CLI will either prompt for alternatives, auto-select the next free port inside the configured range, or stop with an actionable error based on that strategy.
-
-#### Site Access Features
-
-- **Standard Port Access**: `http://project-name.test` (port 80) - works automatically
-- **Direct Port Access**: `http://project-name.test:8080` (port 8080) - for debugging
-- **DNS Resolution**: All `.test` domains resolve to `127.0.0.1` via NetworkManager dnsmasq
-- **Sites-Enabled Layout**: Every project vhost lives under `~/.chauffeur/nginx/sites-enabled/*.conf` and is automatically included by nginx
-- **Port Forwarding**: Port 80 traffic is transparently redirected to port 8080
-- **PHP Processing**: Full PHP-FPM integration with per-project isolation
-- **Static Files**: Automatic static file serving with proper headers
-- **Laravel Template Safety**: Embedded Laravel nginx template now uses only stock variables (no more `$time_start` dependency), so `nginx` never fails with “unknown variable” errors
-
-#### Port Forwarding Setup
-
-`chauf start` automatically configures `iptables` OUTPUT rules that redirect localhost traffic on privileged ports to the configured nginx listeners (e.g., `80 → 8081`, `443 → 8443`). The rules live only while Chauffeur is running—`chauf stop`/`chauf remove nginx` remove them so the host firewall stays clean.
-
-If you need to tweak the behavior manually (or prefer to manage forwarding yourself), these are the exact commands Chauffeur uses under the hood:
-
-```bash
-sudo iptables -t nat -A OUTPUT -p tcp --dport 80 -d 127.0.0.1 -j REDIRECT --to-port 8080
-sudo iptables -t nat -A OUTPUT -p tcp --dport 443 -d 127.0.0.1 -j REDIRECT --to-port 8443
-```
-
-This keeps nginx on safe ports (8080/8443 by default) while still allowing natural `http://project.test` and `https://project.test` access. When `--ssl` is supplied during `chauf link`, Chauffeur writes nginx configurations that reference certificates inside `~/.chauffeur/nginx/certs/<domain>.{crt,key}`—generate or copy certificates into that directory using `mkcert`, `step`, or your preferred tooling.
-
-#### dnsmasq Safety Validation
-
-`chauf start` validates the dnsmasq configuration before launching services. If `.test` domain forwarding is missing, Chauffeur offers to create the configuration for you and restarts dnsmasq so the change takes effect immediately. Use `--force` flags on destructive commands (e.g., `chauf remove nginx`) to bypass prompts, but Chauffeur will never uninstall system packages on your behalf.
-
-### Inspecting Your Chauffeur Environment
-
-Use `chauf info` whenever you need a quick snapshot of your setup:
-
-```bash
-chauf info
-```
-
-The command reports:
-
-- Workspace location, projects directory, and config file path
-- Current CLI version alongside the latest GitHub release (with update hints)
-- Build timestamp of the installed binary (UTC)
-- Installed services (Nginx, Composer) and their reported versions/paths
-- Installed PHP runtimes and the active default version
-- Port configuration (Nginx bindings, port range, PHP-FPM fallback)
-
-This makes it easy to confirm whether a machine is up to date before sharing instructions or reproducing an issue.
-```
-
-### PHP Management
-
-PHP versions have additional management options:
-
-```bash
-# Install PHP versions
-chauf php install 8.3
-chauf php install 8.2
-chauf php install 7.4
-
-# Switch between versions
-chauf php use 8.3
-chauf php use 7.4
-
-# Check current version
-chauf php -v
-php -v  # Now also project-aware!
-
-# Per-project isolation
-cd my-project
-chauf php isolate 8.2
-php -v  # Uses PHP 8.2 for this project only
-cd ~
-php -v  # Uses globalPHP version
-```
-
-#### Project-Aware PHP Shims
-
-Chauffeur's PHP shims now automatically detect project context:
-
-- **Inside Project**: Uses the PHP version specified in the project's isolation setting
-- **Outside Project**: Uses the global default PHP version set via `chauf php use <version>`
-- **Seamless Integration**: Both `php` and `chauf php` commands now behave consistently
-- **Automatic Detection**: Projects detected via the projects registry directory structure
-
-### Updating Chauffeur
-
-Refresh the CLI in-place by pulling the latest git changes and rebuilding (managed services stay intact):
-
-```bash
-# Update from remote repository
-chauf self-update
-
-# Or rebuild from current directory (development mode)
-chauf self-update --dev
-```
-
-The command clones (or updates) the Chauffeur repository under `~/.chauffeur/src/chauffeur`, verifies the tree is clean, fast-forwards to the latest `main` commit, and runs `go build` to replace `~/.chauffeur/bin/chauf`. It uses the SSH remote `git@github.com:SIAJI-Labs/chauffeur.git` by default—make sure your SSH key has access (override via `CHAUF_REPO_URL` when the project becomes public). You’ll need both `git` and `go` available in your PATH.
-
-With the `--dev` flag, the command rebuilds the CLI binary from the current working directory if it's a valid Chauffeur repository. The directory must be a git repository containing the required files (`cli/main.go`, `go.mod`, and `AGENTS.md`), providing a convenient way to test local changes without committing them to the repository.
-
-**Visual Feedback**: All commands now feature enhanced logging with color-coded output, progress bars for downloads, spinners for long operations, and structured summaries with timing information. The logging system provides clear visual feedback about operation progress and completion.
-
-### Uninstallation
-
-If you need to remove the workspace:
-
-```bash
-chauf uninstall          # keeps PHP runtimes by default
-chauf uninstall --purge  # removes workspace and runtimes/caches
-```
-
-The uninstaller cleanly removes PATH entries without leaving whitespace pollution in your shell config files.
-
-## Roadmap
-
-### Completed ✅
-- Smart installer with Go requirement checking
-- Existing installation detection and guidance
-- Clean PATH management without whitespace pollution  
-- Support for both curl and repository cloning installations
-- PHP runtime management (`chauf php install/use/isolate`)
-- Config management with automatic file creation
-- Shell integration (Bash/Zsh) with clean PATH handling
-- Project configuration writer via `chauf link` (slug creation, per-project PHP metadata)
-- Per-project PHP overrides via `chauf php isolate`
-- CLI binary refresh via `chauf self-update`  
-- Development mode rebuild via `chauf self-update --dev` for testing local changes
-- Complete project registration system with `chauf links` and `chauf unlink` commands
-- Project-aware PHP shims that automatically detect and use appropriate PHP versions
-- **Nginx Template System**: Automatic configuration generation for Laravel, WordPress, and general PHP applications
-- **Template Detection**: Smart project type identification for optimal nginx configurations
-- **Template Updates**: Automatic nginx config regeneration on PHP version changes
-- Comprehensive testing framework with operation-based structure
-- Enhanced CLI logging specification with visual feedback standards
-
-### Current Focus 🎯
-**Priority 1: Complete Service Orchestration**
-- ✅ `chauf start` and `chauf stop` commands for managing services
-- ✅ Integration with Nginx + PHP-FPM processes alongside dnsmasq validation
-- ✅ Service process monitoring and health checks
-
-**Priority 2: Site Accessibility Implementation**
-- ✅ dnsmasq-powered `.test` domain resolution with optional iptables forwarding
-- ✅ Nginx virtual host configuration for registered domains
-- ✅ DNS resolution via NetworkManager dnsmasq for `.test` domains
-- 🚧 Port forwarding automation (port 80 to 8080 redirection)
-
-**Priority 4: Log File Management**
-- Implement detailed failure logging with structured log files
-- Add log rotation and maintenance utilities
-- Enhanced error reporting with log file paths on failures
-
-### In Progress 🚧
-- Service orchestration (`chauf start`, `chauf stop`) for Nginx, PHP-FPM, and dnsmasq verification
-- Service process monitoring and health checks
-
-### Planned 📋
-- Enhanced service configuration management
-- Log rotation and management utilities
-- Performance monitoring and health checks
-
-See [TODO_STATUS.md](docs/TODO_STATUS.md) for comprehensive project status and roadmap details.
-
-## Project Registration Flow
-
-- Run `chauf link` inside a project directory to automatically assign `<project-name>.test` as domain, or use `chauf link --site myproj.test --ssl` for custom domains. Both create `~/.chauffeur/projects/<slug>/project.yaml`.
-- The command records the absolute project path, PHP version (defaults to global), optional domain metadata, and prepares runtime/log directories.
-- **Automatic Nginx Templates**: Chauffeur automatically generates nginx configurations based on project type:
-  - **Laravel**: Detects `artisan` and `composer.json` with Laravel structure for optimized routing
-  - **WordPress**: Detects `wp-config.php`, `wp-admin`, and `wp-includes` for WordPress-specific settings
-  - **General**: Fallback for standard PHP applications with security headers and proper PHP-FPM integration
-- **SSL Support**: When `--ssl` is provided with `--site`, templates include HTTPS configuration on port 8443 and reference certificates stored under `~/.chauffeur/nginx/certs/<domain>.crt|.key`
-- **User-Space Ports**: All configurations use non-privileged ports (HTTP: 8080, HTTPS: 8443) to avoid conflicts with system services
-- Use `--php <version>` to pin a per-project PHP version without touching global defaults.
-- Use `--http-port` and `--https-port` to override nginx listener ports per project; Chauffeur validates ports according to the configured conflict-resolution strategy before writing project metadata.
-- Run `chauf php isolate <version>` in the project directory to switch the linked PHP runtime (requires the version to be installed). This automatically updates the nginx configuration to use the new PHP-FPM socket.
-- Re-run with `--force` when intentionally overwriting an existing project registration.
-- Run `chauf unlink` to remove a project registration (defaults to current directory when no flags provided). This also removes the associated nginx configuration.
-- Run `chauf links` to list all registered projects and their configurations in a formatted table with domains, SSL status, PHP versions, and creation timestamps.
-- Nginx configurations are stored in `~/.chauffeur/nginx/sites-available/` and `~/.chauffeur/nginx/sites-enabled/` with proper symlinks for easy management.
-
-## Development Notes
-
-- Requires Go 1.22+ to build the CLI (enforced by installer with helpful error messages).
-- Installation scripts are idempotent; safe to run multiple times.
-- Clean PATH management prevents shell config pollution.
-- Changes should respect the contracts outlined in `AGENTS.md` (project knowledge base).
-- Supports both development (repo clone) and production (curl) installation workflows.
-- **Testing Standards**: Comprehensive test suite with operation-based structure, 80% coverage requirement, and integration testing for complete workflows.
+1. **Install prerequisites**: Go 1.22+, git, curl, build tools (gcc/make/pkg-config), openssl headers.
+2. **Clone & bootstrap** (installs `chauf` under `~/.chauffeur/bin`):
+   ```bash
+   git clone https://github.com/siaji/chauffeur.git
+   cd chauffeur
+   ./install.sh
+   ```
+3. **Install services**:
+   ```bash
+   chauf install php 8.3
+   chauf install nginx
+   chauf install composer
+   ```
+4. **Link a project**:
+   ```bash
+   cd /path/to/project
+   chauf link --site myapp.test --php 8.3
+   ```
+5. **Start services & browse**:
+   ```bash
+   chauf start
+   firefox http://myapp.test:8080
+   ```
+
+6. **Update the binary from source (optional, run inside repo)**:
+   ```bash
+   cd /path/to/chauffeur/repo
+   chauf self-update --dev
+   ```
+
+Refer to `AGENTS.md` for the authoritative workspace layout, dnsmasq instructions, and logging spec.
+
+## Development & Contribution
+- **Preferred workflow**: Use `chauf self-update --dev` from the repo root to rebuild binaries; avoid `go build -o chauf` in-tree.
+- **Logging**: Every command must use `lib.NewCommandLogger`. No raw `fmt.Printf` for user-facing output. Help converting legacy prints is very welcome.
+- **Tests**: Always run `go test ./...` before opening a PR. Tests must isolate `HOME` via `t.TempDir()` to avoid touching real user state.
+- **Documentation sync**: If you change behavior, update README, docs/TODO_STATUS.md, and AGENTS.md in the same PR.
+- **Issues & PRs**: Please include distro info, Go version, `chauf info` output, and relevant log snippets (paths printed on failure) so we can reproduce problems quickly.
+
+## Roadmap Highlights
+Short-term focus (see `docs/TODO_STATUS.md` for the full queue):
+1. Replace remaining `fmt.Printf` usage with the structured logger.
+2. Stabilize `chauf status`, `start`, and `stop` with better service detection.
+3. Expand automated tests to cover PHP installation flows and dnsmasq handling.
+4. Document `sudo`-required dnsmasq/NetworkManager steps with reversible scripts.
+
+## Acknowledgements
+Thanks to the Valet and Herd teams for inspiring this workflow, to contributors providing feedback, and to the AI tooling that accelerates iteration. If you’d like to help drive Chauffeur toward a community-ready release, please open issues, share ideas, or send PRs.
