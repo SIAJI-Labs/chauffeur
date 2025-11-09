@@ -157,28 +157,28 @@ func RunStatus(args []string) error {
 
 		// Show global services
 		if len(globalServices) > 0 {
-			fmt.Println("Global Services:")
+			globalLogger := logger.NewChildLogger("global")
+			globalLogger.PrintSection(fmt.Sprintf("Global Services (%d)", len(globalServices)))
 			for _, service := range globalServices {
 				status, _ := manager.GetStatus(service)
+				icon := "✗"
 				if strings.Contains(status, "running") {
-					fmt.Printf("  ✓ %s (%s)\n", service.Name, status)
-				} else {
-					fmt.Printf("  ✗ %s (%s)\n", service.Name, status)
+					icon = "✓"
 				}
+				globalLogger.Info(fmt.Sprintf("  %s %s (%s)", icon, service.Name, status))
 			}
-			fmt.Println()
 		}
 
-		// Show project services
 		if len(projectServices) > 0 {
-			fmt.Println("Project Services:")
+			projectLogger := logger.NewChildLogger("projects")
+			projectLogger.PrintSection(fmt.Sprintf("Project Services (%d)", len(projectServices)))
 			for _, service := range projectServices {
 				status, _ := manager.GetStatus(service)
+				icon := "✗"
 				if strings.Contains(status, "running") {
-					fmt.Printf("  ✓ %s (%s)\n", service.Name, status)
-				} else {
-					fmt.Printf("  ✗ %s (%s)\n", service.Name, status)
+					icon = "✓"
 				}
+				projectLogger.Info(fmt.Sprintf("  %s %s (%s)", icon, service.Name, status))
 			}
 		}
 	} else {
@@ -186,23 +186,22 @@ func RunStatus(args []string) error {
 		logger.PrintSection(fmt.Sprintf("Chauffeur Services - Detailed Status (%d total)", len(servicesToCheck)))
 
 		for _, service := range servicesToCheck {
-			fmt.Printf("Service: %s\n", service.Name)
-			fmt.Printf("  Type: %s\n", serviceTypeToString(service.Type))
+			logger.Info(fmt.Sprintf("Service: %s", service.Name))
+			logger.Info(fmt.Sprintf("  Type: %s", serviceTypeToString(service.Type)))
 			if service.Slug != "" {
-				fmt.Printf("  Project: %s\n", service.Slug)
+				logger.Info(fmt.Sprintf("  Project: %s", service.Slug))
 			}
-			fmt.Printf("  Binary: %s\n", service.Binary)
-			fmt.Printf("  PID File: %s\n", service.PIDFile)
-			
+			logger.Info(fmt.Sprintf("  Binary: %s", service.Binary))
+			logger.Info(fmt.Sprintf("  PID File: %s", service.PIDFile))
+
 			status, err := manager.GetStatus(service)
 			if err != nil {
-				fmt.Printf("  Status: Unknown (error)\n")
-				fmt.Printf("    └── Error: %s\n", err.Error())
+				logger.Warn("Status lookup failed", err.Error())
 			} else {
-				fmt.Printf("  Status: %s\n", status)
+				logger.Info(fmt.Sprintf("  Status: %s", status))
 			}
 
-			fmt.Println()
+			logger.Info("------------------------------")
 		}
 	}
 

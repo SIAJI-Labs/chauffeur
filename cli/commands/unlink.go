@@ -10,6 +10,7 @@ import (
 	"github.com/siaji/chauffeur/cli/internal/config"
 	"github.com/siaji/chauffeur/cli/internal/projects"
 	"github.com/siaji/chauffeur/cli/internal/templates"
+	"github.com/siaji/chauffeur/cli/lib"
 )
 
 // RunUnlink handles `chauf unlink` command invocations.
@@ -57,6 +58,8 @@ func RunUnlink(args []string) error {
 		}
 	}
 
+	logger := lib.NewCommandLogger("unlink")
+
 	// Load configuration
 	cfg, err := config.Load()
 	if err != nil {
@@ -65,7 +68,7 @@ func RunUnlink(args []string) error {
 
 	// Handle --all flag
 	if all {
-		return unlinkAllProjects(cfg, force)
+		return unlinkAllProjects(logger, cfg, force)
 	}
 
 	// Initialize variables
@@ -88,7 +91,7 @@ func RunUnlink(args []string) error {
 		if err != nil {
 			return fmt.Errorf("current directory is not a registered project")
 		}
-		
+
 		projectPath = cwd
 		projectSlug = filepath.Base(layout.Root)
 	} else {
@@ -111,74 +114,74 @@ func RunUnlink(args []string) error {
 
 	// Determine project to unlink if flags were provided
 	if projectPath == "" && projectSlug == "" {
-	switch {
-	case slug != "":
-		// Unlink by slug
-		projectSlug = slug
-		layout, err := projects.EnsureLayout(cfg.ProjectsDir, slug)
-		if err != nil {
-			return fmt.Errorf("access project: %w", err)
-		}
-		
-		_, err = projects.LoadConfig(layout.ConfigPath)
-		if err != nil {
-			return fmt.Errorf("project %s is not registered", slug)
-		}
-		
-	case domain != "":
-		// Unlink by site domain
-		found := false
-		entries, err := os.ReadDir(cfg.ProjectsDir)
-		if err != nil {
-			if os.IsNotExist(err) {
-				return fmt.Errorf("no projects registered")
-			}
-			return fmt.Errorf("read projects directory: %w", err)
-		}
-
-		for _, entry := range entries {
-			if !entry.IsDir() {
-				continue
-			}
-
-			aSlug := entry.Name()
-			layout, err := projects.EnsureLayout(cfg.ProjectsDir, aSlug)
+		switch {
+		case slug != "":
+			// Unlink by slug
+			projectSlug = slug
+			layout, err := projects.EnsureLayout(cfg.ProjectsDir, slug)
 			if err != nil {
-				continue
+				return fmt.Errorf("access project: %w", err)
 			}
 
-			projCfg, err := projects.LoadConfig(layout.ConfigPath)
+			_, err = projects.LoadConfig(layout.ConfigPath)
 			if err != nil {
-				continue
+				return fmt.Errorf("project %s is not registered", slug)
 			}
 
-			if projCfg.Site != nil && projCfg.Site.Domain == domain {
-				projectSlug = aSlug
-				found = true
-				break
+		case domain != "":
+			// Unlink by site domain
+			found := false
+			entries, err := os.ReadDir(cfg.ProjectsDir)
+			if err != nil {
+				if os.IsNotExist(err) {
+					return fmt.Errorf("no projects registered")
+				}
+				return fmt.Errorf("read projects directory: %w", err)
 			}
-		}
 
-		if !found {
-			return fmt.Errorf("no project registered with domain %s", domain)
-		}
-		
-	case project != "":
-		// Unlink by project directory path
-		absProject, err := filepath.Abs(project)
-		if err != nil {
-			return fmt.Errorf("resolve project path: %w", err)
-		}
-		projectPath = absProject
-		
-		// Find the project by path
-		_, layout, err := projects.FindByPath(cfg.ProjectsDir, projectPath)
-		if err != nil {
-			return fmt.Errorf("project at path %s is not registered", project)
-		}
-		
-		// Extract slug from layout path
-		projectSlug = filepath.Base(layout.Root)
+			for _, entry := range entries {
+				if !entry.IsDir() {
+					continue
+				}
+
+				aSlug := entry.Name()
+				layout, err := projects.EnsureLayout(cfg.ProjectsDir, aSlug)
+				if err != nil {
+					continue
+				}
+
+				projCfg, err := projects.LoadConfig(layout.ConfigPath)
+				if err != nil {
+					continue
+				}
+
+				if projCfg.Site != nil && projCfg.Site.Domain == domain {
+					projectSlug = aSlug
+					found = true
+					break
+				}
+			}
+
+			if !found {
+				return fmt.Errorf("no project registered with domain %s", domain)
+			}
+
+		case project != "":
+			// Unlink by project directory path
+			absProject, err := filepath.Abs(project)
+			if err != nil {
+				return fmt.Errorf("resolve project path: %w", err)
+			}
+			projectPath = absProject
+
+			// Find the project by path
+			_, layout, err := projects.FindByPath(cfg.ProjectsDir, projectPath)
+			if err != nil {
+				return fmt.Errorf("project at path %s is not registered", project)
+			}
+
+			// Extract slug from layout path
+			projectSlug = filepath.Base(layout.Root)
 		}
 	}
 
@@ -191,12 +194,12 @@ func RunUnlink(args []string) error {
 		if err != nil {
 			return fmt.Errorf("access project: %w", err)
 		}
-		
+
 		_, err = projects.LoadConfig(layout.ConfigPath)
 		if err != nil {
 			return fmt.Errorf("project %s is not registered", slug)
 		}
-		
+
 	case domain != "":
 		// Unlink by site domain
 		found := false
@@ -234,7 +237,7 @@ func RunUnlink(args []string) error {
 		if !found {
 			return fmt.Errorf("no project registered with domain %s", domain)
 		}
-		
+
 	case project != "":
 		// Unlink by project directory path
 		absProject, err := filepath.Abs(project)
@@ -242,13 +245,13 @@ func RunUnlink(args []string) error {
 			return fmt.Errorf("resolve project path: %w", err)
 		}
 		projectPath = absProject
-		
+
 		// Find the project by path
 		_, layout, err := projects.FindByPath(cfg.ProjectsDir, projectPath)
 		if err != nil {
 			return fmt.Errorf("project at path %s is not registered", project)
 		}
-		
+
 		// Extract slug from layout path
 		projectSlug = filepath.Base(layout.Root)
 	}
@@ -265,22 +268,16 @@ func RunUnlink(args []string) error {
 	}
 
 	if !force {
-		fmt.Printf("Project to unlink:\n")
-		fmt.Printf("  Slug: %s\n", projectSlug)
-		fmt.Printf("  Path: %s\n", projCfg.Path)
-		fmt.Printf("  PHP: %s\n", projCfg.PHP)
+		logger.PrintSection("Project to unlink")
+		logger.Info(fmt.Sprintf("  Slug: %s", projectSlug))
+		logger.Info(fmt.Sprintf("  Path: %s", projCfg.Path))
+		logger.Info(fmt.Sprintf("  PHP: %s", projCfg.PHP))
 		if projCfg.Site != nil {
-			fmt.Printf("  Domain: %s (ssl=%t)\n", projCfg.Site.Domain, projCfg.Site.SSL)
+			logger.Info(fmt.Sprintf("  Domain: %s (ssl=%t)", projCfg.Site.Domain, projCfg.Site.SSL))
 		}
-		fmt.Printf("\nWARNING: This will remove the project registration and all associated configuration.\n")
-		fmt.Printf("Use --force to proceed without confirmation.\n")
-		fmt.Print("Continue? [y/N] ")
-		
-		// SENSITIVE: Destructive operation - user confirmation for unlinking projects
-		var response string
-		fmt.Scanln(&response)
-		if strings.ToLower(response) != "y" && strings.ToLower(response) != "yes" {
-			fmt.Println("Cancelled.")
+		logger.Warn("This will remove the project registration and all associated configuration", "Use --force to skip confirmation")
+		if !confirmUnlinkAction(logger, "Continue unlinking this project?") {
+			logger.Info("Unlink cancelled by user.")
 			return nil
 		}
 	}
@@ -290,9 +287,9 @@ func RunUnlink(args []string) error {
 	if err != nil {
 		return fmt.Errorf("initialize template engine: %w", err)
 	}
-	
+
 	if err := templateEngine.RemoveNginxConfig(projectSlug); err != nil {
-		fmt.Printf("Warning: failed to remove nginx configuration: %v\n", err)
+		logger.Warn("Failed to remove nginx configuration", err.Error())
 		// Continue with unlink even if nginx removal fails
 	}
 
@@ -302,11 +299,11 @@ func RunUnlink(args []string) error {
 		return fmt.Errorf("remove project directory: %w", err)
 	}
 
-	fmt.Printf("Successfully unlinked project '%s'\n", projectSlug)
+	logger.Success("Successfully unlinked project", projectSlug)
 	return nil
 }
 
-func unlinkAllProjects(cfg config.Config, force bool) error {
+func unlinkAllProjects(logger *lib.Logger, cfg config.Config, force bool) error {
 	entries, err := os.ReadDir(cfg.ProjectsDir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -316,7 +313,7 @@ func unlinkAllProjects(cfg config.Config, force bool) error {
 	}
 
 	if len(entries) == 0 {
-		fmt.Println("No projects registered.")
+		logger.Info("No projects registered.")
 		return nil
 	}
 
@@ -347,33 +344,28 @@ func unlinkAllProjects(cfg config.Config, force bool) error {
 	}
 
 	if len(allProjectsInfo) == 0 {
-		fmt.Println("No valid projects found.")
+		logger.Info("No valid projects found.")
 		return nil
 	}
 
-	fmt.Printf("Found %d project(s) to unlink:\n\n", len(allProjectsInfo))
+	logger.PrintSection(fmt.Sprintf("Found %d project(s) to unlink", len(allProjectsInfo)))
 	for _, proj := range allProjectsInfo {
-		fmt.Printf("  %s: %s", proj.Slug, proj.Path)
+		row := fmt.Sprintf("  %s: %s", proj.Slug, proj.Path)
 		if proj.Site != nil {
-			fmt.Printf(" (domain: %s", proj.Site.Domain)
+			row += fmt.Sprintf(" (domain: %s", proj.Site.Domain)
 			if proj.Site.SSL {
-				fmt.Print(", ssl=true")
+				row += ", ssl=true"
 			}
-			fmt.Print(")")
+			row += ")"
 		}
-		fmt.Printf(" (php: %s)\n", proj.PHP)
+		row += fmt.Sprintf(" (php: %s)", proj.PHP)
+		logger.Info(row)
 	}
 
 	if !force {
-		fmt.Printf("\nWARNING: This will remove ALL registered projects and their configurations.\n")
-		fmt.Printf("Use --force to proceed without confirmation.\n")
-		fmt.Print("Continue? [y/N] ")
-
-		// SENSITIVE: Destructive operation - user confirmation for removing all projects
-		var response string
-		fmt.Scanln(&response)
-		if strings.ToLower(response) != "y" && strings.ToLower(response) != "yes" {
-			fmt.Println("Cancelled.")
+		logger.Warn("This will remove ALL registered projects and their configurations", "Use --force to skip confirmation")
+		if !confirmUnlinkAction(logger, "Continue unlinking all projects?") {
+			logger.Info("Unlink cancelled by user.")
 			return nil
 		}
 	}
@@ -381,12 +373,12 @@ func unlinkAllProjects(cfg config.Config, force bool) error {
 	// Remove nginx configurations first
 	templateEngine, err := templates.NewTemplateEngine()
 	if err != nil {
-		fmt.Printf("Warning: failed to initialize template engine: %v\n", err)
+		logger.Warn("Failed to initialize template engine", err.Error())
 		// Continue with unlink even if template engine fails
 	} else {
 		for _, proj := range allProjectsInfo {
 			if err := templateEngine.RemoveNginxConfig(proj.Slug); err != nil {
-				fmt.Printf("Warning: failed to remove nginx configuration for %s: %v\n", proj.Slug, err)
+				logger.Warn(fmt.Sprintf("Failed to remove nginx configuration for %s", proj.Slug), err.Error())
 				// Continue even if nginx removal fails
 			}
 
@@ -396,17 +388,17 @@ func unlinkAllProjects(cfg config.Config, force bool) error {
 	for _, proj := range allProjectsInfo {
 		layout, err := projects.EnsureLayout(cfg.ProjectsDir, proj.Slug)
 		if err != nil {
-			fmt.Printf("Warning: failed to access project %s: %v\n", proj.Slug, err)
+			logger.Warn(fmt.Sprintf("Failed to access project %s", proj.Slug), err.Error())
 			continue
 		}
 
 		if err := os.RemoveAll(layout.Root); err != nil {
-			fmt.Printf("Warning: failed to remove project %s: %v\n", proj.Slug, err)
+			logger.Warn(fmt.Sprintf("Failed to remove project %s", proj.Slug), err.Error())
 			continue
 		}
 	}
 
-	fmt.Printf("Successfully unlinked %d project(s)\n", len(allProjectsInfo))
+	logger.Success(fmt.Sprintf("Successfully unlinked %d project(s)", len(allProjectsInfo)), "")
 	return nil
 }
 
@@ -440,4 +432,12 @@ Examples:
   chauf unlink --project /path/to/project
   chauf unlink --all --force
 `)
+}
+
+func confirmUnlinkAction(logger *lib.Logger, prompt string) bool {
+	logger.Warn(prompt, "Type 'y' to continue, anything else cancels")
+	var response string
+	fmt.Scanln(&response)
+	response = strings.ToLower(strings.TrimSpace(response))
+	return response == "y" || response == "yes"
 }

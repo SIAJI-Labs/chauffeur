@@ -29,17 +29,18 @@ _A living status board for features, debt, and priorities. Keep this in sync wit
 - `chauf self-update` fetches latest git release
 - `chauf self-update --dev` rebuilds from current repo when run inside it
 
+### CLI Infrastructure
+- Structured logging enforced across all commands (`lib.Logger` only; usage/help text excluded)
+
 ## 3. In Progress 🚧
-1. **Structured logging compliance** – many commands still use `fmt.Printf`; need to migrate to `lib.Logger` helpers
-2. **Service orchestration stability** – refine `chauf start/stop/status` to handle mixed project states, better error surfacing
-3. **dnsmasq/NetworkManager automation** – ensure instructions are clear, reversible, and logged
-4. **Test suite repair** – fix current failures (e.g., tests importing `cli/internal/...`) and restore passing `go test ./...`
-5. **Documentation sync discipline** – ongoing effort to keep README, AGENTS, and this tracker aligned
+1. **Service orchestration stability** – refine `chauf start/stop/status` to handle mixed project states, better error surfacing
+2. **dnsmasq/NetworkManager automation** – ensure instructions are clear, reversible, and logged
+3. **Test suite repair** – fix current failures (e.g., tests importing `cli/internal/...`) and restore passing `go test ./...`
+4. **Documentation sync discipline** – ongoing effort to keep README, AGENTS, and this tracker aligned
 
 ## 4. Planned 📋
 | Priority | Item | Notes |
 |----------|------|-------|
-| P1 | Replace all direct `fmt.Printf` output with logger calls | Blocking for polished release |
 | P1 | Rework tests to avoid importing internal packages | Required for Go module hygiene |
 | P1 | Stabilize `chauf start/stop` interaction with dnsmasq & port forwarding | Needs integration tests |
 | P2 | Expand PHP installer matrix (8.2/8.1/7.4 legacy deps) | Ensure workspace fallback works |
@@ -49,7 +50,6 @@ _A living status board for features, debt, and priorities. Keep this in sync wit
 
 ## 5. Known Issues / Tech Debt
 - `go test ./...` fails due to tests importing `cli/internal/config` (Go disallows external packages from accessing internal)
-- `chauf status` and `links` still use raw prints; violates AGENTS logging policy
 - Repo currently contains built binaries (`chauf`, `main`) checked in by mistake – remove and add to `.gitignore`
 - DNS setup path requires clearer rollback instructions when NetworkManager/systemd-resolved changes are applied manually
 
@@ -66,7 +66,7 @@ _A living status board for features, debt, and priorities. Keep this in sync wit
 - [ ] dnsmasq/NetworkManager instructions reviewed and verified
 
 ## 8. How to Help
-- Contribute logging refactors (replace `fmt.Printf` with `lib.Logger` calls)
+- Help expand service orchestration tests/logging and harden dnsmasq/NetworkManager flows
 - Improve tests around `chauf link`/`links` to avoid double-run conflicts
 - Document real-world setups (distro, Go version, dnsmasq config) in issues to broaden coverage
 - Review AGENTS.md and propose clarifications before building new features

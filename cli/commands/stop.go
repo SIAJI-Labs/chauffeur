@@ -63,6 +63,8 @@ func RunStop(args []string) error {
 		return fmt.Errorf("ensure workspace: %w", err)
 	}
 
+	logger := lib.NewCommandLogger("stop")
+
 	// Create service manager
 	manager, err := services.NewServiceManager()
 	if err != nil {
@@ -85,7 +87,7 @@ func RunStop(args []string) error {
 		for _, projectSlug := range projects {
 			projectServices, err := manager.ListProjectServices(projectSlug)
 			if err != nil {
-				fmt.Printf("Warning: Could not load services for project %s: %v\n", projectSlug, err)
+				logger.Warn("Could not load project services", fmt.Sprintf("%s: %v", projectSlug, err))
 				continue
 			}
 			servicesToStop = append(servicesToStop, projectServices...)
@@ -129,7 +131,7 @@ func RunStop(args []string) error {
 		for _, projectSlug := range projects {
 			projectServices, err := manager.ListProjectServices(projectSlug)
 			if err != nil {
-				fmt.Printf("Warning: Could not load services for project %s: %v\n", projectSlug, err)
+				logger.Warn("Could not load project services", fmt.Sprintf("%s: %v", projectSlug, err))
 				continue
 			}
 			servicesToStop = append(servicesToStop, projectServices...)
@@ -137,29 +139,29 @@ func RunStop(args []string) error {
 	}
 
 	if len(servicesToStop) == 0 {
-		fmt.Println("No services to stop.")
+		logger.Info("No services to stop.")
 		return nil
 	}
 
 	if dryRun {
-		fmt.Printf("Would stop %d services:\n", len(servicesToStop))
+		logger.Info(fmt.Sprintf("Would stop %d services:", len(servicesToStop)))
 		for _, service := range servicesToStop {
 			status, _ := manager.GetStatus(service)
-			fmt.Printf("  - %s (%s)\n", service.Name, status)
+			logger.Info(fmt.Sprintf("  - %s (%s)", service.Name, status))
 		}
 		return nil
 	}
 
 	// Stop services
-	fmt.Printf("Stopping %d services...\n", len(servicesToStop))
+	logger.Info(fmt.Sprintf("Stopping %d services...", len(servicesToStop)))
 	nginxStopped := false
 	for _, service := range servicesToStop {
 		// Check if service is already stopped
 		status, err := manager.GetStatus(service)
 		if err != nil {
-			fmt.Printf("Warning: Could not check status of %s: %v\n", service.Name, err)
+			logger.Warn(fmt.Sprintf("Could not check status of %s", service.Name), err.Error())
 		} else if status == "stopped" {
-			fmt.Printf("  ✓ %s is already stopped\n", service.Name)
+			logger.Success(fmt.Sprintf("%s already stopped", service.Name), "")
 			if service.Name == "chauf-nginx" {
 				nginxStopped = true
 			}
@@ -171,7 +173,7 @@ func RunStop(args []string) error {
 
 		if err := manager.Stop(service); err != nil {
 			spin.Fail("failed to stop")
-			fmt.Printf("  ✗ Failed to stop %s: %v\n", service.Name, err)
+			logger.Warn(fmt.Sprintf("Failed to stop %s", service.Name), err.Error())
 			continue
 		}
 
@@ -179,7 +181,7 @@ func RunStop(args []string) error {
 		status, err = manager.GetStatus(service)
 		if err != nil {
 			spin.Fail("stopped but verification failed")
-			fmt.Printf("  ⚠ Stopped %s but could not verify status\n", service.Name)
+			logger.Warn(fmt.Sprintf("Stopped %s but could not verify status", service.Name), err.Error())
 		} else {
 			spin.Success(status + " stopped successfully")
 			if service.Name == "chauf-nginx" {
@@ -191,7 +193,7 @@ func RunStop(args []string) error {
 	if nginxStopped {
 		if root, err := workspace.Dir(); err == nil {
 			if err := system.CleanupPortForwarding(root); err != nil {
-				fmt.Printf("Warning: Failed to clean up port forwarding: %v\n", err)
+				logger.Warn("Failed to clean up port forwarding", err.Error())
 			}
 		}
 	}

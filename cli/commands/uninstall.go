@@ -115,7 +115,7 @@ func reportPathRemoval() {
 	logger := lib.NewCommandLogger("uninstall")
 	removed, err := removePathExports()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to update shell PATH entries: %v\n", err)
+		logger.Warn("Failed to update shell PATH entries", err.Error())
 		return
 	}
 
