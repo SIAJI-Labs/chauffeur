@@ -1,1152 +1,176 @@
-# Chauffeur — Codex Knowledge Base
+# Chauffeur — Agent Handbook
 
-> Purpose: Give Codex/AI coding tools the context they need to generate correct CLI code, configs, and docs for the **Chauffeur** project.
+This document is the single source of truth for every autonomous contributor working on Chauffeur. Follow it exactly—commands, filesystem structure, and documentation rules here are authoritative.
 
-## Codex Usage Note
+## 1. Purpose & Inspiration
+- **Purpose**: Chauffeur is a Linux CLI that provisions per-project PHP development services (nginx, PHP-FPM, dnsmasq-managed `.test` domains) without touching system prefixes. Everything lives under `~/.chauffeur/` so multiple projects can coexist safely.
+- **Why it exists**: Linux lacks a Valet/Herd-equivalent. Chauffeur brings the same experience—instant `.test` domains, isolated PHP runtimes, project-aware shims—while respecting Linux packaging norms.
+- **Inspiration**: Laravel Valet and Beyond Code’s Laravel Herd. Borrow their developer ergonomics (one command per action, auto-generated nginx configs, PHP isolation) but keep Chauffeur host-native and workspace-contained.
 
-This document is the authoritative reference for autonomous agents working on Chauffeur. **Always consult and comply with the rules, command contracts, and filesystem layouts defined here before generating or modifying code.** Keep this file up to date when behavior changes, and avoid duplicating guidance elsewhere.
+## 2. Core Principles
+1. **Workspace-first**: All binaries, configs, sockets, and logs live under `~/.chauffeur`. Never install or mutate anything under `/usr`, `/etc`, or `/opt` directly.
+2. **Minimal host impact**: Prefer workspace changes. If host-level files (e.g., dnsmasq configs in `/etc`) are unavoidable, print exact `sudo` commands, record what changed, and provide cleanup guidance.
+3. **Manual project registration**: Projects are never auto-scanned. `chauf link` is the only way to register a directory and must always operate on PWD unless a path flag is provided.
+4. **Idempotent operations**: Re-running `init`, `install`, `link`, etc. must be safe. Commands with side effects require `--force` to overwrite.
+5. **Linux-focused**: Target Arch/Ubuntu/Debian; no macOS/Windows assumptions.
+6. **No external env managers**: No Devbox, nix, Docker, etc. Chauffeur ships its own runtimes in the workspace.
+7. **Documentation parity**: README.md, docs/TODO_STATUS.md, and AGENTS.md must describe the codebase exactly as it runs today.
+8. **Host edits only as last resort**: Modify `/etc` or system services only when there is no workspace alternative. Such steps must be opt-in (user runs the printed commands) and include instructions for reverting during `chauf remove`/`chauf uninstall`.
 
-## Documentation Synchronization Rule
+## 3. Host Impact Policy
+| Area | Allowed | How to handle |
+|------|---------|---------------|
+| `~/.chauffeur/**` | ✅ Yes | Create/modify freely; this is the managed workspace. |
+| Project directories | ✅ Yes | Only for generated configs/metadata tied to that project (e.g., `project.yaml`). |
+| `/etc/*`, `/usr/*`, `/var/*` | ⚠️ Only when unavoidable. Print the exact `sudo` commands, require explicit confirmation, and document cleanup steps. |
+| Network/dnsmasq/systemd configs | ⚠️ Same as above—emit precise scripts for the user to run and record the changes for later removal. |
+| iptables redirect (80→8080, 443→8443) | ✅ Chauffeur manages rules but tracks them under `~/.chauffeur/system/port-forwarding.json` for cleanup. |
 
-**MAINTENANCE REQUIREMENT**: When making any code changes, feature additions, or architectural modifications, you **must** also update the project documentation to maintain real-time accuracy:
+## 4. Dependency & Toolchain Policy
+- **Primary language**: Go 1.22+. No other languages for CLI commands.
+- **Required host tools**: git, curl, tar, build-essential toolchain (gcc/make), pkg-config, openssl headers for PHP builds.
+- **No bundled package managers**: Do not integrate Devbox, nix, asdf, etc.
+- **Runtime installs**: `chauf install php|nginx|composer` builds or downloads into `~/.chauffeur/{php,nginx,composer}`.
+- **Default ports**: nginx HTTP 8080, HTTPS 8443, PHP-FPM fallback 9000. Configurable via `config/chauffeur.yaml`.
 
-### Required Documentation Updates on Every Change:
-
-1. **README.md** (Project Overview)
-   - Update status indicators (✅/🚧/📋/🎯)
-   - Add new commands to usage examples
-   - Update installation instructions if needed
-   - Adjust roadmap to reflect current priorities
-   - Modify Getting Started section for new features
-
-2. **docs/TODO_STATUS.md** (Development Tracking)
-   - Mark completed features as ✅ 
-   - Move in-progress items to appropriate status
-   - Update priority queue for new objectives
-   - Add new tasks for implemented functionality
-   - Adjust release notes and timelines
-
-3. **AGENTS.md** (Technical Contracts)
-   - Add new commands with proper contracts
-   - Update filesystem layout rules
-   - Modify command flags and behaviors
-   - Add new architectural decisions or constraints
-   - Update any installation or build requirements
-
-### Documentation Update Process:
-
-1. **Before Code Changes**: Review current documentation to understand existing context
-2. **During Code Implementation**: Note documentation changes needed
-3. **After Code Completion**: Update all three documentation files immediately
-4. **Verification**: Ensure all documentation reflects the actual implemented functionality
-
-### Synchronization Checklist:
-
-- [ ] README.md reflects current feature status and usage
-- [ ] docs/TODO_STATUS.md shows accurate development progress  
-- [ ] AGENTS.md contains up-to-date technical contracts
-- [ ] All examples work with current implementation
-- [ ] Status indicators are accurate (completed vs. in-progress)
-- [ ] Priority queue reflects current development focus
-
-**PRINCIPLE**: Documentation must be as current as the code. Users should never encounter outdated information or examples that don't work with the current implementation.
-
-### Cross-Document Consistency
-
-Ensure information consistency across all three documentation files:
-
-| Type | README.md | docs/TODO_STATUS.md | AGENTS.md |
-|------|-----------|-------------------|------------|
-| **Command Status** | ✅/🚧/📋/🎯 indicators | Detailed task breakdown | Implementation contracts |
-| **Feature Lists** | User-facing overview | Development progress tracking | Technical specifications |
-| **Command Examples** | Working examples | N/A | Contract definitions |
-| **Timeline** | Roadmap overview | Release notes & sprints | N/A |
-
-### Content Rules:
-
-1. **No Conflicting Information**: Features marked as ✅ in README must match completed status in TODO_STATUS.md
-2. **Synchronized Status**: Commands listed in AGENTS.md must appear in both README and TODO_STATUS.md appropriately
-3. **Consistent Terminology**: Use same command names, flag names, and descriptions across all documents
-4. **Real-Time Accuracy**: As soon as code is implemented, update documentation - no lag between implementation and documentation
-
----
-
-## 1) Project Snapshot
-
-- **Name**: Chauffeur (CLI for local PHP dev services)
-- **Owner/Brand**: **SIAJI** (logo initials **SIA**, geometric; dark-blue brand)
-- **Primary OS**: Linux (Arch/Wayland focus), user TZ **Asia/Jakarta (UTC+7)**
-- **Goal**: Simple per-project dev services for PHP using **Nginx**, **PHP & PHP‑FPM**, and dnsmasq-managed `.test` domains (no `/etc/hosts` editing).
-- **Non‑Goals**: No DB/queue/scheduler/mail providers; users bring their own. No integrations with third‑party orchestrators unless explicitly stated.
-- **Isolation Strategy**: Project‑scoped services that do **not** conflict with host packages; per‑directory version isolation for PHP‑FPM.
-- **Registrations**: Projects are **manually** registered (`chauf link`) rather than auto‑scanned.
-- **Tech Options**:
-  - CLI written in **Go** (preferred for robust single binary) or **Bash** for helper scripts.
-  - Avoid assuming the CLI is already on `$PATH` during first‑install; provide bootstrap guidance.
-- **Dependency Management**: **No Devbox or external env managers.** Chauffeur installs and uses its own copies of binaries under `~/.chauffeur/` and never touches `/usr/bin`. All services run directly on the host, with isolated paths under the Chauffeur workspace.
-
----
-
-## 2) Command Surface (authoritative)
-
-> **Rules for Codex**: Respect names, flags, and behaviors below. Do **not** invent new commands without an explicit ADR entry.
-
-### Global CLI
-
-| Command | Flags/Args | Description |
-|---|---|---|
-| `chauf init` | `--force`, `--quiet` | Initialize Chauffeur workspace in `~/.chauffeur/` (idempotent). Creates default configuration with user-space ports, directories, and templates. Default ports: Nginx HTTP 8080, Nginx HTTPS 8443 (no privileged listeners). |
-| `chauf start` | `--project <path?>`, `--all`, `--dry-run` | Start services for current project (or all registered with `--all`). |
-| `chauf stop` | `--project <path?>`, `--all`, `--dry-run` | Stop services. |
-| `chauf status` | `[service-type]`, `--project <slug>`, `--detail`, `-v` | Show status of Chauffeur services with running state. Can filter by service type (nginx or php-fpm) or project. Use `--detail` for verbose output. |
-| `chauf remove` | `--force`, `<service>`, `[<version>]` | Remove installed service (php, nginx, composer). Use `--force` to skip confirmation prompts. PHP version can be specified for per-version removal. |
-| `chauf uninstall` | `--purge` | Remove Chauffeur workspace. `--purge` also deletes caches and installed runtimes. |
-| `chauf link` | `--site <domain>`, `--ssl`, `--php <version>`, `--http-port <port>`, `--https-port <port>`, `--force` | Register **PWD** as a project. Creates `project.yaml`, prepares runtime/log dirs, automatically assigns `<slug>.test` domain unless `--site` specified (dnsmasq-based resolution), generates nginx vhosts, and sets default PHP for this project. Validates specified PHP version is installed. Includes automatic port conflict detection and resolution with configurable fallback behavior. |
-| `chauf links` | _none_ | List all registered projects and their metadata. |
-| `chauf unlink` | `--force`, `--slug <slug>`, `--site <domain>`, `--project <path>`, `--all` | Remove a registered project. Can unlink by slug, domain, path, all projects with proper confirmation unless --force is used. |
-| `chauf self-update` | `--dev` | Pull latest Chauffeur git changes via SSH and rebuild the CLI binary in-place (services unaffected; requires git & go). With --dev, rebuild from current directory if it's a valid chauffeur repository. |
-| `chauf info` | _none_ | Display Chauffeur workspace details: binary/config paths, current vs. latest release, build timestamp, installed services (nginx/php/composer) with version output, and port configuration (nginx bindings, port range, PHP-FPM fallback). |
-
-### PHP Management
-
-| Command | Flags/Args | Description |
-|---|---|---|
-| `chauf php install <version>` | `--force`, `--no-ext`, `--from <source>` | Install PHP runtime `<version>` into `~/.chauffeur/php/<version>` (source can be `source`, `tarball`, or `distro-extract`; default `tarball`). |
-| `chauf php use <version>` | _none_ | Set global default PHP version used by `chauf php ...` commands. |
-| `chauf php isolate <version>` | _none_ | Pin current directory/project to `<version>` (requires linked project and installed runtime). |
-
-### Composer Integration
-
-- `chauf install composer` downloads the latest Composer release, verifies its SHA-256 checksum, stores the PHAR under `~/.chauffeur/composer/composer.phar`, and writes a shim at `~/.chauffeur/bin/composer` (symlinked to `~/.chauffeur/bin/shims/composer`).  
-- The Composer shim **always** invokes Chauffeur's PHP shim (`~/.chauffeur/bin/php`), so Composer automatically honors per-project PHP isolation and global defaults.
-- `chauf remove composer` removes the managed PHAR plus both the shim and entry point (with confirmation unless `--force` is provided). System-wide Composer installations remain untouched.
-- Users can invoke Composer either through the shim on `$PATH` (`composer ...`) or via `chauf composer ...`, both yielding identical behavior thanks to the shared shim.
-
-#### Project-Aware PHP Shim Behavior
-
-**PHP Shim Context Detection**: The `php` command (not just `chauf php`) automatically detects project context and selects appropriate PHP version:
-
-- **Inside Linked Project**: Uses PHP version specified in project's `project.yaml` via `chauf php isolate`
-- **Outside Any Project**: Uses global default PHP version set via `chauf php use <version>`
-- **Fallback Logic**: If no global default is configured, falls back to PHP 8.3
-- **Automatic Detection**: Projects detected by searching `~/.chauffeur/projects/` registry and matching project paths to current directory
-- **Seamless Integration**: Both `php -v` and `chauf php -v` now behave consistently based on directory context
-
-> **Version examples**: `8.3`, `8.2`, `7.4`. Keep semantic digits (major.minor), allow patch in metadata but runtime folder stays `major.minor`. Never writes to `/usr/bin`; shims live under `~/.chauffeur/bin/shims`.
-
-> **NOTE**: When implementing new commands or modifying existing ones, update all three documentation files immediately following the Documentation Synchronization Rule (see above).
-
----
-
-## 3) Filesystem Layout (contract)
-
+## 5. Workspace Layout & Config Contracts
 ```
 ~/.chauffeur/
   config/
     chauffeur.yaml          # global config (see schema below)
   projects/
     <slug>/
-      project.yaml          # per-project config: path, php, domain, ssl, created_at
-      runtime/
-        php-fpm/            # per-project php-fpm sockets/configs
-      logs/                 # nginx/php-fpm logs (if not global)
-  php/
-    8.3/                    # installed runtimes (bin, lib, etc.) — within workspace
-    8.2/
-    7.4/
+      project.yaml          # per-project state (path, php, domain, ssl, created_at)
+      runtime/php-fpm/
+      logs/
+  php/<version>/            # 8.3, 8.2, 7.4 … installed runtimes
   nginx/
-    bin/                    # nginx binary if installed by Chauffeur
-    etc/                    # nginx.conf, mime.types
+    bin/
+    etc/
     sites-available/
     sites-enabled/
     conf.d/
-    certs/                  # TLS assets for SSL-enabled sites
+    certs/
   bin/
-    chauf                   # the installed CLI (if self-managed)
-    shims/                  # wrapper scripts exposed on PATH (php-8.3, nginx, composer)
-  cli/
-    templates/
-      nginx/                # nginx template files (laravel.conf, wordpress.conf, general.conf)
+    chauf                   # optional self-managed binary
+    shims/                  # php, composer, php-<ver>
+  cli/templates/nginx/
 ```
 
-### `chauffeur.yaml` (global)
-
+### 5.1 `chauffeur.yaml`
 ```yaml
 version: 1
 telemetry: false
 workspace_dir: ~/.chauffeur
 nginx:
   enable: true
-  http_port: 8080   # User-space port to avoid system conflicts
-  https_port: 8443  # User-space port to avoid system conflicts
+  http_port: 8080
+  https_port: 8443
 php:
   default: 8.3
 ports:
-  start_range: 8080       # Port range for auto-allocation
+  start_range: 8080
   end_range: 8099
-  conflict_resolution: "prompt"  # Options: "prompt", "auto", "fail"
+  conflict_resolution: prompt   # prompt|auto|fail
   nginx_http_fallback: 8080
   nginx_https_fallback: 8443
   php_fpm_fallback: 9000
 projects_dir: ~/.chauffeur/projects
 ```
 
-### `project.yaml` (per project)
-
+### 5.2 `project.yaml`
 ```yaml
 version: 1
 path: /absolute/path/to/project
-php: 8.3               # overrides global default
+php: 8.3
 site:
-  domain: myproj.test  # optional
-  ssl: true            # optional
+  domain: slug.test
+  ssl: false
 runtime:
   php_fpm_socket: ~/.chauffeur/projects/<slug>/runtime/php-fpm/php-fpm.sock
 created_at: 2025-10-30T12:00:00+07:00
 ```
 
----
-
-## 4) Behavior & Invariants
-
-- **No external env managers**: Chauffeur runs binaries directly on the host from the workspace prefix.
-- **No system prefix writes**: Never touch `/usr/bin`, `/usr/local`, or system service units by default.
-- **Development Update Workflow**: During development phase, use incremental rebuilds instead of full reinstalls. Navigate to the local git repository and run `chauf self-update --dev` to rebuild the binary in-place. Only perform fresh installation when dealing with breaking changes. For service removal, use the built-in `chauf remove <service>` command (e.g., `chauf remove nginx`).
-- `chauf link` registers **PWD** unless `--project` explicitly provided elsewhere. Automatically assigns `<slug>.test` as default domain when `--site` flag is not specified.
-- Using dnsmasq avoids editing `/etc/hosts`; Chauffeur writes nginx configs that route `<slug>.test` → local upstreams.
-- Services must **not conflict** with host services or ports; prefer per‑project Unix sockets and reverse proxy fan‑out via nginx.
-- **Port Conflict Management**: Chauffeur automatically detects port conflicts and provides configurable resolution strategies. The system uses user-space ports by default (Nginx: 8080/8443, PHP-FPM: 9000) to avoid system service conflicts. Three resolution modes are available:
-  - **"prompt"** (default): Interactive prompts asking user to select alternative ports
-  - **"auto"**: Automatically selects available ports within the configured range
-  - **"fail"**: Fails immediately if port conflicts are detected
-  - Port ranges can be configured via `start_range` and `end_range` in `chauffeur.yaml`
-  - Custom ports can be specified per-project using `--http-port` and `--https-port` flags
-- **Port Forwarding Automation**: `chauf start` automatically configures iptables OUTPUT redirects for `127.0.0.1:80 → <http_port>` and `127.0.0.1:443 → <https_port>` whenever `chauf-nginx` is started and the configured ports differ from 80/443. The managed rules are tracked under `~/.chauffeur/system/port-forwarding.json` and cleaned up by `chauf stop` (when nginx stops) and `chauf remove nginx`.
-- PHP isolation: `use` sets **global** default; `isolate` writes **project.yaml** override.
-- When the configured default PHP runtime is missing from disk, the Chauffeur PHP shim scans installed versions under `~/.chauffeur/php/`, prompts the user to promote an existing version (highest installed by default), and, upon confirmation, runs `chauf php use <version>` automatically before re-running the command.
-- PHP shims are **project-aware**: the `php` command automatically detects project context and uses appropriate PHP version (project isolation + global default fallback).
-- `chauf link` generates `~/.chauffeur/projects/<slug>/project.yaml` (slug from directory name) and prepares runtime/log directories; `--force` must be supplied to overwrite an existing registration. The command also **automatically generates nginx configurations** based on detected project type:
-- **Laravel**: Detects `artisan` and `composer.json` with Laravel structure; nginx config routes to `/public` with Laravel-specific optimizations
-- **WordPress**: Detects `wp-config.php`, `wp-admin`, and `wp-includes`; nginx config includes WordPress-specific security and routing rules  
-- **General**: Fallback template for standard PHP applications with security headers and proper PHP-FPM integration
-
-Templates are stored under `cli/templates/nginx/` with variable substitution using `{{PROJECT_SLUG}}`, `{{SERVER_NAME}}`, `{{PROJECT_ROOT}}`, `{{PHP_FPM_SOCKET}}`, `{{LOGS_DIR}}`, and conditional SSL blocks with `{{#SSL}}...{{/SSL}}`. All configurations use **user-space ports** (HTTP: 8080, HTTPS: 8443) to avoid conflicts with system services, but optional port forwarding from 80→8080 and 443→8443 provides natural URL access. Generated nginx configs are placed in `~/.chauffeur/nginx/sites-available/` and symlinked to `~/.chauffeur/nginx/sites-enabled/`, and `nginx.conf` must include `~/.chauffeur/nginx/sites-enabled/*.conf`.
-Laravel templates ship only with stock nginx variables (no custom `$time_start`) so nginx never errors with "unknown variable" during boot.
-- `chauf unlink` removes project registrations and their directories; when run without flags and inside a registered project directory, it unlinks that project by default; explicit flags include `--slug <slug>` to unlink by project slug, `--site <domain>` to unlink by site domain, `--project <path>` to unlink by absolute path, and `--all` to unlink all projects; requires confirmation unless `--force` is provided.
-- `chauf php isolate <version>` validates that the requested runtime is installed and the current directory is linked before updating the project configuration.
-- `chauf remove` removes installed services from the Chauffeur workspace. By default, prompts for confirmation before deletion. With `--force`, removes without prompts. For PHP, can remove specific versions (`chauf remove php 8.3`) or all versions (`chauf remove php`). Automatically removes corresponding shims and updates default PHP if removed version was the default.
-- **dnsmasq Validation**: `chauf start` detects missing dnsmasq configuration for `.test` domains and offers to install/update `/etc/dnsmasq.d/chauffeur.conf` safely. Chauffeur never uninstalls system packages; even with `--force`, destructive actions only remove files under `~/.chauffeur/` and still require explicit confirmation for PHP runtime deletions.
-- `chauf self-update` ensures a clean git workspace, fast-forwards the Chauffeur repo under `~/.chauffeur/src/chauffeur` using the SSH remote `git@github.com:SIAJI-Labs/chauffeur.git` by default (override via `CHAUF_REPO_URL`), then rebuilds the CLI binary; service runtimes remain untouched (use `chauf install <service> --force` to refresh runtimes).
-- With `--dev` flag, `chauf self-update --dev` rebuilds the CLI binary from the current working directory if it's a valid Chauffeur repository (must be a git repo containing `cli/main.go`, `go.mod`, and `AGENTS.md`).
-- First install must handle not‑on‑PATH scenario: provide shell one‑liner to add `~/.chauffeur/bin` to PATH in `~/.bashrc`/`~/.zshrc`.
-- **DNS Management**: Commands that start services or require local domain resolution check for dnsmasq configuration in `/etc/dnsmasq.d/chauffeur.conf`. If missing, commands prompt users to automatically install the configuration with `.test` domain resolution to `127.0.0.1`. The configuration includes: `address=/.test/127.0.0.1`, `listen-address=127.0.0.1`, and `bind-interfaces` for secure local-only operation. Commands automatically restart dnsmasq after configuration changes.
-- **Resolver Health Check**: `chauf start` resolves the synthetic domain `chauffeur-dns-probe.test` and expects `127.0.0.1`. If resolution fails, Chauffeur restarts dnsmasq/NetworkManager and aborts with instructions when the system resolver is not pointed at the local dnsmasq instance.
-- **Host DNS Conflict Detection**: When `systemd-resolved`'s stub listener already holds port 53 (127.0.0.53), Chauffeur first attempts to enable NetworkManager's dnsmasq integration automatically (`/etc/NetworkManager/conf.d/90-chauffeur-dns.conf`, `/etc/NetworkManager/dnsmasq.d/chauffeur.conf`, plus `/etc/systemd/resolved.conf.d/90-chauffeur-disable-stub.conf`). If NetworkManager is unavailable, the CLI halts with explicit manual guidance. `chauf remove nginx`/`chauf uninstall --purge` must remove these drop-ins to leave the host resolver untouched.
-
----
-
-## 5) Code Generation Guidelines (for Codex)
-
-- Prefer **Go** for the main CLI (single static binary). Use Bash only for thin wrappers.
-- Support Linux first; avoid macOS/Windows assumptions.
-- **Idempotency**: Re-running `init`, `install`, `link` should never corrupt state.
-- **Install prefix**: All binaries/configs live under `~/.chauffeur/` only.
-- **PATH shims**: Create wrappers in `~/.chauffeur/bin/shims` for each binary.
-- **Dry‑runs**: When `--dry-run` is present, print planned actions without side-effects.
-- **Logging**: Follow the standardized CLI logging specification below.
-- **Failure logs**: Any command failure must append a detailed log entry under `<workspace>/logs/<component>/`. Log filenames follow `<action>[-<version>]-<YYYYMMDDTHHMMSSZ>.log`, and CLI output must surface the exact path.
-- **Errors**: Clear actionable messages with suggested fix.
-- **Permissions**: Do not require root; if privileged steps are unavoidable, print the exact `sudo` command for the user to run.
-- **CLI Modularity**: Keep `main.go` limited to dispatch; implement each command in its own Go file/package (e.g. `cli/commands/<command>.go`) with focused helpers.
-
----
-
-## 5.1) CLI Logging Specification
-
-All Chauffeur CLI commands must follow a consistent, human-readable logging pattern that balances visual appeal with informative output. The logging system is inspired by the `self-update` command's style and incorporates structured progress indicators.
-
-### 5.1.1) Color and Formatting Standards
-
-**ANSI Color Palette (from self-update command):**
-```go
-const (
-    colorReset  = "\033[0m"
-    colorRed    = "\033[31m"
-    colorGreen  = "\033[32m"
-    colorYellow = "\033[33m"
-    colorBlue   = "\033[34m"
-    colorGray   = "\033[90m"
-    colorBold   = "\033[1m"
-)
-```
-
-**Usage Patterns:**
-- `blue("[ command-name ]")` - Command prefix for status messages
-- `bold(text)` - Important information, headers, summaries
-- `green("✓")` - Success indicators
-- `red("✗")` - Failure indicators  
-- `yellow(text)` - Warnings, EOL notices, cautions
-- `gray(text)` - Secondary information, URLs, SHAs, file paths
-- `colorize(color, text)` - Helper function with terminal detection
-
-### 5.1.2) Progress Indicators
-
-**Spinners (for indeterminate operations):**
-```go
-type progressSpinner struct {
-    message    string
-    enabled    bool
-    stop       chan struct{}
-    done       chan struct{}
-    startTime  time.Time
-    dotCounter int
-}
-
-// Usage patterns from self-update:
-spin := newSpinner("Cloning Chauffeur sources")  // Active operation
-spin.Success("into ~/.chauffeur/src/chauffeur") // Success with context
-spin.Fail("clone failed")                        // Failure with context
-```
-
-**Progress Bars (for downloads/long-running transfers):**
-```go
-type progressPrinter struct {
-    label     string
-    total     int64
-    current   int64
-    width     int
-    lastPrint time.Time
-}
-
-// Usage from installers:
-progress := newProgressPrinter("Download nginx.tar.gz", totalBytes)
-writer = io.MultiWriter(file, progress)
-// Renders: "    - Download nginx.tar.gz [##########........] 65%"
-```
-
-### 5.1.3) Command Output Structure
-
-**Multi-step Operation Format (like self-update):**
-```
-[ self-update ] Starting self-update process...
-[ self-update ] Cloning Chauffeur sources ✓ into ~/.chauffeur/src/chauffeur (42.1s)
-[ self-update ] Updating branch main ✓ updated to a1b2c3d (was f4e5d6c, 12.3s)
-[ self-update ] Building Chauffeur CLI ✓ binary installed to /usr/local/bin/chauf (8.7s)
-
-[ self-update ] Summary:
-  └── Duration: 63.2s
-  └── Previous: f4e5d6c
-  └── Current:  a1b2c3d
-  └── Changes:  updated
-
-[ self-update ] Self-update complete (commit a1b2c3d).
-```
-
-**Installation Command Format (like service install):**
-```
-[ install ] Installing PHP 8.3...
-[ install ] Downloading php-8.3.12.tar.gz... [####################] 100% (15.2 MiB)
-[ install ] Extracting source archive... ✓ (2.1s)
-[ install ] Configuring build environment... ✓ (1.8s)
-[ install ] Compiling PHP 8.3... ✓ (3m 42.1s)
-[ install ] Installing to ~/.chauffeur/php/8.3... ✓ (0.8s)
-
-[ install ] PHP 8.3 installation complete.
-  └── Location: ~/.chauffeur/php/8.3
-  └── PHP CLI: ~/.chauffeur/bin/shims/php-8.3
-  └── Extensions: gd, pdo, curl, json, mbstring
-```
-
-**Error Handling Format:**
-```
-[ install ] Downloading nginx.tar.gz ✗ failed
-  └── Error: HTTP 404: https://nginx.org/download/nginx-1.25.3.tar.gz
-  └── Suggestion: Check if the version exists or try --force to reinstall
-```
-
-**Warning/Informational Format:**
-```
-[ install ] Installing PHP 7.4...
-  ⚠ Warning: PHP 7.4 has reached End of Life (EOL)
-  └── Consider using PHP 8.2+ for production deployments
-[ install ] Continuing with PHP 7.4 installation...
-```
-
-### 5.1.4) Status Message Patterns
-
-**Command Prefixes (consistent across all commands):**
-```go
-const statusPrefix = "[ command-name ]"  // Replace with actual command
-```
-
-**Operation Progress Messages:**
-- Present continuous: `"Downloading..."`, `"Configuring..."`, `"Building..."`
-- Active with context: `"Downloading to ~/.chauffeur/cache..."`
-
-**Status Indicators:**
-- `✓` or `green("✓")` - Success completion
-- `✗` or `red("✗")` - Failed completion  
-- `⚠` or `yellow("⚠")` - Warning/caution
-- `└──` - Hierarchical context information (gray)
-
-### 5.1.5) Timing Information
-
-**Duration Formatting:**
-```go
-func formatDuration(d time.Duration) string {
-    // Handles appropriate human-readable formatting
-    // Examples: "42.1s", "3m 42.1s", "1h 23m 45s"
-}
-```
-
-**Always show timing:**
-- Operation completion: `✓ (2.3s)`
-- Download progress: `[####...] 67% (12.3 MiB/s)`
-- Summary sections: Include overall duration
-
-### 5.1.6) Terminal Detection
-
-**Always implement terminal-aware output:**
-```go
-func isTerminal(f *os.File) bool {
-    info, err := f.Stat()
-    if err != nil {
-        return false
-    }
-    return (info.Mode() & os.ModeCharDevice) != 0
-}
-
-func colorize(color, text string) string {
-    if !isTerminal(os.Stdout) {
-        return text  // Strip colors when not a terminal
-    }
-    return color + text + colorReset
-}
-```
-
-**Fallback for non-terminals:**
-- Remove spinner animations, show static messages
-- Remove color formatting
-- Keep progress bars functional (text-based)
-
-### 5.1.7) Logging Implementation Requirements
-
-**New Helper Functions (create in cli/lib):**
-```go
-// Logger provides flexible logging with command context and hierarchical output
-type Logger struct {
-    name       string
-    command    string
-    colors     bool
-    level      LogLevel
-    parent     bool  // Whether this is a parent logger (for nested output)
-    timestamps bool  // Include timestamps
-}
-
-// Configuration options
-type LoggerConfig struct {
-    Name       string    // Logger name (optional, overrides command)
-    Command    string    // Command name for prefix
-    Level      LogLevel  // Minimum log level to output
-    Colors     bool      // Enable color output (auto-detected if not set)
-    Timestamps bool      // Include timestamps
-    Parent     bool      // Is this a parent logger
-}
-
-// Methods to implement:
-- NewLogger(command string) *Logger
-- NewLoggerWithConfig(LoggerConfig) *Logger
-- NewCommandLogger(command string) *Logger  // Backward compatibility
-- NewChildLogger(childCommand string) *Logger
-- WithLevel(LogLevel) *Logger
-- WithColors(bool) *Logger
-- WithTimestamps(bool) *Logger
-- Info(message string)
-- Debug(message string)
-- Success(message, context string)
-- Error(message, details string) error
-- Warn(message, context string)
-- Fail(message, error string) error  // Backward compatibility
-- PrintSection(title string)
-- PrintSummary(items []SummaryItem)
-- PrintList(items []string, bullet string)
-- PrintTable(headers []string, rows [][]string)
-- LogOperationStart(operation string)
-- LogOperationEnd(operation string, duration time.Duration, success bool)
-- LogFileOperation(operation, filePath string, success bool)
-- LogNetworkOperation(operation, url string, size int64, success bool)
-```
-
-**Integration Points:**
-- All command handlers should create a logger instance using `lib.NewCommandLogger()`
-- Replace `fmt.Printf` calls with structured logger methods (`logger.Info()`, `logger.Success()`, etc.)
-- Ensure consistent prefix usage: `[ command-name ]` 
-- Add appropriate color and formatting based on output type
-
-# **IMPORTANT REQUIREMENT: MANDATORY USAGE PATTERN**
-All repetitive operations and logging calls MUST use the new lib.Logger system. Direct fmt.Printf calls with manual formatting are PROHIBITED because they bypass the structured logging system.
-
-# **Correct Usage Examples**:
-```go
-// Create logger instance
-logger := lib.NewCommandLogger("install")
-
-// Use structured logging methods
-logger.Info("Installing nginx")
-logger.Success("Installation complete", "path/to/binary")
-logger.Warn("Optional feature not available", "consider enabling")
-
-// Use child loggers for nested operations
-buildLogger := logger.NewChildLogger("php")
-buildLogger.Info("Starting compilation")
-
-# **PROHIBITED PATTERNS:**
-```go
-// ❌ WRONG - Direct fmt.Printf calls break logging hierarchy
-logger := lib.NewCommandLogger("install")
-fmt.Printf("[install] Installing nginx\n") // Should use logger.Info()
-
-// ❌ WRONG - Manual spinner creation bypasses lib logging
-spin := progressSpinner{...} // Use lib.NewSpinner instead
-
-// ❌ WRONG - Manual progress printing bypasses lib progress tracking
-fmt.Printf("Progress: 50%%\n") // Use lib.NewProgressPrinter instead
-```
-
-# **Integration Examples:**
-```go
-// Replace existing patterns like:
-// OLD CODE (to be replaced):
-// fmt.Printf("\r[ %s ] %s %s %s (%s)\n", s.command, s.message, green("✓"), summary, gray(durationStr))
-
-// With lib.Logger:
-logger := lib.NewCommandLogger(s.command)
-logger.Success(summary, "")
-
-// For spinner animations - ALWAYS use lib:
-spin := lib.NewSpinner("command", "message")
-spin.Success("operation completed")
-```
-
-### 5.1.8) Log File Structure
-
-**Detailed Failure Logs:**
-```
-~/.chauffeur/logs/
-  install/
-    php-8.3-install-20250104T143022Z.log  // Detailed error log
-    nginx-install-20250104T142155Z.log
-  self-update/
-    update-20250104T141533Z.log
-```
-
-**Log File Format:**
-```
-2025-01-04T14:30:22Z [INFO] Starting PHP 8.3 installation
-2025-01-04T14:30:22Z [DEBUG] Workspace: /home/user/.chauffeur
-2025-01-04T14:30:23Z [INFO] Downloading from https://www.php.net/distributions/php-8.3.12.tar.gz
-2025-01-04T14:30:38Z [ERROR] Download failed: HTTP 404: Not Found
-2025-01-04T14:30:38Z [ERROR] Stack trace: ...
-```
-
-**Always show log file path on failures:**
-```
-[ install ] Download failed ✗
-  └── Error: HTTP 404 from download URL
-  └── Detailed log: ~/.chauffeur/logs/install/php-8.3-install-20250104T143022Z.log
-```
-
-### 🚨 **CRITICAL ENFORCEMENT REMINDER**
-
-**ZERO TOLERANCE FOR `fmt.Printf` WITH COMMAND PREFIXES**: 
-- **❌ ABSOLUTELY FORBIDDEN**: Any `fmt.Printf` calls with manual command prefixes like `[command]`
-- **✅ MANDATORY**: All command output must use `lib.NewCommandLogger()` methods
-
-**Quick Enforcement Checklist**:
-1. ✅ `logger := lib.NewCommandLogger("command")` - Always create logger first
-2. ✅ `logger.Info("message")` - For regular messages
-3. ✅ `logger.Success("operation", "context")` - For completed operations
-4. ✅ `logger.Error("failed", "details")` - For errors
-5. ❌ `fmt.Printf("[command] message\n")` - NEVER do this
-
-**Code Review Rule**: Any instance of `fmt.Printf` with a command prefix is a **blocking issue** that must be fixed before merging.
-
----
-
-## 6) Example Snippets
-
-### 6.1 Generate per‑project PHP‑FPM pool
-
-**Prompt to Codex**: "Create a php-fpm pool config that listens on `<socket>` for user `<user>`, sets `pm = ondemand`, and logs to `<logdir>`."
-
-**Target** (`.conf`):
-```
-[project]
-user = <user>
-group = <user>
-listen = <socket>
-listen.owner = <user>
-listen.group = <user>
-pm = ondemand
-pm.max_children = 10
-php_admin_value[error_log] = <logdir>/php-fpm-error.log
-php_admin_flag[log_errors] = on
-```
-
-### 6.2 Nginx HTTPS server block for project domain
-
-**Prompt**: "Serve `myproj.test` over HTTPS on user-space ports, proxying to Unix socket `<socket>`, and reference certificates stored under `~/.chauffeur/nginx/certs`."
-
-**Target** (`nginx.conf` fragment):
-```
-server {
-    listen 8443 ssl http2;
-    server_name myproj.test;
-    root /absolute/path/to/project/public;
-    index index.php index.html;
-
-    ssl_certificate ~/.chauffeur/nginx/certs/myproj.test.crt;
-    ssl_certificate_key ~/.chauffeur/nginx/certs/myproj.test.key;
-    ssl_protocols TLSv1.2 TLSv1.3;
-
-    location / {
-        try_files $uri $uri/ /index.php?$query_string;
-    }
-
-    location ~ \.php$ {
-        fastcgi_pass unix:<socket>;
-        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
-        include fastcgi_params;
-    }
-}
-```
-
-### 6.3 `chauf link` writes project.yaml
-
-**Prompt**: "If `--php` given, write per‑project override; compute `<slug>` from basename; ensure dirs created; avoid overwrite unless `--force`."
-
-**Target** (Go pseudo‑code):
-```
-slug := slugify(filepath.Base(pwd))
-proj := Project{ Path: pwd, PHP: optPHP, Site: {...} }
-WriteYAML("~/.chauffeur/projects/"+slug+"/project.yaml", proj)
-```
-
----
-
-## 7) Testing Standards
-
-**Directory Structure**: All tests must be organized under `tests/` following operation-based structure:
-```
-tests/
-├── install/
-│   ├── php_test.go          # PHP installation tests
-│   ├── nginx_test.go        # Nginx installation tests
-│   └── composer_test.go     # Composer installation tests
-├── remove/
-│   └── remove_command_test.go # Service removal tests
-├── link/
-│   ├── link_project_test.go  # Project linking tests
-│   ├── unlink_project_test.go # Project unlinking tests
-│   └── list_projects_test.go # Project listing tests
-├── php/
-│   ├── php_use_test.go      # PHP global version switching
-│   ├── php_isolate_test.go  # Project PHP isolation
-│   └── php_binary_test.go   # PHP binary execution
-├── self_update/
-│   ├── update_test.go       # Self-update functionality
-│   └── dev_update_test.go   # Development mode updates
-├── start_stop/
-│   ├── start_test.go        # Service startup tests
-│   └── stop_test.go         # Service shutdown tests
-└── integration/
-    ├── end_to_end_test.go   # Full workflow tests
-    └── real_world_test.go   # Real-world scenario tests
-```
-
-**Test Function Naming**: Use descriptive names following the pattern:
-```go
-func TestCommandComponentAction(t *testing.T)
-func TestLinkProjectCreatesConfig(t *testing.T)
-func TestPhpUseSetsDefaultVersion(t *testing.T)
-func TestSelfUpdateDevModeRebuildsFromRepo(t *testing.T)
-```
-
-**Test Structure and Coverage**:
-
-### 7.1) Standard Test Template
-
-All tests should follow this structure:
-```go
-func TestCommandSpecificBehavior(t *testing.T) {
-    // 1. Setup: Create temporary environment
-    tmpHome := t.TempDir()
-    t.Setenv("HOME", tmpHome)
-    
-    // 2. Arrange: Set up the test state
-    // - Create necessary directories
-    // - Set up mock files
-    // - Configure environment variables
-    
-    // 3. Act: Execute the function/behavior being tested
-    output := captureOutput(func() error {
-        return commands.RunCommand([]string{"arg1", "arg2"})
-    })
-    
-    // 4. Assert: Verify the results
-    assert.Contains(t, output, "expected message")
-    assert.FileExists(t, expectedFilePath)
-    
-    // 5. Cleanup: Use t.Cleanup() for any manual cleanup
-    t.Cleanup(func() {
-        // Clean up resources
-    })
-}
-```
-
-### 7.2) Coverage Requirements
-
-**Minimum Coverage Standards**:
-- **Unit Tests**: 80% line coverage minimum for all packages
-- **Integration Tests**: Cover all command entry points and success/failure paths
-- **Error Paths**: Test all error conditions and edge cases
-- **File Operations**: Test file creation, modification, deletion
-- **Environment Variables**: Test with different HOME, PATH configurations
-
-**Required Test Categories**:
-
-#### 7.2.1) Command Tests
-- **Success Cases**: Normal operation flows
-- **Error Cases**: Invalid arguments, missing files, permission issues
-- **Edge Cases**: Empty inputs, corrupted files, network failures
-- **Flag Combinations**: Test all flag combinations and interactions
-
-#### 7.2.2) Installation Tests  
-- **Clean Install**: First-time installation scenarios
-- **Reinstall**: Installing over existing installations
-- **Force Install**: `--force` flag behavior
-- **Version Validation**: Supported/unsupported version handling
-- **Network Errors**: Timeout, connection failure scenarios
-
-#### 7.2.3) Configuration Tests
-- **Default Config**: Creating and reading default configurations
-- **Custom Config**: Handling user modifications
-- **Migration**: Config version upgrades and backwards compatibility
-- **Validation**: Invalid configuration detection and error reporting
-
-#### 7.2.4) File System Tests
-- **Permission Handling**: Different permission scenarios
-- **Path Resolution**: Relative/absolute path handling
-- **Race Conditions**: Concurrent access scenarios
-- **Symlinks**: Symlink creation, following, and validation
-
-### 7.3) Test Utilities and Helpers
-
-**Standard Helper Functions** (in `tests/helpers_test.go`):
-```go
-// Already exists: captureOutput(), captureError()
-// Add these standard helpers:
-
-// createTempFile creates a temporary file with given content
-func createTempFile(t *testing.T, content string) string
-
-// createMockWorkspace sets up a complete mock chauffeur workspace
-func createMockWorkspace(t *testing.T, versions ...string) string
-
-// mockPHPInstallation creates a fake PHP installation
-func mockPHPInstallation(t *testing.T, tmpHome, version string) string
-
-// assertProjectConfig validates project.yaml contents
-func assertProjectConfig(t *testing.T, configPath string, expected interface{})
-
-// assertLogEntry checks if specific log entry exists
-func assertLogEntry(t *testing.T, logPath, expectedMessage string)
-```
-
-### 7.4) Integration Test Standards
-
-**End-to-End Tests**: Should cover complete user workflows:
-```go
-func TestCompleteWorkflow_PHPProjectSetup(t *testing.T) {
-    // 1. Install Chauffeur
-    // 2. Install PHP 8.3
-    // 3. Create test project
-    // 4. Link project with custom domain
-    // 5. Isolate project to specific PHP version
-    // 6. Start services
-    // 7. Verify accessibility
-    // 8. Stop and cleanup
-}
-```
-
-### 7.5) Mock and Test Structure Guidelines
-
-**Test Isolation**: Each test should:
-- Use `t.TempDir()` for temporary directories
-- Use `t.Setenv()` for environment variables
-- Use `t.Cleanup()` for cleanup operations
-- Never modify the actual user's `~/.chauffeur/` directory
-
-**Dependency Injection**:
-- Use interface-based design for easier mocking
-- Create testable functions that accept dependencies
-- Avoid static global state in production code
-
-### 7.6) Performance and Reliability Tests
-
-**Benchmark Tests**:
-```go
-func BenchmarkPHPInstallation(b *testing.B) {
-    for i := 0; i < b.N; i++ {
-        // Benchmark installation performance
-    }
-}
-```
-
-**Parallel Testing**:
-```go
-func TestConcurrentOperations(t *testing.T) {
-    t.Parallel()
-    // Test concurrent command execution
-}
-```
-
-### 7.7) Test Execution and CI Integration
-
-**Test Standards for CI/CD**:
-- All tests must pass on clean environments
-- Use deterministic versions and checksums in tests
-- Mock external dependencies (HTTP calls, filesystem operations)
-- Include timeout handling for long-running operations
-
-**Local Development**:
-```bash
-# Run all tests with coverage
-go test -v -race -coverprofile=coverage.out ./tests/...
-
-# Run specific test category  
-go test -v ./tests/install/...
-
-# Run with coverage requirements
-go test -v -race -cover ./tests/ && \
-  go tool cover -func=coverage.out | \
-  awk '/total:/{print $3}' | \
-  sed 's/%//' | \
-  awk '{if($1 < 80) {exit 1}}'
-```
-
-### 7.8) Test Documentation
-
-**Test Documentation Requirements**:
-- Each test package should have a package comment explaining its purpose
-- Complex tests should have inline comments explaining the test scenario
-- Integration tests should document the user workflow being tested
-- Performance-sensitive tests should include timing expectations
-
-**Example Package Comment**:
-```go
-// Package install tests the chauffeur installation commands.
-// These tests verify:
-// - Service installation (php, nginx, composer)
-// - Configuration file generation
-// - Error handling for various failure scenarios
-// - File system interaction and permission handling
-package install
-```
-
-### 7.9) Logging and Progress Testing Implementation
-
-**Logging Framework Testing**:
-```go
-// tests/logging_test.go - Comprehensive logging system validation
-func TestLogging_CommandOutput(t *testing.T) {
-    // Tests that commands produce reasonable output without panics
-    // Verifies no runtime errors or crashes in logging output
-}
-
-func TestLogging_ErrorFormat(t *testing.T) {
-    // Tests error handling and formatting
-    // Ensures proper error messages without system crashes
-}
-
-func TestLogging_IntegrationTest(t *testing.T) {
-    // Tests logging integration with real commands
-    // Validates logging system doesn't interfere with command execution
-}
-```
-
-**Progress Tracking Testing**:
-```go
-// tests/progress_test.go - Progress bar and download tracking validation
-func TestProgress_HumanBytes(t *testing.T) {
-    // Tests human-readable byte formatting
-    // Validates formatting accuracy across different byte counts
-}
-
-func TestProgress_DownloadSimulation(t *testing.T) {
-    // Tests progress tracking during file operations
-    // Verifies progress bars update correctly without panics
-}
-
-func TestProgress_ProgressBarIntegration(t *testing.T) {
-    // Tests multi-step progress operations
-    // Validates completion tracking and percentage display
-}
-```
-
-**Service Removal Testing**:
-```go
-// tests/remove_command_test.go - Service removal validation  
-func TestRemove_MissingArguments(t *testing.T) {
-    // Tests error handling when no services specified
-    // Validates proper error messages and usage guidance
-}
-
-func TestRemove_UnknownService(t *testing.T) {
-    // Tests validation of unknown service names
-    // Ensures only known services (php, nginx, composer) can be removed
-}
-
-func TestRemove_PHPAllVersions(t *testing.T) {
-    // Tests removal of all PHP versions
-    // Validates directory cleanup and shim removal
-}
-
-func TestRemove_SpecificPHPVersion(t *testing.T) {
-    // Tests removal of specific PHP version
-    // Confirms per-version removal doesn't affect other versions
-}
-
-func TestRemove_NginxService(t *testing.T) {
-    // Tests nginx service removal
-    // Validates complete nginx directory cleanup
-}
-
-func TestRemove_MultipleServices(t *testing.T) {
-    // Tests simultaneous removal of multiple services
-    // Validates batch processing and error handling
-}
-```
-
-**Test Results**:
-- All 11 logging/progress tests pass successfully
-- 12 comprehensive remove command tests covering all scenarios
-- Progress bars display correctly with `[ remove ]` prefix
-- Color formatting works with proper terminal detection  
-- Error handling prevents system crashes and panics
-- Performance impact is minimal (commands complete quickly)
-- Integration tests verify logging doesn't interfere with execution
-
-**Implementation Coverage**:
-- ✅ Command prefix formatting (`[ command-name ]`)
-- ✅ Progress bar percentage display (e.g., `[###....] 25%`)
-- ✅ Color coding (green for success, red for failure, yellow for warnings)
-- ✅ Terminal detection (graceful fallback for non-interactive)
-- ✅ Error resilience (no panics, no crashes)
-- ✅ Performance safety (minimal overhead)
-- ✅ Integration compatibility (works with existing commands)
-
----
-
-## 8) ADRs (Architecture Decision Records)
-
-1. **ADR‑001: Manual Registration**  – Accepted 2025‑10‑30  
-2. **ADR‑002: Nginx + dnsmasq for Local Domains** – Accepted 2025‑10‑30  
-3. **ADR‑003: PHP Isolation Model** – Accepted 2025‑10‑30  
-4. **ADR‑004: No DB/Queues** – Accepted 2025‑10‑30  
-5. **ADR‑005: Go as Primary Language** – Accepted 2025‑10‑30  
-6. **ADR‑006: No Devbox; Host-Scoped Install Prefix** – Accepted 2025‑11‑02  
-   - **Context**: Avoid external dependencies and system conflicts.  
-   - **Decision**: Manage all tool binaries (PHP, Nginx, Composer, etc.) inside `~/.chauffeur/` with shims; do not modify `/usr/bin`.  
-   - **Consequences**: Reproducible, user-space installs; zero collision with distro package managers.
-
----
-
-## 9) Prompts & Guardrails for Codex
-
-- Always assume **UTC** timestamps in generated files unless otherwise specified.
-- When creating files in `$HOME`, expand to absolute paths.
-- Do not write outside `~/.chauffeur/` unless the user explicitly asks.
-- Prefer Unix sockets over TCP for local FastCGI.
-- For PHP versions, normalize to `major.minor` for folder names.
-- Provide migration messages when a schema changes (`version:` key).
-
-**Style**
-- Write clean, commented Go code; small focused packages; avoid global state.
-- Configuration access via a single `config` package with typed structs and defaults.
-- Command parsing via `spf13/cobra` (or stdlib `flag` if minimal). Provide `--help` autogen.
-
-### 5.3) Progress and Logging Standardization
-
-**Mandatory Progress Helpers**: All repetitive operations must use standardized progress helpers from `cli/lib/progress.go`. No manual progress printing or duplicate implementations allowed.
-
-**Required Usage Patterns**:
-```go
-// For indeterminate operations (compilation, configuration, etc.)
-spin := lib.NewSpinner("command-name", "Describing operation")
-// ... perform operation ...
-spin.Success("completed with context")
-
-// For determinate operations (downloads, file transfers, etc.)
-logger := logging.NewCommandLogger("command-name") 
-progress := lib.NewProgressPrinterWithLogger("Downloading file.zip", totalBytes, logger)
-writer = io.MultiWriter(file, progress)
-// ... perform download/copy ...
-progress.Finish()
-```
-
-**Standard Helper Functions (cli/lib/progress.go)**:
-```go
-// Progress bars for downloads/file operations
-func NewProgressPrinter(label string, total int64) *progressPrinter
-func NewProgressPrinterWithLogger(label string, total int64, logger *lib.Logger) *progressPrinter
-func NewProgressPrinterWithLoggerAndCommand(label string, total int64, logger *lib.Logger, command string) *progressPrinter
-func (p *progressPrinter) Write(b []byte) (int, error)
-func (p *progressPrinter) Finish()
-func HumanBytes(n int64) string
-
-// Spinners for indeterminate operations (unified animated implementation)
-func NewSpinner(command, message string) *progressSpinner
-func (spin *progressSpinner) Success(summary string)
-func (spin *progressSpinner) Fail(summary string)
-```
-
-**Progress Template Requirements**:
-- Always use `io.MultiWriter(file, progress)` for file operations
-- Follow logging prefix format: `[ command-name ]`  
-- Include timing information: `(2.3s)`
-- Show human-readable byte sizes: `15.2 MiB`
-- Use clear success/failure indicators: `✓`/`✗`
-- **NO SPAM**: Progress bars update on single line only (e.g., `[##########........] 65%`)
-- **Throttled Updates**: Minimum 250ms between progress updates to prevent output spam
-
-**Anti-Patterns (PROHIBITED)**:
-```go
-// ❌ DO NOT: Manual progress printing
-fmt.Printf("Download progress: %d%%\n", percent)
-
-// ❌ DO NOT: Spamming progress updates (creates line-by-line spam)
-fmt.Printf(".... 10%%\n")
-fmt.Printf(".......... 20%%\n")  // This is what we're preventing!
-
-// ❌ DO NOT: Duplicate progress implementations
-type myProgressPrinter struct { ... } // Use lib.NewProgressPrinter instead
-
-// ❌ DO NOT: Custom spinner logic  
-fmt.Printf("\rWorking..%s", dots[i%len(dots)]) // Use lib.NewSpinner instead
-
-// ❌ DO NOT: Mix logger with fmt.Printf
-logger := lib.NewCommandLogger("command")
-fmt.Printf("[command] Something happened\n") // Should use logger.Info()
-```
-
-**Usage Examples**:
-```go
-// Download with progress bar - ALWAYS use this pattern
-logger := lib.NewCommandLogger("install")
-progress := lib.NewProgressPrinterWithLogger("Downloading nginx.tar.gz", totalBytes, logger)
-writer = io.MultiWriter(destinationFile, progress)
-defer progress.Finish()
-written, err := io.Copy(writer, response.Body)
-
-// Long-running operation - ALWAYS use this pattern  
-spin := lib.NewSpinner("compile", "Configuring and compiling PHP")
-if err := compilePHP(); err != nil {
-    spin.Fail("compilation failed")
-    return err
-}
-spin.Success("binary installed to /path/to/php")
-
-// Advanced logging with configuration and child loggers
-mainLogger := lib.NewLoggerWithConfig(lib.LoggerConfig{
-    Command: "install",
-    Level: lib.InfoLevel,
-    Timestamps: true,
-})
-childLogger := mainLogger.NewChildLogger("php")
-childLogger.Info("Starting PHP compilation...")
-```
-
-### 5.2) Sensitive Code Marking
-
-**Sensitive Code Comments**: All code that handles sensitive operations, secrets, passwords, or security-critical functionality must be marked with `// SENSITIVE: {reason}` comments.
-
-**Required Usage Scenarios**:
-```go
-// SENSITIVE: Password prompt - user input captured without masking
-password := promptPassword("Enter password: ")
-
-// SENSITIVE: Secret key generation for SSL certificates  
-privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
-
-// SENSITIVE: System file modification - requires elevated privileges
-err = os.WriteFile("/etc/dnsmasq.d/chauffeur.conf", config, 0644)
-
-// SENSITIVE: Network request to external API with authentication
-resp, err := http.NewRequest("POST", apiURL, body)
-
-// SENSITIVE: User input confirmation for destructive operations
-confirm := prompt.Confirm("This will permanently delete all PHP installations. Continue?")
-```
-
-**Reason Categories**:
-- `"Password prompt"` - Password or passphrase input handling
-- `"Secret generation"` - Cryptographic key/certificate generation  
-- `"System file modification"` - Writing to privileged system locations
-- `"External API request"` - Network requests with authentication tokens
-- `"Destructive operation"` - Operations requiring explicit user confirmation
-- `"Credential storage"` - Saving or retrieving passwords/tokens
-- `"Environment access"` - Accessing sensitive environment variables
-- `"Process execution"` - Running external commands with elevated permissions
-
-**Implementation Rules**:
-1. **Mandatory**: All code sections matching the scenarios above must include the comment
-2. **Placement**: Place the comment immediately before the sensitive operation
-3. **Specificity**: Use standardized reason categories from the list above
-4. **Documentation**: Brief explanation of what makes the operation sensitive
-5. **Review Threshold**: Code marked as sensitive requires additional security review
-
-**Examples of Security-Sensitive Operations**:
-- Password prompts or secret input
-- Cryptographic key generation and storage
-- System configuration file modifications
-- Requests to external APIs with authentication
-- File system operations requiring sudo/root access
-- Environment variable access for secrets
-- Process execution with elevated permissions
-- User confirmation for destructive operations
-- Private key handling for SSL/TLS
-
----
-
-## 10) Acceptance Tests (high‑level)
-
-1. `chauf init` creates workspace with user-space ports by default; re‑running is no‑op.
-2. `chauf php install 8.3` creates `~/.chauffeur/php/8.3/bin/php`.
-3. `chauf php use 8.3` updates `chauffeur.yaml` default.
-4. `chauf link --site myproj.test --ssl --php 8.2` creates project folder structure, `project.yaml` metadata, and **automatically generates nginx configuration** based on detected project type (Laravel/WordPress/general). When `--site` is omitted, automatically assigns `<slug>.test` domain.
-4a. `chauf link` in directory `/path/to/my-project` automatically assigns `my-project.test` domain and generates configuration for that domain.
-5. `chauf php isolate 7.4` updates the linked project's `project.yaml` with the per-project PHP override **and regenerates the nginx configuration** for the new PHP-FPM socket.
-6. `chauf self-update` fast-forwards the workspace git clone and rebuilds the CLI binary in-place.
-7. `chauf start` in project directory boots required services; `stop` halts them cleanly.
-8. **Project-aware PHP shim**: `php -v` inside linked project uses isolated version; `php -v` outside uses global default.  
-9. **Template workflow**: `chauf unlink` removes the project registration **and** the associated nginx configuration.
-
----
-
-## 11) Glossary
-
-- **Workspace**: `~/.chauffeur/` root directory.  
-- **Isolation**: Per‑project PHP‑FPM and config; no host conflicts.  
-- **Registration**: Tracking a project via `project.yaml` under `projects/`.
-
----
-
-## 12) Open Questions / TODOs
-
-- Decide acquisition method per binary: build-from-source vs vendor tarballs (with checksum/signature verification).  
-- Define Windows/macOS support stance.  
-- Choose logging format and rotation policy.  
-- SSL internal CA persistence & trust bootstrapping UX.
-
----
+## 6. Command Surface (authoritative)
+| Command | Key Flags | Summary |
+|---------|-----------|---------|
+| `chauf init` | `--force`, `--quiet` | Bootstrap workspace under `~/.chauffeur/`. Idempotent. |
+| `chauf start` | `--project <path>`, `--all`, `--dry-run` | Start nginx/PHP-FPM plus dnsmasq validation. |
+| `chauf stop` | same flags as start | Stop services and clean port-forward rules. |
+| `chauf status` | `[service-type]`, `--project`, `--detail`, `-v` | Show status for global or per-project services. |
+| `chauf link` | `--site`, `--ssl`, `--php`, `--http-port`, `--https-port`, `--force` | Register current directory, detect template (Laravel/WordPress/general), generate configs. |
+| `chauf links` | — | List all registered projects in a formatted table. |
+| `chauf unlink` | `--slug`, `--site`, `--project`, `--all`, `--force` | Remove registrations. Defaults to current dir. |
+| `chauf php install <ver>` | `--force`, `--no-ext`, `--from` | Build/install PHP runtime under workspace. |
+| `chauf php use <ver>` | — | Set global default PHP. |
+| `chauf php isolate <ver>` | — | Pin current linked project to a version. |
+| `chauf remove <service> [version]` | `--force` | Remove installed runtimes (php, nginx, composer). |
+| `chauf uninstall` | `--purge` | Remove workspace (and runtimes with `--purge`). |
+| `chauf self-update` | `--dev` | Update binary from git or rebuild from current repo. |
+| `chauf install composer` | — | Fetch verified composer PHAR and shims. |
+| `chauf info` | — | Show workspace paths, installed services, versions, port config. |
+
+## 7. PHP & Composer Behavior
+- PHP shims always prefer the project’s isolated version (from `project.yaml`). Outside linked projects they use the global default (`chauf php use`) and fall back to 8.3 if nothing is configured.
+- `chauf link` validates `--php` versions are installed before writing configs.
+- Composer shim (`~/.chauffeur/bin/composer`) always uses Chauffeur’s PHP shim so `composer install` respects isolation.
+- Removing PHP versions via `chauf remove php <ver>` must update shims and reassign defaults when necessary.
+
+## 8. Logging & Output Standards
+- **Single logger**: Each command must create a `logger := lib.NewCommandLogger("<command>")`. No raw `fmt.Printf` for user-facing output.
+- **Helpers only**: Use `logger.Info/Success/Warn/Error`, `logger.PrintSection`, `logger.PrintSummary`, `lib.NewSpinner`, and `lib.NewProgressPrinter`. Prevent duplicate spinner/progress implementations.
+- **TTY detection**: Colors, spinners, and progress bars must disable themselves when stdout isn’t a terminal.
+- **Structured failures**: Errors show `✗` marker, the human-readable fix, and the path to detailed log under `~/.chauffeur/logs/<command>/...log`.
+- **Duration reporting**: Long operations log start/end with human-readable durations using `lib.formatDuration` helpers.
+
+## 9. Writing Standards
+1. **Language**: Go only. Commands live in `cli/commands`, helpers in `cli/lib` or `cli/internal/*` packages.
+2. **Re-use helpers**: Before writing new utilities, look for existing helpers (ports, downloads, logging, checksum). Extend them instead of duplicating logic.
+3. **Readable & visual**: Output should be human-friendly (clear sections, tables, color cues) yet informative enough for debugging.
+4. **Consistency**: Uniform flag parsing, error messages, confirmation prompts, and path handling. Prefer `cobra`-style minimalism even without the library.
+5. **Dry-run support**: When a command accepts `--dry-run`, execute zero side effects and print the plan via logger.
+6. **Comments**: Only for non-obvious logic; keep concise.
+7. **No secrets**: Never log tokens or credentials. Mask paths only when necessary.
+
+## 10. Documentation Synchronization
+Every code change requires immediate updates to:
+1. **README.md** – feature status (✅/🚧/📋/🎯), installation changes, new commands/examples, roadmap tweaks.
+2. **docs/TODO_STATUS.md** – mark tasks as ✅, move items between sections, update release notes/priority queue.
+3. **AGENTS.md** – update command contracts, filesystem rules, or architectural guidance if behavior changed.
+Checklist (do not skip):
+- [ ] README reflects implementation.
+- [ ] docs/TODO_STATUS.md matches current progress.
+- [ ] AGENTS.md matches actual behavior.
+- [ ] Examples and commands have been run/tested.
+
+## 11. Testing Standards
+- **Location**: Place tests in `tests/` or alongside packages as `*_test.go`, but external tests may not import `cli/internal/**`. Use exported seams instead.
+- **Execution**: `go test ./...` must pass before you push. Tests must isolate HOME/workspace via `t.TempDir()` and `t.Setenv` so they never touch the real user state.
+- **Coverage**: Aim ≥80% on new packages. Use table-driven tests for commands, and capture output via helpers (see existing tests) instead of relying on global state.
+- **Integration hooks**: Provide fakes/mocks for network and filesystem interactions so tests stay deterministic.
+
+## 12. Dependency & Release Hygiene
+- Do not build binaries directly inside the repo (e.g., `go build -o chauf`). Use `chauf self-update --dev` from the repo root to rebuild the CLI for debugging, which places artifacts under the workspace.
+- Do not commit compiled binaries, build artifacts, or caches. Keep the repo source-only.
+- Generated files (templates, configs) must be reproducible. If a command generates files, include instructions/tests to verify them.
+- Releases should be performed by building from clean git state and tagging. Document the steps in README when they change.
+
+## 13. Implementation Workflow for Agents
+1. **Read docs first**: Before coding, skim README and docs/TODO_STATUS to understand current state.
+2. **Plan**: Break work into verifiable steps. Call out doc updates early.
+3. **Work inside workspace**: Respect Host Impact Policy and workspace layout.
+4. **Use helpers**: Logging, downloads, checksum, port allocation all have established helpers—use them.
+5. **Test & lint**: Run `go test ./...` and relevant linters before marking tasks complete.
+6. **Update docs**: Apply the synchronization checklist.
+7. **Review output**: Ensure logs look clean, colors degrade gracefully, and errors cite log file locations.
+8. **Final verification**: Re-run key commands (e.g., `chauf link --dry-run`) to validate the new behavior shown in docs.
+
+## 14. DNS & Port Automation Notes
+- `chauf start` must verify dnsmasq configuration for `.test`. If missing, print the exact `sudo tee /etc/dnsmasq.d/chauffeur.conf` block plus restart commands; never edit system files directly.
+- Port conflicts are resolved per the config’s `ports.conflict_resolution`:
+  - `prompt`: ask user via logger prompts.
+  - `auto`: pick first free port within `start_range`/`end_range`.
+  - `fail`: abort with actionable guidance.
+- Port forwarding (80→HTTP port, 443→HTTPS port) is optional and tracked in `~/.chauffeur/system/port-forwarding.json`. Cleanup happens during `chauf stop` and `chauf remove nginx`.
+
+By following this handbook, every new change stays consistent with Chauffeur’s goals: Valet-like ergonomics, Linux-friendly isolation, and crystal-clear documentation.
