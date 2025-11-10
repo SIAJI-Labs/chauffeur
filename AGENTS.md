@@ -112,6 +112,10 @@ created_at: 2025-10-30T12:00:00+07:00
 
 ## 7. PHP & Composer Behavior
 - PHP shims always prefer the project’s isolated version (from `project.yaml`). Outside linked projects they use the global default (`chauf php use`) and fall back to 8.3 if nothing is configured.
+- `chauf install php` must verify `pkg-config` is available and that all required dev headers (`libzip`, `libjpeg`, `libpng`, `freetype`, `libxml2`, `libcurl`, `zlib`, `libxslt`, `readline`, `MagickWand`) are discoverable via `pkg-config --modversion …`, failing fast with remediation guidance when anything is missing/outdated.
+- PHP needs readline-style line editing for PsySH/Laravel Tinker parity, so every build must pass `--with-readline` (or `--with-libedit` if ever required) and ensure the dependency is documented for users.
+- Every PHP runtime must compile mysqlnd-based `mysqli` and `pdo_mysql` extensions so Laravel migrations and other PDO clients have a working driver immediately after installation.
+- `chauf install php` must build and enable the PECL `imagick` extension (requiring MagickWand/ImageMagick dev headers) so image-heavy apps work without follow-up steps. Drop `imagick.ini` into `etc/conf.d/` for each runtime.
 - `chauf link` validates `--php` versions are installed before writing configs.
 - Composer shim (`~/.chauffeur/bin/composer`) always uses Chauffeur’s PHP shim so `composer install` respects isolation.
 - Removing PHP versions via `chauf remove php <ver>` must update shims and reassign defaults when necessary.
@@ -159,11 +163,13 @@ Checklist (do not skip):
 1. **Read docs first**: Before coding, skim README and docs/TODO_STATUS to understand current state.
 2. **Plan**: Break work into verifiable steps. Call out doc updates early.
 3. **Work inside workspace**: Respect Host Impact Policy and workspace layout.
-4. **Use helpers**: Logging, downloads, checksum, port allocation all have established helpers—use them.
-5. **Test & lint**: Run `go test ./...` and relevant linters before marking tasks complete.
-6. **Update docs**: Apply the synchronization checklist.
-7. **Review output**: Ensure logs look clean, colors degrade gracefully, and errors cite log file locations.
-8. **Final verification**: Re-run key commands (e.g., `chauf link --dry-run`) to validate the new behavior shown in docs.
+4. **Keep build dirs when debugging**: Export `CHAUFFEUR_KEEP_BUILD_DIR=1` before running `chauf install php …` if you need the extracted PHP sources to stick around under `/tmp` for manual inspection; unset it to restore automatic cleanup.
+5. **Offline tarballs**: When network access is blocked, set `CHAUFFEUR_PHP_TARBALL`, `CHAUFFEUR_PHP_SIGNATURE`, and `CHAUFFEUR_PHP_KEYRING` to point at local files so the installer can reuse cached PHP artifacts while still verifying signatures.
+6. **Use helpers**: Logging, downloads, checksum, port allocation all have established helpers—use them.
+7. **Test & lint**: Run `go test ./...` and relevant linters before marking tasks complete.
+8. **Update docs**: Apply the synchronization checklist.
+9. **Review output**: Ensure logs look clean, colors degrade gracefully, and errors cite log file locations.
+10. **Final verification**: Re-run key commands (e.g., `chauf link --dry-run`) to validate the new behavior shown in docs.
 
 ## 14. DNS & Port Automation Notes
 - `chauf start` must verify dnsmasq configuration for `.test`. If missing, print the exact `sudo tee /etc/dnsmasq.d/chauffeur.conf` block plus restart commands; never edit system files directly.
@@ -172,5 +178,6 @@ Checklist (do not skip):
   - `auto`: pick first free port within `start_range`/`end_range`.
   - `fail`: abort with actionable guidance.
 - Port forwarding (80→HTTP port, 443→HTTPS port) is optional and tracked in `~/.chauffeur/system/port-forwarding.json`. Cleanup happens during `chauf stop` and `chauf remove nginx`.
+- Port validators must detect when a conflict comes from Chauffeur-managed services (e.g., `chauf-nginx`). In that case, automatically restart the service to pick up new configs instead of forcing the user to pick a new port.
 
 By following this handbook, every new change stays consistent with Chauffeur’s goals: Valet-like ergonomics, Linux-friendly isolation, and crystal-clear documentation.

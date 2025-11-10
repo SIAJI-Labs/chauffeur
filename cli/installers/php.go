@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -88,6 +89,34 @@ type PHPVersion struct {
 	RequiredTLS string
 }
 
+type pkgRequirement struct {
+	Name            string
+	Package         string
+	MinVersion      string
+	BlockedVersions []string
+}
+
+const (
+	imagickVersion    = "3.7.0"
+	imagickTarball    = "imagick-" + imagickVersion + ".tgz"
+	imagickSourceDir  = "imagick-" + imagickVersion
+	imagickSourceURL  = "https://pecl.php.net/get/" + imagickTarball
+	imagickIniContent = "extension=imagick\n"
+)
+
+var phpPkgRequirements = []pkgRequirement{
+	{Name: "libzip", Package: "libzip", MinVersion: "0.11", BlockedVersions: []string{"1.3.1", "1.7.0"}},
+	{Name: "libjpeg", Package: "libjpeg"},
+	{Name: "libpng", Package: "libpng"},
+	{Name: "freetype", Package: "freetype2"},
+	{Name: "libxml2", Package: "libxml-2.0"},
+	{Name: "libcurl", Package: "libcurl"},
+	{Name: "zlib", Package: "zlib"},
+	{Name: "libxslt", Package: "libxslt"},
+	{Name: "readline", Package: "readline"},
+	{Name: "ImageMagick (MagickWand)", Package: "MagickWand"},
+}
+
 /**
  * GetSupportedPHPVersions returns the list of supported PHP versions.
  *
@@ -159,6 +188,12 @@ func InstallPHPSource(version string, opts InstallOptions) (err error) {
 		return phpLogger.Fail(fmt.Sprintf("PHP version %s is not supported", version), GetSupportedVersionsList())
 	}
 
+	phpLogger.Info("Checking host dependencies")
+	depsLogger := phpLogger.NewChildLogger("deps")
+	if err := ensurePHPBuildDependencies(depsLogger); err != nil {
+		return err
+	}
+
 	defer func() {
 		if err != nil && opts.Prefix != "" {
 			if logPath, logErr := logToolFailure(opts.Prefix, "php", "install", version, err); logErr != nil {
@@ -175,7 +210,8 @@ func InstallPHPSource(version string, opts InstallOptions) (err error) {
 	prepareLogger.Info(fmt.Sprintf("Architecture: %s", opts.Info.Arch))
 	prepareLogger.Info(fmt.Sprintf("Install prefix: %s", filepath.Join(opts.Prefix, "php", version)))
 
-	binaryPath := filepath.Join(opts.Prefix, "php", version, "bin", phpBinaryName)
+	installDir := filepath.Join(opts.Prefix, "php", version)
+	binaryPath := filepath.Join(installDir, "bin", phpBinaryName)
 	if !opts.Force {
 		if info, err := os.Stat(binaryPath); err == nil && info.Mode().IsRegular() {
 			prepareLogger.Info(fmt.Sprintf("PHP %s is already installed", version))
@@ -187,7 +223,13 @@ func InstallPHPSource(version string, opts InstallOptions) (err error) {
 	if err != nil {
 		return fmt.Errorf("create temp dir: %w", err)
 	}
-	defer os.RemoveAll(tmpDir)
+
+	keepBuildDir := os.Getenv("CHAUFFEUR_KEEP_BUILD_DIR") == "1"
+	if !keepBuildDir {
+		defer os.RemoveAll(tmpDir)
+	} else {
+		phpLogger.Warn("preserving PHP build directory for debugging", tmpDir)
+	}
 
 	// Get latest patch version for the requested major.minor
 	patchVersion, err := getLatestPHPPatchVersion(opts.Client, version)
@@ -211,25 +253,34 @@ func InstallPHPSource(version string, opts InstallOptions) (err error) {
 
 	phpLogger.Info("Downloading")
 	downloadLogger := phpLogger.NewChildLogger("download")
-	downloadLogger.Info(fmt.Sprintf("Attempting download of %s", tarballName))
+	tarballPath := filepath.Join(tmpDir, tarballName)
 
-	for _, url := range tarballURLs {
-		tarballPath := filepath.Join(tmpDir, tarballName)
-		size, err := lib.DownloadToFileWithLogger(opts.Client, url, tarballPath, fmt.Sprintf("Download %s", tarballName), downloadLogger)
-		if err == nil {
-			tarballURL = url
-			downloadLogger.Success(fmt.Sprintf("Downloaded %s", tarballName), lib.HumanBytes(size))
-			break
+	if localTarball := os.Getenv("CHAUFFEUR_PHP_TARBALL"); localTarball != "" {
+		if err := copyFile(localTarball, tarballPath); err != nil {
+			downloadLogger.Warn("Failed to copy local tarball", err.Error())
+		} else {
+			tarballURL = "local"
+			downloadLogger.Success(fmt.Sprintf("Reused local %s", tarballName), localTarball)
 		}
-		downloadErr = err
+	}
+
+	if tarballURL == "" {
+		downloadLogger.Info(fmt.Sprintf("Attempting download of %s", tarballName))
+		for _, url := range tarballURLs {
+			size, err := lib.DownloadToFileWithLogger(opts.Client, url, tarballPath, fmt.Sprintf("Download %s", tarballName), downloadLogger)
+			if err == nil {
+				tarballURL = url
+				downloadLogger.Success(fmt.Sprintf("Downloaded %s", tarballName), lib.HumanBytes(size))
+				break
+			}
+			downloadErr = err
+		}
 	}
 
 	if tarballURL == "" {
 		downloadLogger.Warn("All download attempts failed", downloadErr.Error())
 		return fmt.Errorf("all download attempts failed: %w", downloadErr)
 	}
-
-	tarballPath := filepath.Join(tmpDir, tarballName)
 
 	phpLogger.Info("Verifying")
 	verificationLogger := phpLogger.NewChildLogger("verifying")
@@ -262,6 +313,11 @@ func InstallPHPSource(version string, opts InstallOptions) (err error) {
 	}
 	spin.Success("PHP compiled and installed")
 	buildLogger.Success(fmt.Sprintf("PHP %s built and installed to %s", version, filepath.Join(opts.Prefix, "php", version)), "")
+
+	extensionsLogger := phpLogger.NewChildLogger("extensions")
+	if err := installImagickExtension(opts, version, installDir, extensionsLogger); err != nil {
+		return err
+	}
 
 	phpLogger.Info("Finalizing")
 	finalizeLogger := phpLogger.NewChildLogger("finalize")
@@ -318,20 +374,7 @@ func InstallPHPSource(version string, opts InstallOptions) (err error) {
  * @return Latest full version string (e.g., "8.3.14") and error
  */
 func getLatestPHPPatchVersion(client *http.Client, version string) (string, error) {
-	// For now, try to fetch the downloads page and parse for latest version
-	// In a production scenario, this would use a more reliable API
-	resp, err := client.Get(fmt.Sprintf("https://www.php.net/downloads.php"))
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", fmt.Errorf("unexpected status %s from downloads.php", resp.Status)
-	}
-
-	// For simplicity, we'll use a hardcoded recent patch version
-	// In production, this would parse the HTML response
+	// Fallback to pinned patch versions to avoid relying on network connectivity
 	knownVersions := map[string]string{
 		"8.3": "8.3.14",
 		"8.2": "8.2.26",
@@ -363,9 +406,15 @@ func verifyPHPSignature(logger *lib.Logger, client *http.Client, tarballPath, ta
 
 	sigURL := fmt.Sprintf("https://www.php.net/distributions/%s.asc", tarballName)
 	sigPath := tarballPath + ".asc"
-	// Signature download happens silently, progress shown via progress bar
-	if _, err := lib.DownloadToFileWithLogger(client, sigURL, sigPath, fmt.Sprintf("Signature %s", tarballName), logger); err != nil {
-		return fmt.Errorf("download signature: %w", err)
+	if sigSource := os.Getenv("CHAUFFEUR_PHP_SIGNATURE"); sigSource != "" {
+		if err := copyFile(sigSource, sigPath); err != nil {
+			return fmt.Errorf("copy signature: %w", err)
+		}
+	} else {
+		// Signature download happens silently, progress shown via progress bar
+		if _, err := lib.DownloadToFileWithLogger(client, sigURL, sigPath, fmt.Sprintf("Signature %s", tarballName), logger); err != nil {
+			return fmt.Errorf("download signature: %w", err)
+		}
 	}
 
 	gpgHome, err := os.MkdirTemp(workDir, "gpg-")
@@ -385,15 +434,23 @@ func verifyPHPSignature(logger *lib.Logger, client *http.Client, tarballPath, ta
 	// Download and import the complete PHP keyring
 	keyringURL := "https://www.php.net/distributions/php-keyring.gpg"
 	keyringPath := filepath.Join(keysDir, "php-keyring.gpg")
-	// Keyring download happens silently, progress shown via progress bar
-	if _, err := lib.DownloadToFileWithLogger(client, keyringURL, keyringPath, "PHP Keyring", logger); err != nil {
-		return fmt.Errorf("download PHP keyring: %w", err)
+	if keyringSource := os.Getenv("CHAUFFEUR_PHP_KEYRING"); keyringSource != "" {
+		if err := copyFile(keyringSource, keyringPath); err != nil {
+			return fmt.Errorf("copy PHP keyring: %w", err)
+		}
+	} else {
+		// Keyring download happens silently, progress shown via progress bar
+		if _, err := lib.DownloadToFileWithLogger(client, keyringURL, keyringPath, "PHP Keyring", logger); err != nil {
+			return fmt.Errorf("download PHP keyring: %w", err)
+		}
 	}
 
 	// Import the entire keyring
 	cmd := exec.Command("gpg",
 		"--homedir", gpgHome,
 		"--no-default-keyring",
+		"--no-autostart",
+		"--pinentry-mode", "loopback",
 		"--batch",
 		"--import", keyringPath,
 	)
@@ -424,6 +481,8 @@ func verifyPHPSignatureWithGPG(gpgHome, tarballPath, sigPath string, logger *lib
 	cmd := exec.Command("gpg",
 		"--homedir", gpgHome,
 		"--no-default-keyring",
+		"--no-autostart",
+		"--pinentry-mode", "loopback",
 		"--batch",
 		"--verify", sigPath, tarballPath,
 	)
@@ -457,6 +516,7 @@ func buildAndInstallPHP(opts InstallOptions, version, sourceDir string, logger *
 		"--enable-debug",
 		"--enable-cli",
 		"--enable-fpm",
+		"--enable-mysqlnd",
 		"--with-fpm-user=" + getPHPUser(),
 		"--with-fpm-group=" + getPHPUser(),
 		"--with-config-file-path=" + filepath.Join(installDir, "etc"),
@@ -474,8 +534,16 @@ func buildAndInstallPHP(opts InstallOptions, version, sourceDir string, logger *
 		"--with-zlib",
 		"--with-bz2",
 		"--enable-ctype",
+		"--with-zip",
+		"--enable-gd",
+		"--with-jpeg=/usr",
+		"--with-freetype=/usr",
+		"--enable-exif",
 		"--enable-posix",
 		"--with-pear",
+		"--with-readline",
+		"--with-mysqli=mysqlnd",
+		"--with-pdo-mysql=mysqlnd",
 	}
 
 	switch version {
@@ -548,6 +616,212 @@ func buildAndInstallPHP(opts InstallOptions, version, sourceDir string, logger *
 	}
 
 	return nil
+}
+
+func installImagickExtension(opts InstallOptions, version, installDir string, logger *lib.Logger) error {
+	if logger == nil {
+		logger = lib.NewCommandLogger("imagick")
+	}
+	logger.Info(fmt.Sprintf("Ensuring imagick extension for PHP %s", version))
+
+	phpizePath := filepath.Join(installDir, "bin", "phpize")
+	phpConfigPath := filepath.Join(installDir, "bin", "php-config")
+	if !fileExists(phpizePath) || !fileExists(phpConfigPath) {
+		return logger.Fail(
+			"phpize/php-config not found",
+			fmt.Sprintf("Expected PHP binaries under %s/bin. Reinstall PHP %s with 'chauf install php %s --force'.", installDir, version, version),
+		)
+	}
+
+	extDir, err := phpExtensionDir(phpConfigPath)
+	if err != nil {
+		return logger.Fail("detect PHP extension directory", err.Error())
+	}
+
+	modulePath := filepath.Join(extDir, "imagick.so")
+	iniPath := filepath.Join(installDir, "etc", "conf.d", "imagick.ini")
+	if fileExists(modulePath) && fileExists(iniPath) {
+		logger.Success("imagick already installed", modulePath)
+		return nil
+	}
+
+	tmpDir, err := os.MkdirTemp("", "chauffeur-imagick-*")
+	if err != nil {
+		return fmt.Errorf("create imagick temp dir: %w", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	tarballPath := filepath.Join(tmpDir, imagickTarball)
+	logger.Info(fmt.Sprintf("Downloading imagick %s", imagickVersion))
+	if _, err := lib.DownloadToFileWithLogger(opts.Client, imagickSourceURL, tarballPath, fmt.Sprintf("imagick %s", imagickVersion), logger); err != nil {
+		return logger.Fail("download imagick extension", err.Error())
+	}
+
+	logger.Info("Extracting imagick sources")
+	if err := untarPHP(tarballPath, tmpDir); err != nil {
+		return logger.Fail("extract imagick extension", err.Error())
+	}
+
+	sourceDir := filepath.Join(tmpDir, imagickSourceDir)
+	if _, err := os.Stat(sourceDir); err != nil {
+		return fmt.Errorf("imagick source directory missing: %w", err)
+	}
+
+	logger.Info("phpize")
+	if err := runCommandForPHP(sourceDir, nil, phpizePath); err != nil {
+		logCommandFailure(err, logger)
+		return fmt.Errorf("phpize imagick: %w", err)
+	}
+
+	logger.Info("configure")
+	confArgs := []string{fmt.Sprintf("--with-php-config=%s", phpConfigPath)}
+	if err := runCommandForPHP(sourceDir, nil, "./configure", confArgs...); err != nil {
+		logCommandFailure(err, logger)
+		return fmt.Errorf("configure imagick: %w", err)
+	}
+
+	logger.Info("make")
+	makeArgs := []string{"-j"}
+	if n := runtime.NumCPU(); n > 0 {
+		makeArgs = append(makeArgs, fmt.Sprintf("%d", n))
+	}
+	if err := runCommandForPHP(sourceDir, nil, "make", makeArgs...); err != nil {
+		logCommandFailure(err, logger)
+		return fmt.Errorf("make imagick: %w", err)
+	}
+
+	logger.Info("make install")
+	if err := runCommandForPHP(sourceDir, nil, "make", "install"); err != nil {
+		logCommandFailure(err, logger)
+		return fmt.Errorf("make install imagick: %w", err)
+	}
+
+	if !fileExists(modulePath) {
+		return fmt.Errorf("imagick module missing at %s after installation", modulePath)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(iniPath), 0o755); err != nil {
+		return fmt.Errorf("ensure imagick ini directory: %w", err)
+	}
+	if err := os.WriteFile(iniPath, []byte(imagickIniContent), 0o644); err != nil {
+		return fmt.Errorf("write imagick ini: %w", err)
+	}
+
+	logger.Success("imagick extension enabled", iniPath)
+	return nil
+}
+
+func ensurePHPBuildDependencies(logger *lib.Logger) error {
+	if logger == nil {
+		logger = lib.NewCommandLogger("deps")
+	}
+
+	logger.Info("Verifying pkg-config availability")
+	if err := ensurePkgConfigAvailable(logger); err != nil {
+		return err
+	}
+	logger.Success("pkg-config found", "")
+
+	for _, req := range phpPkgRequirements {
+		logger.Info(fmt.Sprintf("Checking %s development headers", req.Name))
+		version, err := ensurePkgRequirement(logger, req)
+		if err != nil {
+			return err
+		}
+		if version == "" {
+			version = "detected"
+		}
+		logger.Success(fmt.Sprintf("%s headers detected", req.Name), version)
+	}
+
+	logger.Success("Build prerequisites satisfied", "")
+	return nil
+}
+
+func ensurePkgConfigAvailable(logger *lib.Logger) error {
+	if _, err := exec.LookPath("pkg-config"); err != nil {
+		return logger.Fail(
+			"pkg-config not found in PATH",
+			"Install pkg-config/pkgconf (e.g., 'sudo apt-get install pkg-config' or 'sudo pacman -S pkgconf') before running 'chauf install php'.",
+		)
+	}
+	return nil
+}
+
+func ensurePkgRequirement(logger *lib.Logger, req pkgRequirement) (string, error) {
+	const remediation = "Ensure required development headers are installed. See README \"System Dependencies for PHP Builds\"."
+
+	cmd := exec.Command("pkg-config", "--modversion", req.Package)
+	output, err := cmd.Output()
+	if err != nil {
+		var detail string
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			detail = strings.TrimSpace(string(exitErr.Stderr))
+		}
+		if detail == "" {
+			detail = fmt.Sprintf("pkg-config could not locate %s on this system.", req.Name)
+		}
+		context := fmt.Sprintf("%s\n%s", detail, remediation)
+		return "", logger.Fail(fmt.Sprintf("missing %s development headers", req.Name), context)
+	}
+
+	version := strings.TrimSpace(string(output))
+	if version == "" {
+		return "", logger.Fail(fmt.Sprintf("unable to detect %s version", req.Name), remediation)
+	}
+
+	if req.MinVersion != "" && compareSemver(version, req.MinVersion) < 0 {
+		context := fmt.Sprintf("Detected %s; require >= %s.\n%s", version, req.MinVersion, remediation)
+		return "", logger.Fail(fmt.Sprintf("%s version too old for PHP", req.Name), context)
+	}
+
+	for _, blockedVersion := range req.BlockedVersions {
+		if compareSemver(version, blockedVersion) == 0 {
+			context := fmt.Sprintf("Detected %s which PHP explicitly blocks.\n%s", version, remediation)
+			return "", logger.Fail(fmt.Sprintf("unsupported %s release detected", req.Name), context)
+		}
+	}
+
+	return version, nil
+}
+
+func compareSemver(a, b string) int {
+	parse := func(v string) []int {
+		parts := strings.Split(v, ".")
+		result := make([]int, len(parts))
+		for i, part := range parts {
+			val, err := strconv.Atoi(part)
+			if err != nil {
+				val = 0
+			}
+			result[i] = val
+		}
+		return result
+	}
+
+	aParts := parse(a)
+	bParts := parse(b)
+	maxLen := len(aParts)
+	if len(bParts) > maxLen {
+		maxLen = len(bParts)
+	}
+
+	for len(aParts) < maxLen {
+		aParts = append(aParts, 0)
+	}
+	for len(bParts) < maxLen {
+		bParts = append(bParts, 0)
+	}
+
+	for i := 0; i < maxLen; i++ {
+		if aParts[i] < bParts[i] {
+			return -1
+		}
+		if aParts[i] > bParts[i] {
+			return 1
+		}
+	}
+	return 0
 }
 
 func ensureOpenSSL111(workspacePrefix, vendorPrefix string, client *http.Client, logf func(string, ...interface{}), logger *lib.Logger) error {
@@ -1009,4 +1283,21 @@ func runCommandForPHP(dir string, env []string, name string, args ...string) err
 		}
 	}
 	return nil
+}
+
+func phpExtensionDir(phpConfigPath string) (string, error) {
+	cmd := exec.Command(phpConfigPath, "--extension-dir")
+	var stdout, stderr strings.Builder
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("php-config --extension-dir: %w (%s)", err, strings.TrimSpace(stderr.String()))
+	}
+
+	dir := strings.TrimSpace(stdout.String())
+	if dir == "" {
+		return "", errors.New("php-config returned empty extension dir")
+	}
+	return dir, nil
 }

@@ -31,6 +31,9 @@ func applyLegacyPHPSourcePatches(version, sourceDir string, logger *lib.Logger) 
 	if err := patchLegacyScanf(logger, sourceDir); err != nil {
 		return err
 	}
+	if err := patchLegacyGD(logger, sourceDir); err != nil {
+		return err
+	}
 
 	logPHPSuccess(logger, "Legacy compatibility patches applied")
 	return nil
@@ -329,6 +332,180 @@ func patchLegacyScanf(logger *lib.Logger, sourceDir string) error {
 
 	if err := os.WriteFile(target, data, 0o644); err != nil {
 		return fmt.Errorf("write scanf shim: %w", err)
+	}
+
+	return nil
+}
+
+func patchLegacyGD(logger *lib.Logger, sourceDir string) error {
+	logPHPInfo(logger, "Adjusting GD function pointers for newer libgd prototypes")
+
+	gdFile := filepath.Join(sourceDir, "ext", "gd", "gd.c")
+	ctxFile := filepath.Join(sourceDir, "ext", "gd", "gd_ctx.c")
+
+	replaceOnce := func(data []byte, old, new string) ([]byte, error) {
+		if !bytes.Contains(data, []byte(old)) {
+			return data, fmt.Errorf("pattern %q not found", old)
+		}
+		return bytes.Replace(data, []byte(old), []byte(new), 1), nil
+	}
+
+	replaceAll := func(data []byte, old, new string) ([]byte, error) {
+		if !bytes.Contains(data, []byte(old)) {
+			return data, fmt.Errorf("pattern %q not found", old)
+		}
+		return bytes.ReplaceAll(data, []byte(old), []byte(new)), nil
+	}
+
+	gdData, err := os.ReadFile(gdFile)
+	if err != nil {
+		return fmt.Errorf("read %s: %w", gdFile, err)
+	}
+
+	gdRepls := []struct {
+		old string
+		new string
+		all bool
+	}{
+		{
+			old: "static gdImagePtr _php_image_create_from_string (zval *Data, char *tn, gdImagePtr (*ioctx_func_p)());",
+			new: "static gdImagePtr _php_image_create_from_string (zval *Data, char *tn, gdImagePtr (*ioctx_func_p)(gdIOCtx *));",
+			all: true,
+		},
+		{
+			old: "static void _php_image_create_from(INTERNAL_FUNCTION_PARAMETERS, int image_type, char *tn, gdImagePtr (*func_p)(), gdImagePtr (*ioctx_func_p)());",
+			new: "static void _php_image_create_from(INTERNAL_FUNCTION_PARAMETERS, int image_type, char *tn, void *func_p, void *ioctx_func_p);",
+			all: true,
+		},
+		{
+			old: "gdImagePtr _php_image_create_from_string(zval *data, char *tn, gdImagePtr (*ioctx_func_p)())",
+			new: "gdImagePtr _php_image_create_from_string(zval *data, char *tn, gdImagePtr (*ioctx_func_p)(gdIOCtx *))",
+			all: true,
+		},
+		{
+			old: "static void _php_image_create_from(INTERNAL_FUNCTION_PARAMETERS, int image_type, char *tn, gdImagePtr (*func_p)(), gdImagePtr (*ioctx_func_p)())",
+			new: "static void _php_image_create_from(INTERNAL_FUNCTION_PARAMETERS, int image_type, char *tn, void *func_p, void *ioctx_func_p)",
+			all: true,
+		},
+		{
+			old: "static void _php_image_output(INTERNAL_FUNCTION_PARAMETERS, int image_type, char *tn, void (*func_p)())",
+			new: "static void _php_image_output(INTERNAL_FUNCTION_PARAMETERS, int image_type, char *tn, void *func_p)",
+			all: true,
+		},
+		{
+			old: "im = (*ioctx_func_p)(io_ctx, srcx, srcy, width, height);",
+			new: "im = ((gdImagePtr (*)(gdIOCtx *, zend_long, zend_long, zend_long, zend_long))ioctx_func_p)(io_ctx, srcx, srcy, width, height);",
+			all: true,
+		},
+		{
+			old: "im = (*ioctx_func_p)(io_ctx);",
+			new: "im = ((gdImagePtr (*)(gdIOCtx *))ioctx_func_p)(io_ctx);",
+			all: true,
+		},
+		{
+			old: "im = (*func_p)(fp, srcx, srcy, width, height);",
+			new: "im = ((gdImagePtr (*)(FILE *, zend_long, zend_long, zend_long, zend_long))func_p)(fp, srcx, srcy, width, height);",
+			all: true,
+		},
+		{
+			old: "im = (*func_p)(fp);",
+			new: "im = ((gdImagePtr (*)(FILE *))func_p)(fp);",
+			all: true,
+		},
+		{
+			old: "(*func_p)(im, fp);",
+			new: "((void (*)(gdImagePtr, FILE *))func_p)(im, fp);",
+			all: true,
+		},
+		{
+			old: "(*func_p)(im, fp, q, t);",
+			new: "((void (*)(gdImagePtr, FILE *, int, int))func_p)(im, fp, q, t);",
+			all: true,
+		},
+		{
+			old: "(*func_p)(im, tmp);",
+			new: "((void (*)(gdImagePtr, FILE *))func_p)(im, tmp);",
+			all: true,
+		},
+		{
+			old: "(*func_p)(im, tmp, q, t);",
+			new: "((void (*)(gdImagePtr, FILE *, int, int))func_p)(im, tmp, q, t);",
+			all: true,
+		},
+	}
+
+	for _, repl := range gdRepls {
+		if repl.all {
+			gdData, err = replaceAll(gdData, repl.old, repl.new)
+		} else {
+			gdData, err = replaceOnce(gdData, repl.old, repl.new)
+		}
+		if err != nil {
+			return fmt.Errorf("patch gd.c: %w", err)
+		}
+	}
+
+	if err := os.WriteFile(gdFile, gdData, 0o644); err != nil {
+		return fmt.Errorf("write %s: %w", gdFile, err)
+	}
+
+	ctxData, err := os.ReadFile(ctxFile)
+	if err != nil {
+		return fmt.Errorf("read %s: %w", ctxFile, err)
+	}
+
+	ctxRepls := []struct {
+		old string
+		new string
+		all bool
+	}{
+		{
+			old: "static void _php_image_output_ctx(INTERNAL_FUNCTION_PARAMETERS, int image_type, char *tn, void (*func_p)())",
+			new: "static void _php_image_output_ctx(INTERNAL_FUNCTION_PARAMETERS, int image_type, char *tn, void *func_p)",
+		},
+		{
+			old: "(*func_p)(im, ctx, q);",
+			new: "((void (*)(gdImagePtr, gdIOCtx *, int))func_p)(im, ctx, q);",
+			all: true,
+		},
+		{
+			old: "(*func_p)(im, ctx, q, f);",
+			new: "((void (*)(gdImagePtr, gdIOCtx *, int, int))func_p)(im, ctx, q, f);",
+			all: true,
+		},
+		{
+			old: "(*func_p)(im, file ? file : \"\", q, ctx);",
+			new: "((void (*)(gdImagePtr, char *, int, gdIOCtx *))func_p)(im, file ? file : \"\", q, ctx);",
+		},
+		{
+			old: "(*func_p)(im, q, ctx);",
+			new: "((void (*)(gdImagePtr, int, gdIOCtx *))func_p)(im, q, ctx);",
+			all: true,
+		},
+		{
+			old: "(*func_p)(im, ctx, (int) compressed);",
+			new: "((void (*)(gdImagePtr, gdIOCtx *, int))func_p)(im, ctx, (int) compressed);",
+		},
+		{
+			old: "(*func_p)(im, ctx);",
+			new: "((void (*)(gdImagePtr, gdIOCtx *))func_p)(im, ctx);",
+			all: true,
+		},
+	}
+
+	for _, repl := range ctxRepls {
+		if repl.all {
+			ctxData, err = replaceAll(ctxData, repl.old, repl.new)
+		} else {
+			ctxData, err = replaceOnce(ctxData, repl.old, repl.new)
+		}
+		if err != nil {
+			return fmt.Errorf("patch gd_ctx.c: %w", err)
+		}
+	}
+
+	if err := os.WriteFile(ctxFile, ctxData, 0o644); err != nil {
+		return fmt.Errorf("write %s: %w", ctxFile, err)
 	}
 
 	return nil
