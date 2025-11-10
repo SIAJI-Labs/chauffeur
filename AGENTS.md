@@ -179,5 +179,7 @@ Checklist (do not skip):
   - `fail`: abort with actionable guidance.
 - Port forwarding (80→HTTP port, 443→HTTPS port) is optional and tracked in `~/.chauffeur/system/port-forwarding.json`. Cleanup happens during `chauf stop` and `chauf remove nginx`.
 - Port validators must detect when a conflict comes from Chauffeur-managed services (e.g., `chauf-nginx`). In that case, automatically restart the service to pick up new configs instead of forcing the user to pick a new port.
+- `chauf link`/`chauf unlink` must restart `chauf-nginx` whenever they change site configs so new domains go live (or disappear) immediately.
+- Nginx must always ship with a default catch-all server (`server_name _; return 404;`) on the configured HTTP port so unlinked domains don’t bleed into other projects.
 
 By following this handbook, every new change stays consistent with Chauffeur’s goals: Valet-like ergonomics, Linux-friendly isolation, and crystal-clear documentation.

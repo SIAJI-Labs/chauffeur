@@ -105,7 +105,7 @@ Design themes borrowed from Valet/Herd:
    firefox http://myapp.test:8080
    ```
 
-`chauf link` automatically detects when Chauffeur’s nginx instance already owns the configured HTTP/HTTPS ports and simply restarts it so the new site configuration is loaded—no more prompts to pick new ports while services are running.
+`chauf link` automatically detects when Chauffeur’s nginx instance already owns the configured HTTP/HTTPS ports and simply restarts it so the new site configuration is loaded—no more prompts to pick new ports while services are running. Likewise, `chauf unlink` removes the generated nginx config, restarts nginx when it’s active, and the built-in catch‑all server returns a 404 for any unlinked domain so the site disappears immediately.
 
 6. **Update the binary from source (optional, run inside repo)**:
    ```bash

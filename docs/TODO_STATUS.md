@@ -22,6 +22,8 @@ _A living status board for features, debt, and priorities. Keep this in sync wit
 - Project type detection (Laravel, WordPress, general)
 - Nginx template generation + symlinks in `sites-available/enabled`
 - Table-formatted `chauf links`
+- `chauf unlink` removes nginx configs and restarts nginx when running so sites disappear immediately
+- Default nginx catch-all returns 404 for unlinked domains so traffic never falls through to other projects
 
 ### PHP & Composer Fundamentals
 - `chauf php install/use/isolate`
