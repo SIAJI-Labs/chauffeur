@@ -30,6 +30,7 @@ Usage:
   chauf start            Start Chauffeur services with chauf- prefix.
   chauf stop             Stop Chauffeur services with chauf- prefix.
   chauf status           Show status of Chauffeur services.
+  chauf hello-world      Print a friendly greeting message.
   chauf link             Register current directory as a project.
   chauf links            List all registered projects.
   chauf unlink           Unlink a registered project (by slug, domain, path, or all).
@@ -111,6 +112,11 @@ func main() {
 		}
 	case "status":
 		if err := commands.RunStatus(args[1:]); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+	case "hello-world":
+		if err := commands.RunHelloWorld(args[1:]); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}

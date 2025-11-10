@@ -38,7 +38,7 @@ Design themes borrowed from Valet/Herd:
 |------|--------|-------|
 | Workspace bootstrap (`chauf init`) | ✅ | Creates `~/.chauffeur` directories, default config, PATH guidance. |
 | Project linking (`chauf link/links/unlink`) | ✅ | Registers projects, writes `project.yaml`, generates nginx configs. |
-| PHP runtimes (`chauf php install/use/isolate`) | 🚧 | Core flows exist but need more testing and logging parity. |
+| PHP runtimes (`chauf php install/use/isolate`) | 🚧 | Builds now compile Laravel-required extensions (gd, zip, exif, freetype); additional harness tests coming soon. |
 | Service orchestration (`chauf start/stop/status`) | 🚧 | Basic process management exists; dnsmasq integration still evolving. |
 | Composer integration | ✅ | Installs Composer PHAR tied to Chauffeur’s PHP shim. |
 | Logging revamp | ✅ | All user-facing commands now route output through `lib.Logger`; only help/usage text stays raw. |
@@ -105,16 +105,34 @@ Design themes borrowed from Valet/Herd:
    firefox http://myapp.test:8080
    ```
 
+`chauf link` automatically detects when Chauffeur’s nginx instance already owns the configured HTTP/HTTPS ports and simply restarts it so the new site configuration is loaded—no more prompts to pick new ports while services are running.
+
 6. **Update the binary from source (optional, run inside repo)**:
    ```bash
    cd /path/to/chauffeur/repo
    chauf self-update --dev
    ```
 
+### System Dependencies for PHP Builds
+Chauffeur compiles PHP from source and expects the common image/zip libraries to be available on the host. Install these once before running `chauf install php …`.
+
+| Distro | Command |
+|--------|---------|
+| Debian / Ubuntu | `sudo apt-get install build-essential pkg-config autoconf bison re2c libzip-dev libjpeg-dev libpng-dev libfreetype6-dev libxml2-dev libcurl4-openssl-dev libbz2-dev zlib1g-dev libxslt1-dev libreadline-dev libmagickwand-dev` |
+| Arch Linux | `sudo pacman -S base-devel pkgconf libzip libjpeg-turbo libpng freetype2 libxml2 curl bzip2 zlib libxslt readline imagemagick` |
+
+If your distribution splits libraries differently, install the equivalent dev packages providing `libzip`, `libjpeg`, `libpng`, `freetype`, `zlib`, `curl`, `libxml2`, `libxslt`, `readline`, and `MagickWand` (ImageMagick). Once they’re in place, `chauf install php <version>` will produce runtimes with GD, ZIP, Exif, freetype, jpeg, readline, imagick, and mysqlnd-backed database extensions for Laravel apps (so `php -a`/`artisan tinker` keep arrow keys and history while `php artisan migrate` and image manipulation code work without extra modules).
+
+`chauf install php` now preflights `pkg-config` plus all of the required libraries (`libzip`, `libjpeg`, `libpng`, `freetype`, `libxml2`, `libcurl`, `zlib`, `libxslt`, `readline`, `MagickWand`) via `pkg-config --modversion …` before downloading or compiling so you get actionable guidance instead of waiting for `./configure` to fail.
+
+All compiled runtimes include GNU Readline via `--with-readline`, which fixes cursor navigation inside PsySH/`php artisan tinker` and provides persistent line editing in `php -a`. Chauffeur also enables `mysqli`, `PDO_MySQL`, `mysqlnd`, and the PECL `imagick` extension by default so database-heavy and image-processing apps work immediately after `chauf install php`.
+
 Refer to `AGENTS.md` for the authoritative workspace layout, dnsmasq instructions, and logging spec.
 
 ## Development & Contribution
 - **Preferred workflow**: Use `chauf self-update --dev` from the repo root to rebuild binaries; avoid `go build -o chauf` in-tree.
+- **Debug builds**: Set `CHAUFFEUR_KEEP_BUILD_DIR=1` while running `chauf install php …` to preserve the extracted PHP sources under `/tmp` when you need to inspect or patch them manually.
+- **Offline sources**: When mirrors are unavailable, point `CHAUFFEUR_PHP_TARBALL`, `CHAUFFEUR_PHP_SIGNATURE`, and `CHAUFFEUR_PHP_KEYRING` at local files to skip tarball/signature downloads during `chauf install php …`.
 - **Logging**: Every command must use `lib.NewCommandLogger`. No raw `fmt.Printf` for user-facing output. Help converting legacy prints is very welcome.
 - **Tests**: Always run `go test ./...` before opening a PR. Tests must isolate `HOME` via `t.TempDir()` to avoid touching real user state.
 - **Documentation sync**: If you change behavior, update README, docs/TODO_STATUS.md, and AGENTS.md in the same PR.

@@ -6,13 +6,16 @@ import (
 	"strings"
 
 	"github.com/siaji/chauffeur/cli/internal/config"
+	"github.com/siaji/chauffeur/cli/internal/services"
 )
 
 // PortValidator handles port validation for Chauffeur commands
 type PortValidator struct {
-	portManager *PortManager
-	config      config.Config
-	logger      *Logger
+	portManager       *PortManager
+	config            config.Config
+	logger            *Logger
+	serviceManager    *services.ServiceManager
+	restartedServices map[string]bool
 }
 
 // NewPortValidator creates a new port validator instance
@@ -22,20 +25,29 @@ func NewPortValidator(cfg config.Config) (*PortValidator, error) {
 	if err := pm.ValidatePortRange(); err != nil {
 		return nil, fmt.Errorf("invalid port range: %w", err)
 	}
-	
+
 	logger := NewCommandLogger("validate")
-	
+
+	var svcManager *services.ServiceManager
+	if manager, err := services.NewServiceManager(); err != nil {
+		logger.Warn("Unable to initialize service manager", err.Error())
+	} else {
+		svcManager = manager
+	}
+
 	return &PortValidator{
-		portManager: pm,
-		config:      cfg,
-		logger:      logger,
+		portManager:       pm,
+		config:            cfg,
+		logger:            logger,
+		serviceManager:    svcManager,
+		restartedServices: make(map[string]bool),
 	}, nil
 }
 
 // ValidateAllPorts validates all configured ports for conflicts
 func (pv *PortValidator) ValidateAllPorts() error {
 	pv.logger.Info("Validating all configured ports...")
-	
+
 	// Collect all ports to validate
 	ports := map[string]int{}
 	if pv.config.Nginx.HTTPPort > 0 {
@@ -44,15 +56,15 @@ func (pv *PortValidator) ValidateAllPorts() error {
 	if pv.config.Nginx.HTTPSPort > 0 {
 		ports["nginx-https"] = pv.config.Nginx.HTTPSPort
 	}
-	
+
 	// Check for conflicts
-	conflicts := pv.portManager.ValidatePortConfiguration(ports)
-	
+	conflicts := pv.resolveManagedConflicts(pv.portManager.ValidatePortConfiguration(ports))
+
 	if len(conflicts) == 0 {
 		pv.logger.Success("All ports are available", "")
 		return nil
 	}
-	
+
 	// Handle conflicts based on resolution strategy
 	return pv.handlePortConflicts(conflicts)
 }
@@ -60,27 +72,32 @@ func (pv *PortValidator) ValidateAllPorts() error {
 // ValidateSpecificPorts validates specific ports for a service
 func (pv *PortValidator) ValidateSpecificPorts(service string, ports []int) error {
 	pv.logger.Info(fmt.Sprintf("Validating ports for %s", service))
-	
+
 	// Build port map for validation
 	portMap := make(map[string]int)
 	for i, port := range ports {
 		portMap[fmt.Sprintf("%s-%d", service, i)] = port
 	}
-	
+
 	// Check for conflicts
-	conflicts := pv.portManager.ValidatePortConfiguration(portMap)
-	
+	conflicts := pv.resolveManagedConflicts(pv.portManager.ValidatePortConfiguration(portMap))
+
 	if len(conflicts) == 0 {
 		pv.logger.Success("All ports are available", "")
 		return nil
 	}
-	
+
 	// Handle conflicts based on resolution strategy
 	return pv.handlePortConflicts(conflicts)
 }
 
 // handlePortConflicts processes port conflicts according to configured strategy
 func (pv *PortValidator) handlePortConflicts(conflicts []PortConflict) error {
+	conflicts = pv.resolveManagedConflicts(conflicts)
+	if len(conflicts) == 0 {
+		return nil
+	}
+
 	switch pv.config.Ports.ConflictResolution {
 	case "fail":
 		return pv.failOnConflicts(conflicts)
@@ -105,9 +122,9 @@ func (pv *PortValidator) failOnConflicts(conflicts []PortConflict) error {
 // autoResolveConflicts automatically resolves conflicts by finding available ports
 func (pv *PortValidator) autoResolveConflicts(conflicts []PortConflict) error {
 	pv.logger.Info("Auto-resolving port conflicts...")
-	
+
 	resolved := make(map[string]int)
-	
+
 	for _, conflict := range conflicts {
 		newPort, err := pv.portManager.AutoResolvePortConflict(conflict.Service, conflict.Port)
 		if err != nil {
@@ -115,7 +132,7 @@ func (pv *PortValidator) autoResolveConflicts(conflicts []PortConflict) error {
 		}
 		resolved[conflict.Service] = newPort
 	}
-	
+
 	// Update configuration with resolved ports
 	return pv.updateConfigWithResolvedPorts(resolved)
 }
@@ -123,9 +140,9 @@ func (pv *PortValidator) autoResolveConflicts(conflicts []PortConflict) error {
 // promptForResolution prompts user to resolve conflicts
 func (pv *PortValidator) promptForResolution(conflicts []PortConflict) error {
 	pv.logger.Warn("Port conflicts detected", "Please resolve them to continue")
-	
+
 	resolved := make(map[string]int)
-	
+
 	for _, conflict := range conflicts {
 		newPort, err := pv.portManager.GetPortFromPrompt(conflict.Service, conflict.Port, conflict.Suggestions)
 		if err != nil {
@@ -133,7 +150,7 @@ func (pv *PortValidator) promptForResolution(conflicts []PortConflict) error {
 		}
 		resolved[conflict.Service] = newPort
 	}
-	
+
 	// Update configuration with resolved ports
 	return pv.updateConfigWithResolvedPorts(resolved)
 }
@@ -141,7 +158,7 @@ func (pv *PortValidator) promptForResolution(conflicts []PortConflict) error {
 // updateConfigWithResolvedPorts updates the configuration with new ports
 func (pv *PortValidator) updateConfigWithResolvedPorts(resolved map[string]int) error {
 	pv.logger.Info("Updating configuration with resolved ports...")
-	
+
 	// Update config based on service names
 	for service, port := range resolved {
 		switch strings.ToLower(service) {
@@ -154,12 +171,12 @@ func (pv *PortValidator) updateConfigWithResolvedPorts(resolved map[string]int) 
 			pv.logger.Info(fmt.Sprintf("PHP-FPM port updated: port %d", port))
 		}
 	}
-	
+
 	// Save the updated configuration
 	if err := config.Save(pv.config); err != nil {
 		return fmt.Errorf("failed to save updated configuration: %w", err)
 	}
-	
+
 	pv.logger.Success("Configuration updated", "ports resolved")
 	return nil
 }
@@ -170,23 +187,23 @@ func (pv *PortValidator) GetSafePort(service string, preferredPort int) (int, er
 		// Port is available
 		return preferredPort, nil
 	}
-	
+
 	// Port is in conflict, resolve based on strategy
 	switch pv.config.Ports.ConflictResolution {
 	case "fail":
 		return 0, fmt.Errorf("port %d is already in use for %s", preferredPort, service)
-		
+
 	case "auto":
 		available := pv.portManager.FindAvailablePorts(1, preferredPort)
 		if len(available) == 0 {
 			return 0, fmt.Errorf("no available ports found for %s", service)
 		}
 		return available[0], nil
-		
+
 	case "prompt":
 		suggestions := pv.portManager.FindAvailablePorts(3, preferredPort)
 		return pv.portManager.GetPortFromPrompt(service, preferredPort, suggestions)
-		
+
 	default:
 		return 0, fmt.Errorf("unknown conflict resolution strategy: %s", pv.config.Ports.ConflictResolution)
 	}
@@ -195,32 +212,32 @@ func (pv *PortValidator) GetSafePort(service string, preferredPort int) (int, er
 // ValidateEnvironmentPortConfig validates port settings from environment variables
 func (pv *PortValidator) ValidateEnvironmentPortConfig() error {
 	pv.logger.Info("Validating environment port configuration...")
-	
+
 	envPorts := ReadPortConfigFromEnv()
 	if len(envPorts) == 0 {
 		pv.logger.Info("No environment port configuration found")
 		return nil
 	}
-	
+
 	// Convert environment port map to validation format
 	portMap := make(map[string]int)
 	for service, port := range envPorts {
 		portMap[fmt.Sprintf("env-%s", service)] = port
 	}
-	
+
 	// Check for conflicts
 	conflicts := pv.portManager.ValidatePortConfiguration(portMap)
-	
+
 	if len(conflicts) == 0 {
 		pv.logger.Success("Environment port configuration is valid", "")
 		return nil
 	}
-	
+
 	pv.logger.Warn("Environment port conflicts detected", "")
 	for _, conflict := range conflicts {
 		pv.logger.Warn(fmt.Sprintf("  - Port %d (%s)", conflict.Port, conflict.Service), conflict.UsedBy)
 	}
-	
+
 	return fmt.Errorf("environment port conflicts - update environment variables or configuration")
 }
 
@@ -233,10 +250,10 @@ func (pv *PortValidator) ShowPortConfiguration() {
 	if pv.config.Nginx.HTTPSPort > 0 {
 		pv.logger.Info(fmt.Sprintf("  Nginx HTTPS: %d", pv.config.Nginx.HTTPSPort))
 	}
-	
+
 	pv.logger.Info(fmt.Sprintf("  Port Range: %d-%d", pv.config.Ports.StartRange, pv.config.Ports.EndRange))
 	pv.logger.Info(fmt.Sprintf("  Conflict Resolution: %s", pv.config.Ports.ConflictResolution))
-	
+
 	// Check if ports are actually available
 	ports := map[string]int{}
 	if pv.config.Nginx.HTTPPort > 0 {
@@ -245,7 +262,7 @@ func (pv *PortValidator) ShowPortConfiguration() {
 	if pv.config.Nginx.HTTPSPort > 0 {
 		ports["nginx-https"] = pv.config.Nginx.HTTPSPort
 	}
-	
+
 	pv.logger.Info("Port availability:")
 	for service, port := range ports {
 		if pv.portManager.IsPortAvailable(port) {
@@ -262,21 +279,99 @@ func (pv *PortValidator) SetPortFromCommand(service, portStr string) (int, error
 	if err != nil {
 		return 0, fmt.Errorf("invalid port number for %s: %s", service, portStr)
 	}
-	
+
 	if port < 1 || port > 65535 {
 		return 0, fmt.Errorf("port must be between 1 and 65535, got %d", port)
 	}
-	
-	// Validate port is available
+
+	// Validate port is available or managed by Chauffeur
 	if pv.portManager.IsPortAvailable(port) {
-		pv.logger.Error(fmt.Sprintf("Port %d is already in use", port), "")
-		usedBy := pv.portManager.GetPortUsageDetails(port)
-		if usedBy != "" {
-			pv.logger.Error(fmt.Sprintf("Used by: %s", usedBy), "")
+		if handled, err := pv.handleManagedPortUsage(service, port); err != nil {
+			return 0, err
+		} else if !handled {
+			pv.logger.Error(fmt.Sprintf("Port %d is already in use", port), "")
+			usedBy := pv.portManager.GetPortUsageDetails(port)
+			if usedBy != "" {
+				pv.logger.Error(fmt.Sprintf("Used by: %s", usedBy), "")
+			}
+			return 0, fmt.Errorf("port %d is not available", port)
 		}
-		return 0, fmt.Errorf("port %d is not available", port)
 	}
-	
+
 	pv.logger.Success(fmt.Sprintf("Port %d is available for %s", port, service), "")
 	return port, nil
+}
+
+func (pv *PortValidator) resolveManagedConflicts(conflicts []PortConflict) []PortConflict {
+	if len(conflicts) == 0 {
+		return conflicts
+	}
+
+	var unresolved []PortConflict
+	for _, conflict := range conflicts {
+		handled, err := pv.handleManagedPortUsage(conflict.Service, conflict.Port)
+		if err != nil {
+			pv.logger.Warn(fmt.Sprintf("Failed to reconcile port %d (%s)", conflict.Port, conflict.Service), err.Error())
+			unresolved = append(unresolved, conflict)
+			continue
+		}
+		if handled {
+			continue
+		}
+		unresolved = append(unresolved, conflict)
+	}
+	return unresolved
+}
+
+func (pv *PortValidator) handleManagedPortUsage(serviceName string, port int) (bool, error) {
+	if pv.serviceManager == nil {
+		return false, nil
+	}
+
+	name := strings.ToLower(serviceName)
+	var target string
+	switch name {
+	case "nginx", "nginx-http", "nginx-https":
+		target = "chauf-nginx"
+	default:
+		return false, nil
+	}
+
+	if pv.restartedServices[target] {
+		return true, nil
+	}
+
+	service, ok := pv.findGlobalService(target)
+	if !ok {
+		return false, nil
+	}
+
+	running, err := pv.serviceManager.IsRunning(service)
+	if err != nil {
+		return false, fmt.Errorf("check %s status: %w", target, err)
+	}
+	if !running {
+		return false, nil
+	}
+
+	pv.logger.Info(fmt.Sprintf("Port %d is used by %s; restarting to reload configuration", port, target))
+	if err := pv.serviceManager.Restart(service); err != nil {
+		return false, fmt.Errorf("restart %s: %w", target, err)
+	}
+	pv.restartedServices[target] = true
+	pv.logger.Success(fmt.Sprintf("%s restarted", target), fmt.Sprintf("port %d kept for Chauffeur", port))
+	return true, nil
+}
+
+func (pv *PortValidator) findGlobalService(name string) (services.Service, bool) {
+	if pv.serviceManager == nil {
+		return services.Service{}, false
+	}
+
+	for _, svc := range pv.serviceManager.ListGlobalServices() {
+		if svc.Name == name {
+			return svc, true
+		}
+	}
+	return services.Service{}, false
 }

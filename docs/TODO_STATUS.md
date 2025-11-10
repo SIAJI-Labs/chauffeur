@@ -13,6 +13,9 @@ _A living status board for features, debt, and priorities. Keep this in sync wit
 - Smart installer (`install.sh`) with Go prerequisite checks
 - `chauf init` scaffolds `~/.chauffeur` with default config, templates, PATH guidance
 - Workspace layout contracts documented in AGENTS.md
+- Debug helper `CHAUFFEUR_KEEP_BUILD_DIR=1` preserves extracted PHP build directories for manual inspection when needed
+- Offline-friendly installs (`CHAUFFEUR_PHP_TARBALL`/`CHAUFFEUR_PHP_SIGNATURE`/`CHAUFFEUR_PHP_KEYRING`) to reuse cached PHP sources when mirrors are unreachable
+- Port validator recognizes Chauffeur’s own nginx usage and restarts it automatically, so `chauf link` can run while services are active without forcing new ports
 
 ### Project Registration
 - `chauf link` / `links` / `unlink` end-to-end
@@ -24,6 +27,11 @@ _A living status board for features, debt, and priorities. Keep this in sync wit
 - `chauf php install/use/isolate`
 - Project-aware PHP shim
 - Composer installer + shim that reuses Chauffeur PHP
+- Laravel-required PHP extensions (gd, zip, exif, freetype, imagick) enabled during builds
+- Documented host packages (libzip, libjpeg, libpng, freetype, libxml2, curl, zlib, bzip2, readline, libmagickwand) required before compiling PHP
+- PHP installer validates `pkg-config` + all required libraries (libzip/libjpeg/libpng/freetype/libxml2/libcurl/zlib/libxslt/readline/MagickWand) before starting long builds so users get actionable remediation early
+- PHP runtimes ship with GNU Readline enabled so PsySH / `php artisan tinker` arrow keys and history behave like system PHP builds
+- PHP builds enable mysqlnd-based `mysqli` and `PDO_MySQL` extensions so database-backed apps run immediately after `chauf install php`
 
 ### Self-update
 - `chauf self-update` fetches latest git release
