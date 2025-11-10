@@ -9,6 +9,7 @@ import (
 
 	"github.com/siaji/chauffeur/cli/internal/config"
 	"github.com/siaji/chauffeur/cli/internal/projects"
+	"github.com/siaji/chauffeur/cli/internal/services"
 	"github.com/siaji/chauffeur/cli/internal/templates"
 	"github.com/siaji/chauffeur/cli/lib"
 )
@@ -288,9 +289,20 @@ func RunUnlink(args []string) error {
 		return fmt.Errorf("initialize template engine: %w", err)
 	}
 
+	removed := false
 	if err := templateEngine.RemoveNginxConfig(projectSlug); err != nil {
 		logger.Warn("Failed to remove nginx configuration", err.Error())
 		// Continue with unlink even if nginx removal fails
+	} else {
+		removed = true
+	}
+
+	if err := templateEngine.EnsureCatchallServer(cfg.Nginx.HTTPPort); err != nil {
+		logger.Warn("Failed to ensure default nginx catch-all", err.Error())
+	}
+
+	if removed {
+		restartNginxIfNeeded(logger)
 	}
 
 	// Remove the project directory
@@ -376,12 +388,20 @@ func unlinkAllProjects(logger *lib.Logger, cfg config.Config, force bool) error 
 		logger.Warn("Failed to initialize template engine", err.Error())
 		// Continue with unlink even if template engine fails
 	} else {
+		removedAny := false
 		for _, proj := range allProjectsInfo {
 			if err := templateEngine.RemoveNginxConfig(proj.Slug); err != nil {
 				logger.Warn(fmt.Sprintf("Failed to remove nginx configuration for %s", proj.Slug), err.Error())
 				// Continue even if nginx removal fails
+				continue
 			}
-
+			removedAny = true
+		}
+		if err := templateEngine.EnsureCatchallServer(cfg.Nginx.HTTPPort); err != nil {
+			logger.Warn("Failed to ensure default nginx catch-all", err.Error())
+		}
+		if removedAny {
+			restartNginxIfNeeded(logger)
 		}
 	}
 
@@ -440,4 +460,42 @@ func confirmUnlinkAction(logger *lib.Logger, prompt string) bool {
 	fmt.Scanln(&response)
 	response = strings.ToLower(strings.TrimSpace(response))
 	return response == "y" || response == "yes"
+}
+
+func restartNginxIfNeeded(logger *lib.Logger) {
+	manager, err := services.NewServiceManager()
+	if err != nil {
+		logger.Warn("Unable to inspect nginx status", err.Error())
+		return
+	}
+
+	var nginxSvc *services.Service
+	for _, svc := range manager.ListGlobalServices() {
+		if svc.Name == "chauf-nginx" {
+			nginxSvc = &svc
+			break
+		}
+	}
+
+	if nginxSvc == nil {
+		logger.Info("Chauffeur nginx is not installed; skipping reload")
+		return
+	}
+
+	running, err := manager.IsRunning(*nginxSvc)
+	if err != nil {
+		logger.Warn("Failed to determine nginx status", err.Error())
+		return
+	}
+	if !running {
+		logger.Info("Chauffeur nginx is not running; no reload required")
+		return
+	}
+
+	logger.Info("Reloading nginx to apply configuration changes")
+	if err := manager.Restart(*nginxSvc); err != nil {
+		logger.Warn("Failed to reload nginx after unlink", err.Error())
+		return
+	}
+	logger.Success("Chauffeur nginx restarted", "")
 }

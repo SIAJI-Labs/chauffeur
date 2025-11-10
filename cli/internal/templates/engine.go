@@ -237,6 +237,10 @@ func (e *TemplateEngine) WriteNginxConfig(config projects.Config, layout project
 		}
 	}
 
+	if err := e.ensureDefaultCatchallServer(sitesAvailable, sitesEnabled, opts.HTTPPort); err != nil {
+		return err
+	}
+
 	// Ensure cert directory exists when SSL is enabled
 	if config.Site != nil && config.Site.SSL && opts.SSLCertPath != "" {
 		if err := os.MkdirAll(filepath.Dir(opts.SSLCertPath), 0o755); err != nil {
@@ -288,6 +292,62 @@ func (e *TemplateEngine) RemoveNginxConfig(projectSlug string) error {
 		return fmt.Errorf("remove nginx available config: %w", err)
 	}
 
+	return nil
+}
+
+// EnsureCatchallServer makes sure the default 404 server exists for the configured HTTP port.
+func (e *TemplateEngine) EnsureCatchallServer(httpPort int) error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("determine home directory: %w", err)
+	}
+
+	nginxDir := filepath.Join(home, ".chauffeur", "nginx")
+	sitesAvailable := filepath.Join(nginxDir, "sites-available")
+	sitesEnabled := filepath.Join(nginxDir, "sites-enabled")
+
+	for _, dir := range []string{sitesAvailable, sitesEnabled} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return fmt.Errorf("create nginx directory %s: %w", dir, err)
+		}
+	}
+
+	return e.ensureDefaultCatchallServer(sitesAvailable, sitesEnabled, httpPort)
+}
+
+func (e *TemplateEngine) ensureDefaultCatchallServer(sitesAvailable, sitesEnabled string, httpPort int) error {
+	if httpPort == 0 {
+		httpPort = 8080
+	}
+
+	const defaultName = "000-default.conf"
+	availablePath := filepath.Join(sitesAvailable, defaultName)
+	enabledPath := filepath.Join(sitesEnabled, defaultName)
+
+	if _, err := os.Stat(availablePath); err == nil {
+		// ensure symlink exists
+		if _, err := os.Lstat(enabledPath); os.IsNotExist(err) {
+			_ = os.Symlink(availablePath, enabledPath)
+		}
+		return nil
+	}
+
+	content := fmt.Sprintf(`# Chauffeur default catch-all server
+server {
+    listen %d default_server;
+    listen [::]:%d default_server;
+    server_name _;
+    return 404;
+}
+`, httpPort, httpPort)
+
+	if err := os.WriteFile(availablePath, []byte(content), 0o644); err != nil {
+		return fmt.Errorf("write default nginx catch-all: %w", err)
+	}
+
+	if err := os.Symlink(availablePath, enabledPath); err != nil && !os.IsExist(err) {
+		return fmt.Errorf("link default nginx catch-all: %w", err)
+	}
 	return nil
 }
 
