@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"time"
@@ -18,6 +19,69 @@ import (
 	"github.com/siaji/chauffeur/cli/internal/releases"
 	"github.com/siaji/chauffeur/cli/lib"
 )
+
+// Security: Archive extraction validation
+var (
+	// Safe filename pattern for archive entries
+	safeFilenamePattern = regexp.MustCompile(`^[a-zA-Z0-9._/-]+$`)
+
+	// Maximum filename length to prevent path manipulation
+	maxFilenameLength = 255
+
+	// Maximum extracted file size (100MB) to prevent zip bombs
+	maxExtractedSize int64 = 100 * 1024 * 1024
+)
+
+// validateArchivePath ensures archive entry paths are safe and prevent path traversal
+func validateArchivePath(dest, entryPath string) error {
+	if entryPath == "" {
+		return fmt.Errorf("empty entry path")
+	}
+
+	// Check for path traversal attempts
+	if strings.Contains(entryPath, "..") {
+		return fmt.Errorf("path traversal detected: %s", entryPath)
+	}
+
+	// Check for absolute paths (shouldn't happen in tar files but be safe)
+	if filepath.IsAbs(entryPath) {
+		return fmt.Errorf("absolute path not allowed: %s", entryPath)
+	}
+
+	// Check filename length
+	if len(entryPath) > maxFilenameLength {
+		return fmt.Errorf("filename too long: %s", entryPath)
+	}
+
+	// Validate against safe pattern
+	if !safeFilenamePattern.MatchString(entryPath) {
+		return fmt.Errorf("invalid filename format: %s", entryPath)
+	}
+
+	// Ensure the final path is within destination directory
+	target := filepath.Join(dest, entryPath)
+
+	// Clean the path to resolve any relative components
+	cleanTarget := filepath.Clean(target)
+
+	// Get absolute destination
+	absDest, err := filepath.Abs(dest)
+	if err != nil {
+		return fmt.Errorf("invalid destination path: %w", err)
+	}
+
+	absTarget, err := filepath.Abs(cleanTarget)
+	if err != nil {
+		return fmt.Errorf("invalid target path: %w", err)
+	}
+
+	// Ensure target is within destination
+	if !strings.HasPrefix(absTarget, absDest) {
+		return fmt.Errorf("path traversal attempt detected: %s", entryPath)
+	}
+
+	return nil
+}
 
 const nginxBinaryName = "nginx"
 
@@ -663,13 +727,24 @@ func untar(tarball, dest string) error {
 			return err
 		}
 
+		// SECURITY: Fixed - Validate archive entry path to prevent path traversal
+		if err := validateArchivePath(dest, header.Name); err != nil {
+			return fmt.Errorf("security validation failed for archive entry %s: %w", header.Name, err)
+		}
+
 		target := filepath.Join(dest, header.Name)
+
 		switch header.Typeflag {
 		case tar.TypeDir:
 			if err := os.MkdirAll(target, 0o755); err != nil {
 				return err
 			}
 		case tar.TypeReg:
+			// SECURITY: Add size validation to prevent zip bomb attacks
+			if header.Size > maxExtractedSize {
+				return fmt.Errorf("archive entry too large: %s (size: %d)", header.Name, header.Size)
+			}
+
 			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 				return err
 			}
@@ -677,14 +752,21 @@ func untar(tarball, dest string) error {
 			if err != nil {
 				return err
 			}
-			if _, err := io.Copy(out, tr); err != nil {
+			// SECURITY: Use limited reader to prevent excessive extraction
+			limitedReader := io.LimitReader(tr, maxExtractedSize)
+			if _, err := io.Copy(out, limitedReader); err != nil {
 				out.Close()
 				return err
 			}
 			if err := out.Close(); err != nil {
 				return err
 			}
+		case tar.TypeSymlink:
+			// SECURITY: Skip symbolic links to prevent symlink attacks
+			fmt.Printf("Warning: Skipping symbolic link for security: %s\n", header.Name)
+			continue
 		default:
+			// SECURITY: Skip unknown file types for security
 			continue
 		}
 	}

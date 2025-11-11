@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -13,6 +14,104 @@ import (
 	"github.com/siaji/chauffeur/cli/internal/templates"
 	"github.com/siaji/chauffeur/cli/lib"
 )
+
+// Security: Input validation patterns
+var (
+	// Safe domain pattern - allows only alphanumeric, hyphens, and dots for domain names
+	safeDomainPattern = regexp.MustCompile(`^[a-zA-Z0-9.-]+$`)
+
+	// Safe port range for validation
+	minPort = 1
+	maxPort = 65535
+
+	// Reserved ports that should not be used without special privileges
+	privilegedPorts = 1024
+)
+
+// validateDomain ensures domain names are safe and properly formatted
+func validateDomain(domain string) error {
+	if domain == "" {
+		return fmt.Errorf("domain cannot be empty")
+	}
+
+	if len(domain) > 253 {
+		return fmt.Errorf("domain name too long")
+	}
+
+	if !safeDomainPattern.MatchString(domain) {
+		return fmt.Errorf("invalid domain format: %s", domain)
+	}
+
+	// Ensure domain ends with .test for security
+	if !strings.HasSuffix(domain, ".test") {
+		return fmt.Errorf("domain must end with .test: %s", domain)
+	}
+
+	return nil
+}
+
+// validatePHPVersion ensures PHP version is in expected format
+func validatePHPVersion(version string) error {
+	if version == "" {
+		return fmt.Errorf("PHP version cannot be empty")
+	}
+
+	// Allow only major.minor format (e.g., "7.4", "8.0", "8.1")
+	validVersions := map[string]bool{
+		"7.4": true, "8.0": true, "8.1": true, "8.2": true, "8.3": true, "8.4": true,
+	}
+
+	if !validVersions[version] {
+		return fmt.Errorf("unsupported PHP version: %s", version)
+	}
+
+	return nil
+}
+
+// validatePort ensures port numbers are within valid range
+func validatePort(port int) error {
+	if port < minPort || port > maxPort {
+		return fmt.Errorf("port must be between %d and %d", minPort, maxPort)
+	}
+
+	// Warn about privileged ports
+	if port < privilegedPorts {
+		// Note: This is just a warning, not an error
+		fmt.Printf("Warning: Port %d is a privileged port (< 1024)\n", port)
+	}
+
+	return nil
+}
+
+// validateProjectPath ensures the project path is safe and within allowed directories
+func validateProjectPath(path string) error {
+	if path == "" {
+		return fmt.Errorf("project path cannot be empty")
+	}
+
+	// Convert to absolute path
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return fmt.Errorf("invalid project path: %w", err)
+	}
+
+	// Prevent path traversal attempts
+	if strings.Contains(absPath, "..") {
+		return fmt.Errorf("path traversal not allowed: %s", path)
+	}
+
+	// Check if path actually exists and is a directory
+	info, err := os.Stat(absPath)
+	if err != nil {
+		return fmt.Errorf("project path does not exist: %s", absPath)
+	}
+
+	if !info.IsDir() {
+		return fmt.Errorf("project path must be a directory: %s", absPath)
+	}
+
+	return nil
+}
 
 // RunLink handles `chauf link` command invocations.
 func RunLink(args []string) error {
@@ -60,6 +159,10 @@ func RunLink(args []string) error {
 			if err != nil {
 				return fmt.Errorf("invalid HTTP port: %s", portStr)
 			}
+			// Security: Validate port range
+			if err := validatePort(val); err != nil {
+				return fmt.Errorf("invalid HTTP port: %w", err)
+			}
 			httpPort = val
 			i += 2
 		case "--https-port":
@@ -70,6 +173,10 @@ func RunLink(args []string) error {
 			val, err := strconv.Atoi(portStr)
 			if err != nil {
 				return fmt.Errorf("invalid HTTPS port: %s", portStr)
+			}
+			// Security: Validate port range
+			if err := validatePort(val); err != nil {
+				return fmt.Errorf("invalid HTTPS port: %w", err)
 			}
 			httpsPort = val
 			i += 2
@@ -134,11 +241,21 @@ func RunLink(args []string) error {
 		return fmt.Errorf("resolve project path: %w", err)
 	}
 
+	// Security: Validate project path to prevent path traversal
+	if err := validateProjectPath(cwd); err != nil {
+		return fmt.Errorf("security validation failed: %w", err)
+	}
+
 	if phpVer == "" {
 		phpVer = cfg.PHP.Default
 	}
 	if phpVer == "" {
 		return fmt.Errorf("no PHP version specified and no default configured")
+	}
+
+	// Security: Validate PHP version format
+	if err := validatePHPVersion(phpVer); err != nil {
+		return fmt.Errorf("security validation failed: %w", err)
 	}
 
 	// Validate that the requested PHP version is installed
@@ -158,6 +275,11 @@ func RunLink(args []string) error {
 	// Set default domain if none provided
 	if domain == "" {
 		domain = slug + ".test"
+	}
+
+	// Security: Validate domain format and safety
+	if err := validateDomain(domain); err != nil {
+		return fmt.Errorf("security validation failed: %w", err)
 	}
 
 	proj := projects.Config{
