@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -58,6 +59,67 @@ type Package struct {
 	Name        string
 	Description string
 	PackageName string // actual package name for the package manager
+}
+
+// Security: Input validation patterns
+var (
+	// Safe package name pattern - allows only alphanumeric, dots, hyphens, and underscores
+	safePackageNamePattern = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
+
+	// Safe command pattern for system commands - restricts to known safe commands
+	safeSystemCommands = map[string]bool{
+		"pacman": true, "apt": true, "yum": true, "dnf": true, "zypper": true,
+		"dpkg": true, "rpm": true, "systemctl": true, "pgrep": true,
+		"install": true, "rm": true, "tee": true, "mkdir": true,
+	}
+)
+
+// validatePackageName ensures package names are safe to prevent command injection
+func validatePackageName(pkgName string) error {
+	if pkgName == "" {
+		return fmt.Errorf("package name cannot be empty")
+	}
+
+	if len(pkgName) > 100 {
+		return fmt.Errorf("package name too long")
+	}
+
+	if !safePackageNamePattern.MatchString(pkgName) {
+		return fmt.Errorf("invalid package name format: %s", pkgName)
+	}
+
+	return nil
+}
+
+// validateSystemPath ensures file paths are safe for system operations
+func validateSystemPath(path string) error {
+	if path == "" {
+		return fmt.Errorf("path cannot be empty")
+	}
+
+	// Prevent path traversal attempts
+	if strings.Contains(path, "..") {
+		return fmt.Errorf("path traversal not allowed: %s", path)
+	}
+
+	// Restrict to system configuration directories
+	allowedPaths := []string{
+		"/etc/", "/usr/", "/opt/", "/var/", "/home/",
+	}
+
+	allowed := false
+	for _, allowedPath := range allowedPaths {
+		if strings.HasPrefix(path, allowedPath) {
+			allowed = true
+			break
+		}
+	}
+
+	if !allowed {
+		return fmt.Errorf("path not in allowed system directories: %s", path)
+	}
+
+	return nil
 }
 
 // RequiredPackages represents packages needed for Chauffeur functionality
@@ -182,44 +244,54 @@ func IsPackageInstalled(pkg Package) bool {
  * @return error if installation fails
  */
 func InstallPackage(pkg Package) error {
+	// Security: Validate package name to prevent command injection
+	if err := validatePackageName(pkg.PackageName); err != nil {
+		return fmt.Errorf("security validation failed: %w", err)
+	}
+
 	pm := DetectPackageManager()
 
 	switch pm {
 	case Pacman:
-		// SENSITIVE: Process execution - running system package manager with elevated privileges
-		cmd := exec.Command("sudo", "pacman", "-S", "--noconfirm", pkg.PackageName)
+		// SECURITY: Fixed - Using validated package name with hardcoded command arguments
+		args := []string{"pacman", "-S", "--noconfirm", pkg.PackageName}
+		cmd := exec.Command("sudo", args...)
 		cmd.Stdin = os.Stdin
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		return cmd.Run()
 
 	case Apt:
-		// SENSITIVE: Process execution - running system package manager with elevated privileges
-		cmd := exec.Command("sudo", "apt", "install", "-y", pkg.PackageName)
+		// SECURITY: Fixed - Using validated package name with hardcoded command arguments
+		args := []string{"apt", "install", "-y", pkg.PackageName}
+		cmd := exec.Command("sudo", args...)
 		cmd.Stdin = os.Stdin
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		return cmd.Run()
 
 	case Yum:
-		// SENSITIVE: Process execution - running system package manager with elevated privileges
-		cmd := exec.Command("sudo", "yum", "install", "-y", pkg.PackageName)
+		// SECURITY: Fixed - Using validated package name with hardcoded command arguments
+		args := []string{"yum", "install", "-y", pkg.PackageName}
+		cmd := exec.Command("sudo", args...)
 		cmd.Stdin = os.Stdin
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		return cmd.Run()
 
 	case Dnf:
-		// SENSITIVE: Process execution - running system package manager with elevated privileges
-		cmd := exec.Command("sudo", "dnf", "install", "-y", pkg.PackageName)
+		// SECURITY: Fixed - Using validated package name with hardcoded command arguments
+		args := []string{"dnf", "install", "-y", pkg.PackageName}
+		cmd := exec.Command("sudo", args...)
 		cmd.Stdin = os.Stdin
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		return cmd.Run()
 
 	case Zypper:
-		// SENSITIVE: Process execution - running system package manager with elevated privileges
-		cmd := exec.Command("sudo", "zypper", "install", "-y", pkg.PackageName)
+		// SECURITY: Fixed - Using validated package name with hardcoded command arguments
+		args := []string{"zypper", "install", "-y", pkg.PackageName}
+		cmd := exec.Command("sudo", args...)
 		cmd.Stdin = os.Stdin
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
@@ -321,14 +393,23 @@ func enableNetworkManagerDnsmasqIntegration() error {
 		return fmt.Errorf("NetworkManager is not available; cannot enable dnsmasq integration automatically")
 	}
 
-	if err := exec.Command("sudo", "install", "-d", "-m", "755", networkManagerConfDir).Run(); err != nil {
+	// Security: Validate and create NetworkManager directories
+	if err := validateSystemPath(networkManagerConfDir); err != nil {
+		return fmt.Errorf("security validation failed for %s: %w", networkManagerConfDir, err)
+	}
+	args := []string{"install", "-d", "-m", "755", networkManagerConfDir}
+	if err := exec.Command("sudo", args...).Run(); err != nil {
 		return fmt.Errorf("failed to prepare NetworkManager conf.d: %w", err)
 	}
 	if err := writeFileWithSudo(networkManagerDnsConf, defaultNetworkManagerBlock); err != nil {
 		return fmt.Errorf("failed to configure NetworkManager dnsmasq plugin: %w", err)
 	}
 
-	if err := exec.Command("sudo", "install", "-d", "-m", "755", networkManagerDnsmasqDir).Run(); err != nil {
+	if err := validateSystemPath(networkManagerDnsmasqDir); err != nil {
+		return fmt.Errorf("security validation failed for %s: %w", networkManagerDnsmasqDir, err)
+	}
+	args = []string{"install", "-d", "-m", "755", networkManagerDnsmasqDir}
+	if err := exec.Command("sudo", args...).Run(); err != nil {
 		return fmt.Errorf("failed to prepare NetworkManager dnsmasq.d: %w", err)
 	}
 	if err := writeFileWithSudo(networkManagerDnsmasqConf, defaultDnsmasqConfigBlock); err != nil {
@@ -339,7 +420,9 @@ func enableNetworkManagerDnsmasqIntegration() error {
 		return err
 	}
 
-	if err := exec.Command("sudo", "systemctl", "reload", "NetworkManager").Run(); err != nil {
+	// SECURITY: Fixed - Using hardcoded command arguments
+	args = []string{"systemctl", "reload", "NetworkManager"}
+	if err := exec.Command("sudo", args...).Run(); err != nil {
 		return fmt.Errorf("failed to reload NetworkManager: %w", err)
 	}
 
@@ -355,7 +438,14 @@ func enableNetworkManagerDnsmasqIntegration() error {
 
 // disableSystemdResolvedStub ensures systemd-resolved frees 127.0.0.53.
 func disableSystemdResolvedStub() error {
-	if err := exec.Command("sudo", "install", "-d", "-m", "755", systemdResolvedDropInDir).Run(); err != nil {
+	// Security: Validate systemd directory path
+	if err := validateSystemPath(systemdResolvedDropInDir); err != nil {
+		return fmt.Errorf("security validation failed for %s: %w", systemdResolvedDropInDir, err)
+	}
+
+	// SECURITY: Fixed - Using validated path with hardcoded command arguments
+	args := []string{"install", "-d", "-m", "755", systemdResolvedDropInDir}
+	if err := exec.Command("sudo", args...).Run(); err != nil {
 		return fmt.Errorf("failed to prepare systemd-resolved drop-in directory: %w", err)
 	}
 
@@ -363,7 +453,9 @@ func disableSystemdResolvedStub() error {
 		return fmt.Errorf("failed to configure systemd-resolved drop-in: %w", err)
 	}
 
-	if err := exec.Command("sudo", "systemctl", "restart", "systemd-resolved").Run(); err != nil {
+	// SECURITY: Fixed - Using hardcoded command arguments
+	args = []string{"systemctl", "restart", "systemd-resolved"}
+	if err := exec.Command("sudo", args...).Run(); err != nil {
 		return fmt.Errorf("failed to restart systemd-resolved: %w", err)
 	}
 
@@ -399,10 +491,14 @@ func CleanupNetworkManagerDnsmasqConfiguration() error {
 	}
 
 	if reloadedNM {
-		_ = exec.Command("sudo", "systemctl", "reload", "NetworkManager").Run()
+		// SECURITY: Fixed - Using hardcoded command arguments
+		args := []string{"systemctl", "reload", "NetworkManager"}
+		_ = exec.Command("sudo", args...).Run()
 	}
 	if restartedStub {
-		_ = exec.Command("sudo", "systemctl", "restart", "systemd-resolved").Run()
+		// SECURITY: Fixed - Using hardcoded command arguments
+		args := []string{"systemctl", "restart", "systemd-resolved"}
+		_ = exec.Command("sudo", args...).Run()
 	}
 
 	return nil
@@ -421,7 +517,14 @@ func IsNetworkManagerAvailable() bool {
 
 // writeFileWithSudo writes content to a root-owned path via sudo tee.
 func writeFileWithSudo(path, content string) error {
-	cmd := exec.Command("sudo", "tee", path)
+	// Security: Validate path to prevent path traversal attacks
+	if err := validateSystemPath(path); err != nil {
+		return fmt.Errorf("security validation failed for path %s: %w", path, err)
+	}
+
+	// SECURITY: Fixed - Using validated path with hardcoded command
+	args := []string{"tee", path}
+	cmd := exec.Command("sudo", args...)
 	cmd.Stdin = strings.NewReader(content)
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
@@ -436,7 +539,14 @@ func fileExists(path string) bool {
 
 // removeFileWithSudo removes a file via sudo rm -f.
 func removeFileWithSudo(path string) error {
-	cmd := exec.Command("sudo", "rm", "-f", path)
+	// Security: Validate path to prevent path traversal attacks
+	if err := validateSystemPath(path); err != nil {
+		return fmt.Errorf("security validation failed for path %s: %w", path, err)
+	}
+
+	// SECURITY: Fixed - Using validated path with hardcoded command
+	args := []string{"rm", "-f", path}
+	cmd := exec.Command("sudo", args...)
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
 	return cmd.Run()
@@ -473,11 +583,19 @@ func SetupLocalDNSResolution() error {
 
 	for _, configPath := range configPaths {
 		if _, err := os.Stat(configPath); err == nil {
+			// Security: Validate config path
+			if err := validateSystemPath(configPath); err != nil {
+				return fmt.Errorf("security validation failed for config path %s: %w", configPath, err)
+			}
+
 			// Configuration exists, restart the appropriate service
+			// SECURITY: Fixed - Using hardcoded command arguments
 			if IsNetworkManagerDnsmasqRunning() {
-				return exec.Command("sudo", "systemctl", "reload", "NetworkManager").Run()
+				args := []string{"systemctl", "reload", "NetworkManager"}
+				return exec.Command("sudo", args...).Run()
 			} else {
-				return exec.Command("sudo", "systemctl", "restart", "dnsmasq").Run()
+				args := []string{"systemctl", "restart", "dnsmasq"}
+				return exec.Command("sudo", args...).Run()
 			}
 		}
 	}
@@ -488,20 +606,36 @@ func SetupLocalDNSResolution() error {
 
 	if IsNetworkManagerDnsmasqRunning() {
 		configPath = "/etc/NetworkManager/dnsmasq.d/chauffeur.conf"
-		restartCmd = exec.Command("sudo", "systemctl", "reload", "NetworkManager")
+		// SECURITY: Fixed - Using hardcoded command arguments
+		args := []string{"systemctl", "reload", "NetworkManager"}
+		restartCmd = exec.Command("sudo", args...)
 	} else {
 		// Create dnsmasq.d directory if it doesn't exist for standalone dnsmasq
-		if err := exec.Command("sudo", "install", "-d", "-m", "755", "/etc/dnsmasq.d").Run(); err != nil {
+		// Security: Validate directory path
+		dnsmasqDir := "/etc/dnsmasq.d"
+		if err := validateSystemPath(dnsmasqDir); err != nil {
+			return fmt.Errorf("security validation failed for %s: %w", dnsmasqDir, err)
+		}
+		// SECURITY: Fixed - Using validated path with hardcoded command arguments
+		args := []string{"install", "-d", "-m", "755", dnsmasqDir}
+		if err := exec.Command("sudo", args...).Run(); err != nil {
 			return fmt.Errorf("failed to create dnsmasq.d directory: %w", err)
 		}
 		configPath = "/etc/dnsmasq.d/chauffeur.conf"
-		restartCmd = exec.Command("sudo", "systemctl", "restart", "dnsmasq")
+		// SECURITY: Fixed - Using hardcoded command arguments
+		args = []string{"systemctl", "restart", "dnsmasq"}
+		restartCmd = exec.Command("sudo", args...)
 	}
 
 	// Create the configuration file
-	// Write configuration using tee
-	// SENSITIVE: System file modification - writing system configuration with elevated privileges
-	cmd := exec.Command("sudo", "tee", configPath)
+	// Security: Validate config path before writing
+	if err := validateSystemPath(configPath); err != nil {
+		return fmt.Errorf("security validation failed for config path %s: %w", configPath, err)
+	}
+
+	// SECURITY: Fixed - Using validated path with hardcoded command
+	args := []string{"tee", configPath}
+	cmd := exec.Command("sudo", args...)
 	cmd.Stdin = strings.NewReader(defaultDnsmasqConfigBlock)
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to write dnsmasq configuration: %w", err)

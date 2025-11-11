@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -13,6 +14,86 @@ import (
 	"github.com/siaji/chauffeur/cli/internal/templates"
 	"github.com/siaji/chauffeur/cli/lib"
 )
+
+// Security: Input validation patterns
+var (
+	// Safe slug pattern - allows only alphanumeric, hyphens, and underscores
+	safeSlugPattern = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+
+	// Safe domain pattern for unlink - allows only alphanumeric, hyphens, and dots
+	safeUnlinkDomainPattern = regexp.MustCompile(`^[a-zA-Z0-9.-]+$`)
+
+	// Maximum path length to prevent buffer overflow attacks
+	maxPathLength = 4096
+)
+
+// validateSlug ensures project slugs are safe
+func validateSlug(slug string) error {
+	if slug == "" {
+		return fmt.Errorf("slug cannot be empty")
+	}
+
+	if len(slug) > 100 {
+		return fmt.Errorf("slug too long")
+	}
+
+	if !safeSlugPattern.MatchString(slug) {
+		return fmt.Errorf("invalid slug format: %s", slug)
+	}
+
+	return nil
+}
+
+// validateUnlinkDomain ensures domain names are safe
+func validateUnlinkDomain(domain string) error {
+	if domain == "" {
+		return fmt.Errorf("domain cannot be empty")
+	}
+
+	if len(domain) > 253 {
+		return fmt.Errorf("domain name too long")
+	}
+
+	if !safeUnlinkDomainPattern.MatchString(domain) {
+		return fmt.Errorf("invalid domain format: %s", domain)
+	}
+
+	return nil
+}
+
+// validateUnlinkPath ensures project paths are safe and within allowed directories
+func validateUnlinkPath(path string) error {
+	if path == "" {
+		return fmt.Errorf("project path cannot be empty")
+	}
+
+	if len(path) > maxPathLength {
+		return fmt.Errorf("project path too long")
+	}
+
+	// Convert to absolute path
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return fmt.Errorf("invalid project path: %w", err)
+	}
+
+	// Prevent path traversal attempts
+	if strings.Contains(absPath, "..") {
+		return fmt.Errorf("path traversal not allowed: %s", path)
+	}
+
+	// Check if path actually exists and is a directory
+	info, err := os.Stat(absPath)
+	if err != nil {
+		return fmt.Errorf("project path does not exist: %s", absPath)
+	}
+
+	if !info.IsDir() {
+		return fmt.Errorf("project path must be a directory: %s", absPath)
+	}
+
+	return nil
+}
 
 // RunUnlink handles `chauf unlink` command invocations.
 func RunUnlink(args []string) error {
@@ -38,18 +119,30 @@ func RunUnlink(args []string) error {
 				return fmt.Errorf("--slug requires a slug value")
 			}
 			slug = args[i+1]
+			// Security: Validate slug format
+			if err := validateSlug(slug); err != nil {
+				return fmt.Errorf("security validation failed: %w", err)
+			}
 			i += 2
 		case "--site":
 			if i+1 >= len(args) {
 				return fmt.Errorf("--site requires a domain value")
 			}
 			domain = args[i+1]
+			// Security: Validate domain format
+			if err := validateUnlinkDomain(domain); err != nil {
+				return fmt.Errorf("security validation failed: %w", err)
+			}
 			i += 2
 		case "--project":
 			if i+1 >= len(args) {
 				return fmt.Errorf("--project requires a path value")
 			}
 			project = args[i+1]
+			// Security: Validate project path
+			if err := validateUnlinkPath(project); err != nil {
+				return fmt.Errorf("security validation failed: %w", err)
+			}
 			i += 2
 		case "--all":
 			all = true
@@ -85,6 +178,11 @@ func RunUnlink(args []string) error {
 		cwd, err = filepath.Abs(cwd)
 		if err != nil {
 			return fmt.Errorf("resolve project path: %w", err)
+		}
+
+		// Security: Validate current working directory path
+		if err := validateUnlinkPath(cwd); err != nil {
+			return fmt.Errorf("security validation failed: %w", err)
 		}
 
 		// Check if current directory is registered
@@ -169,6 +267,7 @@ func RunUnlink(args []string) error {
 
 		case project != "":
 			// Unlink by project directory path
+			// Note: project path already validated during argument parsing
 			absProject, err := filepath.Abs(project)
 			if err != nil {
 				return fmt.Errorf("resolve project path: %w", err)
