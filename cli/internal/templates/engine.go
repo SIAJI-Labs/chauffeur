@@ -407,7 +407,7 @@ server {
 	if config.Site != nil && config.Site.SSL {
 		base += fmt.Sprintf(`
 server {
-    listen %d ssl http2;
+    listen %d ssl;
     server_name %s;
     root %s;
     index index.php index.html;

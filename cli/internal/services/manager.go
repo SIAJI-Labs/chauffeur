@@ -247,13 +247,20 @@ func (sm *ServiceManager) Start(service Service) error {
 		return fmt.Errorf("write PID file for %s: %w", service.Name, err)
 	}
 
-	// Give the process a moment to start
-	time.Sleep(100 * time.Millisecond)
+	// Give the process time to start and validate configuration
+	time.Sleep(1 * time.Second)
 
-	// Verify it's still running
+	// Verify it's still running and didn't exit due to config errors
 	if err := cmd.Process.Signal(syscall.Signal(0)); err != nil {
 		os.Remove(service.PIDFile)
 		return fmt.Errorf("service %s failed to start", service.Name)
+	}
+
+	// Additional check: ensure the process is still alive after another second
+	time.Sleep(1 * time.Second)
+	if err := cmd.Process.Signal(syscall.Signal(0)); err != nil {
+		os.Remove(service.PIDFile)
+		return fmt.Errorf("service %s failed to start - likely configuration error", service.Name)
 	}
 
 	return nil
