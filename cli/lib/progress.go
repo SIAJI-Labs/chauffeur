@@ -61,13 +61,15 @@ func (s *progressSpinner) Success(summary string) {
 	s.stopSpinner()
 	if s.enabled {
 		durationStr := formatDuration(elapsed)
+		fmt.Printf("\r[ %s ] %s %s (%s)\n", s.command, s.message, green("✓"), gray(durationStr))
 		if summary != "" {
-			fmt.Printf("\r[ %s ] %s %s %s (%s)\n", s.command, s.message, green("✓"), summary, gray(durationStr))
-		} else {
-			fmt.Printf("\r[ %s ] %s %s (%s)\n", s.command, s.message, green("✓"), gray(durationStr))
+			fmt.Printf("  └── %s %s\n", green("✓"), summary)
 		}
 	} else {
-		fmt.Printf("    %s %s (%s)\n", "→", summary, formatDuration(elapsed))
+		fmt.Printf("[ %s ] %s %s\n", s.command, s.message, green("✓"))
+		if summary != "" {
+			fmt.Printf("  └── %s\n", summary)
+		}
 	}
 }
 
@@ -80,13 +82,15 @@ func (s *progressSpinner) Fail(summary string) {
 	s.stopSpinner()
 	if s.enabled {
 		durationStr := formatDuration(elapsed)
+		fmt.Printf("\r[%s] %s %s (%s)\n", s.command, s.message, red("✗"), gray(durationStr))
 		if summary != "" {
-			fmt.Printf("\r[%s] %s %s %s (%s)\n", s.command, s.message, red("✗"), summary, gray(durationStr))
-		} else {
-			fmt.Printf("\r[%s] %s %s (%s)\n", s.command, s.message, red("✗"), gray(durationStr))
+			fmt.Printf("  └── %s %s\n", red("✗"), summary)
 		}
 	} else {
-		fmt.Printf("    %s %s (%s)\n", "✗", summary, formatDuration(elapsed))
+		fmt.Printf("[ %s ] %s %s\n", s.command, s.message, red("✗"))
+		if summary != "" {
+			fmt.Printf("  └── %s\n", summary)
+		}
 	}
 }
 

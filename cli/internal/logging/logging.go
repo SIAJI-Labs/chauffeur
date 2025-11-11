@@ -102,6 +102,16 @@ func (l *CommandLogger) gray(text string) string {
 	return l.colorize(colorGray, text)
 }
 
+// cyan formats text in cyan (for prompts and highlights)
+func (l *CommandLogger) cyan(text string) string {
+	return l.colorize("\033[36m", text) // cyan ANSI code
+}
+
+// white formats text in white (for high contrast)
+func (l *CommandLogger) white(text string) string {
+	return l.colorize("\033[37m", text) // white ANSI code
+}
+
 // bold formats text in bold
 func (l *CommandLogger) bold(text string) string {
 	return l.colorize(colorBold, text)
@@ -182,6 +192,23 @@ func (l *CommandLogger) PrintSummary(items []SummaryItem) {
 		fmt.Printf("  └── %s: %s\n", l.bold(item.Label), item.Value)
 	}
 	fmt.Printf("\n%s %s\n", l.prefix(), l.green("Complete"))
+}
+
+// Prompt prints a user prompt message with readable context
+func (l *CommandLogger) Prompt(message, context string) {
+	promptIndent := "  →"
+	contextIndent := "  └──"
+	if l.parent {
+		promptIndent = "    →"
+		contextIndent = "      └──"
+	}
+
+	if context != "" {
+		fmt.Printf("%s %s\n", promptIndent, l.cyan(message))
+		fmt.Printf("%s %s\n", contextIndent, l.white(context))
+	} else {
+		fmt.Printf("%s %s\n", promptIndent, l.cyan(message))
+	}
 }
 
 // SummaryItem represents an item in the summary

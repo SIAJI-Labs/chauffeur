@@ -192,6 +192,16 @@ func (l *Logger) gray(text string) string {
 	return l.colorize(colorGray, text)
 }
 
+// cyan formats text in cyan (for prompts and highlights)
+func (l *Logger) cyan(text string) string {
+	return l.colorize("\033[36m", text) // cyan ANSI code
+}
+
+// white formats text in white (for high contrast)
+func (l *Logger) white(text string) string {
+	return l.colorize("\033[37m", text) // white ANSI code
+}
+
 // bold formats text in bold
 func (l *Logger) bold(text string) string {
 	return l.colorize(colorBold, text)
@@ -349,6 +359,23 @@ func (l *Logger) PrintTable(headers []string, rows [][]string) {
 	}
 	for _, row := range rows {
 		fmt.Printf("%s %s | %s\n", l.prefix(), row[0], row[1])
+	}
+}
+
+// Prompt prints a user prompt message with readable context
+func (l *Logger) Prompt(message, context string) {
+	promptIndent := "  →"
+	contextIndent := "  └──"
+	if l.parent {
+		promptIndent = "    →"
+		contextIndent = "      └──"
+	}
+
+	if context != "" {
+		fmt.Printf("%s %s\n", promptIndent, l.cyan(message))
+		fmt.Printf("%s %s\n", contextIndent, l.white(context))
+	} else {
+		fmt.Printf("%s %s\n", promptIndent, l.cyan(message))
 	}
 }
 

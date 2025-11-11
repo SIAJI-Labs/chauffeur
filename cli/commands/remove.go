@@ -346,7 +346,7 @@ func updateDefaultPHPAfterRemoval(logger *lib.Logger, prefix, removedVersion str
 
 // confirmDestructiveAction displays a destructive warning and reads user confirmation.
 func confirmDestructiveAction(logger *lib.Logger, prompt string) bool {
-	logger.Warn(prompt, "Type 'y' to continue, anything else cancels")
+	logger.Prompt(prompt, "Type 'y' to continue, anything else cancels")
 	var response string
 	fmt.Scanln(&response)
 	response = strings.ToLower(strings.TrimSpace(response))
