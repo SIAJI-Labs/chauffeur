@@ -16,6 +16,8 @@ _A living status board for features, debt, and priorities. Keep this in sync wit
 - Debug helper `CHAUFFEUR_KEEP_BUILD_DIR=1` preserves extracted PHP build directories for manual inspection when needed
 - Offline-friendly installs (`CHAUFFEUR_PHP_TARBALL`/`CHAUFFEUR_PHP_SIGNATURE`/`CHAUFFEUR_PHP_KEYRING`) to reuse cached PHP sources when mirrors are unreachable
 - Port validator recognizes Chauffeur’s own nginx usage and restarts it automatically, so `chauf link` can run while services are active without forcing new ports
+- `chauf info` reports GitHub release status plus compare-local-vs-remote commit drift so contributors know when they’re ahead/behind
+- Imagick installer fetches the latest stable tarball from PECL (with env overrides) so PHP builds keep working as releases evolve
 
 ### Project Registration
 - `chauf link` / `links` / `unlink` end-to-end

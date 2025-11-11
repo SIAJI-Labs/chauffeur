@@ -97,11 +97,8 @@ type pkgRequirement struct {
 }
 
 const (
-	imagickVersion    = "3.7.0"
-	imagickTarball    = "imagick-" + imagickVersion + ".tgz"
-	imagickSourceDir  = "imagick-" + imagickVersion
-	imagickSourceURL  = "https://pecl.php.net/get/" + imagickTarball
-	imagickIniContent = "extension=imagick\n"
+	defaultImagickVersion = "3.8.0"
+	imagickIniContent     = "extension=imagick\n"
 )
 
 var phpPkgRequirements = []pkgRequirement{
@@ -546,11 +543,38 @@ func buildAndInstallPHP(opts InstallOptions, version, sourceDir string, logger *
 		"--with-pdo-mysql=mysqlnd",
 	}
 
+	// Remove GD-related options for legacy versions due to compatibility issues
 	switch version {
-	case "7.4":
-		// placeholder for future 7.4-specific options
 	case "8.0":
-		// placeholder for future 8.0-specific options
+		// Remove GD-related options for PHP 8.0 due to function pointer compatibility issues
+		var filteredArgs []string
+		gdOptions := map[string]bool{
+			"--enable-gd":        true,
+			"--with-jpeg=/usr":  true,
+			"--with-freetype=/usr": true,
+		}
+		for _, arg := range confArgs {
+			if !gdOptions[arg] {
+				filteredArgs = append(filteredArgs, arg)
+			}
+		}
+		confArgs = filteredArgs
+		logger.Info("Disabled GD extension for PHP 8.0 due to compatibility issues")
+	case "7.4":
+		// Remove GD-related options for PHP 7.4 due to function pointer compatibility issues
+		var filteredArgs []string
+		gdOptions := map[string]bool{
+			"--enable-gd":        true,
+			"--with-jpeg=/usr":  true,
+			"--with-freetype=/usr": true,
+		}
+		for _, arg := range confArgs {
+			if !gdOptions[arg] {
+				filteredArgs = append(filteredArgs, arg)
+			}
+		}
+		confArgs = filteredArgs
+		logger.Info("Disabled GD extension for PHP 7.4 due to compatibility issues")
 	default:
 		confArgs = append(confArgs, "--enable-mbstring")
 	}
@@ -645,16 +669,34 @@ func installImagickExtension(opts InstallOptions, version, installDir string, lo
 		return nil
 	}
 
+	imagickVersion := determineImagickVersion(opts.Client, logger)
+	tarballName := fmt.Sprintf("imagick-%s.tgz", imagickVersion)
+	sourceFolder := fmt.Sprintf("imagick-%s", imagickVersion)
+	downloadURL := fmt.Sprintf("https://pecl.php.net/get/%s", tarballName)
+	logger.Info(fmt.Sprintf("Imagick version: %s", imagickVersion))
+
 	tmpDir, err := os.MkdirTemp("", "chauffeur-imagick-*")
 	if err != nil {
 		return fmt.Errorf("create imagick temp dir: %w", err)
 	}
 	defer os.RemoveAll(tmpDir)
 
-	tarballPath := filepath.Join(tmpDir, imagickTarball)
-	logger.Info(fmt.Sprintf("Downloading imagick %s", imagickVersion))
-	if _, err := lib.DownloadToFileWithLogger(opts.Client, imagickSourceURL, tarballPath, fmt.Sprintf("imagick %s", imagickVersion), logger); err != nil {
-		return logger.Fail("download imagick extension", err.Error())
+	tarballPath := filepath.Join(tmpDir, tarballName)
+	usedLocal := false
+	if localTarball := strings.TrimSpace(os.Getenv("CHAUFFEUR_IMAGICK_TARBALL")); localTarball != "" {
+		logger.Info(fmt.Sprintf("Using local imagick tarball %s", localTarball))
+		if err := copyFile(localTarball, tarballPath); err != nil {
+			logger.Warn("Failed to copy local imagick tarball", err.Error())
+		} else {
+			usedLocal = true
+		}
+	}
+
+	if !usedLocal {
+		logger.Info(fmt.Sprintf("Downloading imagick %s", imagickVersion))
+		if _, err := lib.DownloadToFileWithLogger(opts.Client, downloadURL, tarballPath, fmt.Sprintf("imagick %s", imagickVersion), logger); err != nil {
+			return logger.Fail("download imagick extension", err.Error())
+		}
 	}
 
 	logger.Info("Extracting imagick sources")
@@ -662,9 +704,13 @@ func installImagickExtension(opts InstallOptions, version, installDir string, lo
 		return logger.Fail("extract imagick extension", err.Error())
 	}
 
-	sourceDir := filepath.Join(tmpDir, imagickSourceDir)
+	sourceDir := filepath.Join(tmpDir, sourceFolder)
 	if _, err := os.Stat(sourceDir); err != nil {
 		return fmt.Errorf("imagick source directory missing: %w", err)
+	}
+
+	if err := patchImagickStubConditionals(sourceDir, logger); err != nil {
+		logger.Warn("Failed to normalize Imagick stub conditionals", err.Error())
 	}
 
 	logger.Info("phpize")
@@ -708,6 +754,99 @@ func installImagickExtension(opts InstallOptions, version, installDir string, lo
 	}
 
 	logger.Success("imagick extension enabled", iniPath)
+	return nil
+}
+
+func determineImagickVersion(client *http.Client, logger *lib.Logger) string {
+	if logger == nil {
+		logger = lib.NewCommandLogger("imagick")
+	}
+
+	if override := strings.TrimSpace(os.Getenv("CHAUFFEUR_IMAGICK_VERSION")); override != "" {
+		logger.Info(fmt.Sprintf("Using imagick version override %s", override))
+		return override
+	}
+
+	version, err := fetchLatestImagickVersion(client)
+	if err != nil {
+		logger.Warn("Failed to detect latest imagick version", err.Error())
+		return defaultImagickVersion
+	}
+	return version
+}
+
+func fetchLatestImagickVersion(client *http.Client) (string, error) {
+	if client == nil {
+		client = &http.Client{Timeout: 15 * time.Second}
+	}
+	req, err := http.NewRequest("GET", "https://pecl.php.net/rest/r/imagick/latest.txt", nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("User-Agent", "chauffeur-cli")
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", fmt.Errorf("unexpected status %s", resp.Status)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+	version := strings.TrimSpace(string(body))
+	if version == "" {
+		return "", fmt.Errorf("imagick version response empty")
+	}
+	return version, nil
+}
+
+func patchImagickStubConditionals(sourceDir string, logger *lib.Logger) error {
+	stubPath := filepath.Join(sourceDir, "Imagick.stub.php")
+	data, err := os.ReadFile(stubPath)
+	if err != nil {
+		return err
+	}
+
+	lines := strings.Split(string(data), "\n")
+	var depth int
+	for _, line := range lines {
+		trim := strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(trim, "#if "):
+			depth++
+		case strings.HasPrefix(trim, "#ifdef"):
+			depth++
+		case strings.HasPrefix(trim, "#ifndef"):
+			depth++
+		case strings.HasPrefix(trim, "#endif"):
+			if depth > 0 {
+				depth--
+			}
+		}
+	}
+
+	if depth <= 0 {
+		return nil
+	}
+
+	var builder strings.Builder
+	builder.WriteString(string(data))
+	builder.WriteString("\n")
+	for i := 0; i < depth; i++ {
+		builder.WriteString("#endif /* auto-closed by Chauffeur */\n")
+	}
+
+	if err := os.WriteFile(stubPath, []byte(builder.String()), 0o644); err != nil {
+		return err
+	}
+	if logger != nil {
+		logger.Info(fmt.Sprintf("Patched Imagick stub with %d auto-closed #endif directives", depth))
+	}
 	return nil
 }
 
