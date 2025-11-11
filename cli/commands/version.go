@@ -5,6 +5,7 @@ import "strings"
 var (
 	cliVersion     = "dev"
 	buildTimestamp = "unknown"
+	buildCommit    = "unknown"
 )
 
 // SetCLIVersion configures the running CLI version for commands that need it.
@@ -28,4 +29,15 @@ func SetBuildTimestamp(ts string) {
 
 func getBuildTimestamp() string {
 	return buildTimestamp
+}
+
+// SetBuildCommit configures the commit SHA for the current build.
+func SetBuildCommit(sha string) {
+	if trimmed := strings.TrimSpace(sha); trimmed != "" {
+		buildCommit = trimmed
+	}
+}
+
+func getBuildCommit() string {
+	return buildCommit
 }

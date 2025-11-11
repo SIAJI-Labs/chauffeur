@@ -17,6 +17,13 @@ import (
 	"github.com/siaji/chauffeur/cli/lib"
 )
 
+const (
+	infoGitHubOwner       = "SIAJI-Labs"
+	infoGitHubRepo        = "chauffeur"
+	infoDefaultGitBranch  = "develop"
+	infoGitHTTPTimeoutSec = 10
+)
+
 var fetchLatestCLIVersion = defaultFetchLatestCLIVersion
 
 // RunInfo reports Chauffeur environment details.
@@ -60,6 +67,12 @@ func RunInfo(args []string) error {
 	currentVersion := getCLIVersion()
 	logger.Info(fmt.Sprintf("Current CLI: %s", currentVersion))
 	logger.Info(fmt.Sprintf("Build timestamp: %s", getBuildTimestamp()))
+	buildCommit := getBuildCommit()
+	if buildCommit == "" || strings.EqualFold(buildCommit, "unknown") {
+		logger.Info("Build commit: unknown")
+	} else {
+		logger.Info(fmt.Sprintf("Build commit: %s", shortSHA(buildCommit)))
+	}
 
 	if version, err := fetchLatestCLIVersion(); err == nil && version != "" {
 		status := "up to date"
@@ -70,6 +83,8 @@ func RunInfo(args []string) error {
 	} else if err != nil {
 		logger.Warn("Failed to fetch remote version", err.Error())
 	}
+
+	reportCommitStatus(logger, buildCommit)
 
 	logger.PrintSection("Managed Services")
 	prefix := wsDir
@@ -189,7 +204,7 @@ func runCommandOutput(binary string, args ...string) (string, error) {
 
 func defaultFetchLatestCLIVersion() (string, error) {
 	client := &http.Client{Timeout: 10 * time.Second}
-	release, err := releases.LatestGitHubRelease(client, "SIAJI-Labs", "chauffeur")
+	release, err := releases.LatestGitHubRelease(client, infoGitHubOwner, infoGitHubRepo)
 	if err != nil {
 		return "", err
 	}
@@ -203,4 +218,50 @@ func OverrideLatestVersionFetcher(fn func() (string, error)) {
 		return
 	}
 	fetchLatestCLIVersion = fn
+}
+
+func reportCommitStatus(logger *lib.Logger, buildCommit string) {
+	client := &http.Client{Timeout: infoGitHTTPTimeoutSec * time.Second}
+
+	if buildCommit == "" || strings.EqualFold(buildCommit, "unknown") {
+		if head, err := releases.FetchBranchHeadSHA(client, infoGitHubOwner, infoGitHubRepo, infoDefaultGitBranch); err == nil {
+			logger.Info(fmt.Sprintf("Latest %s commit: %s", infoDefaultGitBranch, shortSHA(head)))
+		} else {
+			logger.Warn("Failed to fetch latest GitHub commit", err.Error())
+		}
+		return
+	}
+
+	result, err := releases.CompareGitHubCommits(client, infoGitHubOwner, infoGitHubRepo, buildCommit, infoDefaultGitBranch)
+	if err != nil {
+		logger.Warn("Failed to compare build commit with GitHub", err.Error())
+		if head, headErr := releases.FetchBranchHeadSHA(client, infoGitHubOwner, infoGitHubRepo, infoDefaultGitBranch); headErr == nil {
+			logger.Info(fmt.Sprintf("Latest %s commit: %s", defaultGitBranch, shortSHA(head)))
+		}
+		return
+	}
+
+	headSHA := result.HeadSHA
+	if headSHA == "" {
+		if head, headErr := releases.FetchBranchHeadSHA(client, infoGitHubOwner, infoGitHubRepo, infoDefaultGitBranch); headErr == nil {
+			headSHA = head
+		}
+	}
+
+	switch {
+	case result.AheadBy == 0 && result.BehindBy == 0:
+		logger.Info(fmt.Sprintf("GitHub %s branch: up to date (%s)", infoDefaultGitBranch, shortSHA(headSHA)))
+	case result.AheadBy > 0 && result.BehindBy == 0:
+		logger.Warn(
+			"Remote branch has newer commits",
+			fmt.Sprintf("%s is %d commit(s) ahead (latest %s)", infoDefaultGitBranch, result.AheadBy, shortSHA(headSHA)),
+		)
+	case result.BehindBy > 0 && result.AheadBy == 0:
+		logger.Info(fmt.Sprintf("Local build is %d commit(s) ahead of %s (remote head %s)", result.BehindBy, infoDefaultGitBranch, shortSHA(headSHA)))
+	default:
+		logger.Warn(
+			"Local build and remote branch diverged",
+			fmt.Sprintf("%s ahead_by=%d behind_by=%d (remote head %s)", infoDefaultGitBranch, result.AheadBy, result.BehindBy, shortSHA(headSHA)),
+		)
+	}
 }

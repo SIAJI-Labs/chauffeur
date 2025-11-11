@@ -476,8 +476,15 @@ func defaultRunCommand(dir, name string, args ...string) (string, error) {
 
 func defaultGoBuild(repoDir, output, buildTimestamp string) error {
 	args := []string{"build"}
+	var ldflags []string
 	if ts := strings.TrimSpace(buildTimestamp); ts != "" {
-		args = append(args, "-ldflags", fmt.Sprintf("-X main.buildTimestamp=%s", ts))
+		ldflags = append(ldflags, fmt.Sprintf("-X main.buildTimestamp=%s", ts))
+	}
+	if commit, err := revParseHEAD(repoDir); err == nil && commit != "" {
+		ldflags = append(ldflags, fmt.Sprintf("-X main.buildCommit=%s", commit))
+	}
+	if len(ldflags) > 0 {
+		args = append(args, "-ldflags", strings.Join(ldflags, " "))
 	}
 	args = append(args, "-o", output, "./cli")
 	cmd := exec.Command("go", args...)
@@ -497,6 +504,16 @@ func shortSHA(sha string) string {
 		return sha[:7]
 	}
 	return sha
+}
+
+func revParseHEAD(dir string) (string, error) {
+	cmd := exec.Command("git", "rev-parse", "HEAD")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
 }
 
 func formatDuration(d time.Duration) string {

@@ -78,7 +78,7 @@ Design themes borrowed from Valet/Herd:
 | `chauf install composer` | — | Download Composer PHAR + shim. |
 | `chauf self-update` | `--dev` | Pull latest release or rebuild from current repo. |
 | `chauf uninstall` | `--purge` | Remove workspace (optionally runtimes/caches). |
-| `chauf info` | — | Show workspace paths, installed services, and port config. |
+| `chauf info` | — | Show workspace paths, installed services, port config, plus GitHub release/commit drift checks. |
 
 ## Getting Started
 1. **Install prerequisites**: Go 1.22+, git, curl, build tools (gcc/make/pkg-config), openssl headers.
@@ -121,7 +121,7 @@ Chauffeur compiles PHP from source and expects the common image/zip libraries to
 | Debian / Ubuntu | `sudo apt-get install build-essential pkg-config autoconf bison re2c libzip-dev libjpeg-dev libpng-dev libfreetype6-dev libxml2-dev libcurl4-openssl-dev libbz2-dev zlib1g-dev libxslt1-dev libreadline-dev libmagickwand-dev` |
 | Arch Linux | `sudo pacman -S base-devel pkgconf libzip libjpeg-turbo libpng freetype2 libxml2 curl bzip2 zlib libxslt readline imagemagick` |
 
-If your distribution splits libraries differently, install the equivalent dev packages providing `libzip`, `libjpeg`, `libpng`, `freetype`, `zlib`, `curl`, `libxml2`, `libxslt`, `readline`, and `MagickWand` (ImageMagick). Once they’re in place, `chauf install php <version>` will produce runtimes with GD, ZIP, Exif, freetype, jpeg, readline, imagick, and mysqlnd-backed database extensions for Laravel apps (so `php -a`/`artisan tinker` keep arrow keys and history while `php artisan migrate` and image manipulation code work without extra modules).
+If your distribution splits libraries differently, install the equivalent dev packages providing `libzip`, `libjpeg`, `libpng`, `freetype`, `zlib`, `curl`, `libxml2`, `libxslt`, `readline`, and `MagickWand` (ImageMagick). Once they’re in place, `chauf install php <version>` will produce runtimes with GD, ZIP, Exif, freetype, jpeg, readline, imagick, and mysqlnd-backed database extensions for Laravel apps (so `php -a`/`artisan tinker` keep arrow keys and history while `php artisan migrate` and image manipulation code work without extra modules). Chauffeur automatically fetches the latest stable Imagick release from PECL for every build (override via `CHAUFFEUR_IMAGICK_VERSION` or `CHAUFFEUR_IMAGICK_TARBALL` when you need a specific tarball).
 
 `chauf install php` now preflights `pkg-config` plus all of the required libraries (`libzip`, `libjpeg`, `libpng`, `freetype`, `libxml2`, `libcurl`, `zlib`, `libxslt`, `readline`, `MagickWand`) via `pkg-config --modversion …` before downloading or compiling so you get actionable guidance instead of waiting for `./configure` to fail.
 
