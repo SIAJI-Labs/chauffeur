@@ -13,6 +13,7 @@ dist/
 *.out
 .gocache/
 .gomodcache/
+.cache
 
 # Temporary files
 .DS_Store

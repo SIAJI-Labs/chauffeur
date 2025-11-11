@@ -9,8 +9,11 @@ import (
 
 const version = "0.1.0"
 
-// buildTimestamp is overridden via -ldflags "-X main.buildTimestamp=$(date -u ...)".
-var buildTimestamp = "unknown"
+// build metadata overridden via -ldflags "-X main.buildTimestamp=... -X main.buildCommit=..."
+var (
+	buildTimestamp = "unknown"
+	buildCommit    = "unknown"
+)
 
 func usage() {
 	fmt.Print(`Chauffeur CLI
@@ -44,6 +47,7 @@ func main() {
 	args := os.Args[1:]
 	commands.SetCLIVersion(version)
 	commands.SetBuildTimestamp(buildTimestamp)
+	commands.SetBuildCommit(buildCommit)
 
 	if len(args) == 0 {
 		usage()
@@ -52,7 +56,7 @@ func main() {
 
 	switch args[0] {
 	case "--version", "-V", "version":
-		fmt.Printf("chauf %s (built %s)\n", version, buildTimestamp)
+		fmt.Printf("chauf %s (built %s, commit %s)\n", version, buildTimestamp, buildCommit)
 	case "--help", "-h":
 		usage()
 	case "init":

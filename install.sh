@@ -267,8 +267,15 @@ build_local_chauf() {
   tmp_binary="$(mktemp)"
   local build_ts
   build_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  local commit_sha
+  commit_sha="$(cd "${SCRIPT_DIR}" && git rev-parse HEAD 2>/dev/null || printf 'unknown')"
 
-  if (cd "${SCRIPT_DIR}" && GO111MODULE=on go build -ldflags "-X main.buildTimestamp=${build_ts}" -o "${tmp_binary}" ./cli); then
+  local ldflags="-X main.buildTimestamp=${build_ts}"
+  if [[ -n "${commit_sha}" ]]; then
+    ldflags+=" -X main.buildCommit=${commit_sha}"
+  fi
+
+  if (cd "${SCRIPT_DIR}" && GO111MODULE=on go build -ldflags "${ldflags}" -o "${tmp_binary}" ./cli); then
     install -m 0755 "${tmp_binary}" "${output_path}"
     rm -f "${tmp_binary}"
     success "Built chauf binary from Go sources"
