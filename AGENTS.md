@@ -116,6 +116,7 @@ created_at: 2025-10-30T12:00:00+07:00
 - PHP needs readline-style line editing for PsySH/Laravel Tinker parity, so every build must pass `--with-readline` (or `--with-libedit` if ever required) and ensure the dependency is documented for users.
 - Every PHP runtime must compile mysqlnd-based `mysqli` and `pdo_mysql` extensions so Laravel migrations and other PDO clients have a working driver immediately after installation.
 - `chauf install php` must build and enable the PECL `imagick` extension (requiring MagickWand/ImageMagick dev headers) so image-heavy apps work without follow-up steps. Drop `imagick.ini` into `etc/conf.d/` for each runtime.
+- Imagick builds should default to the latest stable release reported by PECL’s REST API while allowing overrides via `CHAUFFEUR_IMAGICK_VERSION`/`CHAUFFEUR_IMAGICK_TARBALL`. Fall back to the pinned default when the API is unreachable.
 - `chauf link` validates `--php` versions are installed before writing configs.
 - Composer shim (`~/.chauffeur/bin/composer`) always uses Chauffeur’s PHP shim so `composer install` respects isolation.
 - Removing PHP versions via `chauf remove php <ver>` must update shims and reassign defaults when necessary.

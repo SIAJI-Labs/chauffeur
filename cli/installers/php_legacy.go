@@ -362,74 +362,113 @@ func patchLegacyGD(logger *lib.Logger, sourceDir string) error {
 		return fmt.Errorf("read %s: %w", gdFile, err)
 	}
 
+	// Add a compatibility header at the top to handle all GD function signature mismatches
+	compatHeader := []byte(`
+/* GD compatibility fixes for modern compilers */
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/* Fix function signature mismatches - match what PHP 7.4 expects */
+typedef void (*gd_output_func_t)(gdImagePtr, FILE *);
+typedef void (*gd_output_func_ctx_t)(gdImagePtr, gdIOCtx *);
+typedef void (*gd_output_func_int_t)(gdImagePtr, FILE *, int);
+typedef void (*gd_output_func_int2_t)(gdImagePtr, FILE *, int, int);
+typedef gdImagePtr (*gd_input_func_t)(FILE *);
+typedef gdImagePtr (*gd_input_func_4arg_t)(FILE *, int, int, int, int);
+typedef void (*gd_output_ctx_quality_t)(gdImagePtr, gdIOCtx *, int);
+
+/* Additional function pointer types for various GD functions */
+typedef gdImagePtr (*gd_input_func_ctx_t)(gdIOCtx *);
+typedef void (*gd_output_func_wbmp_t)(gdImagePtr, int, FILE *);
+typedef void (*gd_output_func_wbmp_ctx_t)(gdImagePtr, int, gdIOCtx *);
+typedef void (*gd_output_func_png_ex_t)(gdImagePtr, gdIOCtx *, int, int);
+
+#ifdef __cplusplus
+}
+#endif
+
+`)
+
+	// Prepend the compatibility header after the includes
+	if !bytes.Contains(gdData, []byte("/* GD compatibility fixes for modern compilers */")) {
+		// Find a good place to insert the header - after the includes
+		insertPos := findGDHeaderInsertPos(gdData)
+		gdData = insertSnippet(gdData, compatHeader, insertPos)
+		logger.Info("Added GD compatibility header")
+	}
+
+	// Now fix function signatures to use the typedefs
 	gdRepls := []struct {
 		old string
 		new string
 		all bool
 	}{
-		{
-			old: "static gdImagePtr _php_image_create_from_string (zval *Data, char *tn, gdImagePtr (*ioctx_func_p)());",
-			new: "static gdImagePtr _php_image_create_from_string (zval *Data, char *tn, gdImagePtr (*ioctx_func_p)(gdIOCtx *));",
-			all: true,
-		},
-		{
-			old: "static void _php_image_create_from(INTERNAL_FUNCTION_PARAMETERS, int image_type, char *tn, gdImagePtr (*func_p)(), gdImagePtr (*ioctx_func_p)());",
-			new: "static void _php_image_create_from(INTERNAL_FUNCTION_PARAMETERS, int image_type, char *tn, void *func_p, void *ioctx_func_p);",
-			all: true,
-		},
-		{
-			old: "gdImagePtr _php_image_create_from_string(zval *data, char *tn, gdImagePtr (*ioctx_func_p)())",
-			new: "gdImagePtr _php_image_create_from_string(zval *data, char *tn, gdImagePtr (*ioctx_func_p)(gdIOCtx *))",
-			all: true,
-		},
+		// Fix function signature declarations - the patterns that exist in the code
 		{
 			old: "static void _php_image_create_from(INTERNAL_FUNCTION_PARAMETERS, int image_type, char *tn, gdImagePtr (*func_p)(), gdImagePtr (*ioctx_func_p)())",
-			new: "static void _php_image_create_from(INTERNAL_FUNCTION_PARAMETERS, int image_type, char *tn, void *func_p, void *ioctx_func_p)",
-			all: true,
+			new: "static void _php_image_create_from(INTERNAL_FUNCTION_PARAMETERS, int image_type, char *tn, gd_input_func_t func_p, gd_input_func_t ioctx_func_p)",
+			all: false,
+		},
+		{
+			old: "static void _php_image_create_from_string(zval *data, char *tn, gdImagePtr (*ioctx_func_p)())",
+			new: "static void _php_image_create_from_string(zval *data, char *tn, gd_input_func_t ioctx_func_p)",
+			all: false,
 		},
 		{
 			old: "static void _php_image_output(INTERNAL_FUNCTION_PARAMETERS, int image_type, char *tn, void (*func_p)())",
-			new: "static void _php_image_output(INTERNAL_FUNCTION_PARAMETERS, int image_type, char *tn, void *func_p)",
-			all: true,
+			new: "static void _php_image_output(INTERNAL_FUNCTION_PARAMETERS, int image_type, char *tn, gd_output_func_t func_p)",
+			all: false,
 		},
 		{
-			old: "im = (*ioctx_func_p)(io_ctx, srcx, srcy, width, height);",
-			new: "im = ((gdImagePtr (*)(gdIOCtx *, zend_long, zend_long, zend_long, zend_long))ioctx_func_p)(io_ctx, srcx, srcy, width, height);",
-			all: true,
+			old: "static void _php_image_output_ctx(INTERNAL_FUNCTION_PARAMETERS, int image_type, char *tn, void (*func_p)())",
+			new: "static void _php_image_output_ctx(INTERNAL_FUNCTION_PARAMETERS, int image_type, char *tn, gd_output_func_ctx_t func_p)",
+			all: false,
 		},
+		// Fix function calls to use proper casting
 		{
-			old: "im = (*ioctx_func_p)(io_ctx);",
-			new: "im = ((gdImagePtr (*)(gdIOCtx *))ioctx_func_p)(io_ctx);",
-			all: true,
-		},
-		{
-			old: "im = (*func_p)(fp, srcx, srcy, width, height);",
-			new: "im = ((gdImagePtr (*)(FILE *, zend_long, zend_long, zend_long, zend_long))func_p)(fp, srcx, srcy, width, height);",
+			old: "im = (*func_p)(io_ctx);",
+			new: "im = ((gd_input_func_t)func_p)(io_ctx);",
 			all: true,
 		},
 		{
 			old: "im = (*func_p)(fp);",
-			new: "im = ((gdImagePtr (*)(FILE *))func_p)(fp);",
+			new: "im = ((gd_input_func_t)func_p)(fp);",
+			all: true,
+		},
+		{
+			old: "im = (*func_p)(fp, srcx, srcy, width, height);",
+			new: "im = ((gd_input_func_4arg_t)func_p)(fp, srcx, srcy, width, height);",
 			all: true,
 		},
 		{
 			old: "(*func_p)(im, fp);",
-			new: "((void (*)(gdImagePtr, FILE *))func_p)(im, fp);",
+			new: "((gd_output_func_t)func_p)(im, fp);",
+			all: true,
+		},
+		{
+			old: "(*func_p)(im, fp, q);",
+			new: "((gd_output_func_int_t)func_p)(im, fp, q);",
 			all: true,
 		},
 		{
 			old: "(*func_p)(im, fp, q, t);",
-			new: "((void (*)(gdImagePtr, FILE *, int, int))func_p)(im, fp, q, t);",
+			new: "((gd_output_func_int2_t)func_p)(im, fp, q, t);",
+			all: true,
+		},
+		{
+			old: "(*func_p)(im, ctx);",
+			new: "((gd_output_func_ctx_t)func_p)(im, ctx);",
+			all: true,
+		},
+		{
+			old: "(*func_p)(im, ctx, (int) quality);",
+			new: "((gd_output_func_ctx_t)func_p)(im, ctx, (int) quality);",
 			all: true,
 		},
 		{
 			old: "(*func_p)(im, tmp);",
-			new: "((void (*)(gdImagePtr, FILE *))func_p)(im, tmp);",
-			all: true,
-		},
-		{
-			old: "(*func_p)(im, tmp, q, t);",
-			new: "((void (*)(gdImagePtr, FILE *, int, int))func_p)(im, tmp, q, t);",
+			new: "((gd_output_func_t)func_p)(im, tmp);",
 			all: true,
 		},
 	}
@@ -441,12 +480,19 @@ func patchLegacyGD(logger *lib.Logger, sourceDir string) error {
 			gdData, err = replaceOnce(gdData, repl.old, repl.new)
 		}
 		if err != nil {
-			return fmt.Errorf("patch gd.c: %w", err)
+			// Log but don't fail if pattern not found (different PHP versions may have slightly different code)
+			logger.Warn("GD patch pattern not found", err.Error())
 		}
 	}
 
 	if err := os.WriteFile(gdFile, gdData, 0o644); err != nil {
 		return fmt.Errorf("write %s: %w", gdFile, err)
+	}
+
+	// Check if gd_ctx.c exists before trying to patch it
+	if _, err := os.Stat(ctxFile); os.IsNotExist(err) {
+		logPHPInfo(logger, "Skipping gd_ctx.c adjustments (file not found in %s)", sourceDir)
+		return nil
 	}
 
 	ctxData, err := os.ReadFile(ctxFile)
@@ -459,10 +505,6 @@ func patchLegacyGD(logger *lib.Logger, sourceDir string) error {
 		new string
 		all bool
 	}{
-		{
-			old: "static void _php_image_output_ctx(INTERNAL_FUNCTION_PARAMETERS, int image_type, char *tn, void (*func_p)())",
-			new: "static void _php_image_output_ctx(INTERNAL_FUNCTION_PARAMETERS, int image_type, char *tn, void *func_p)",
-		},
 		{
 			old: "(*func_p)(im, ctx, q);",
 			new: "((void (*)(gdImagePtr, gdIOCtx *, int))func_p)(im, ctx, q);",
@@ -491,6 +533,26 @@ func patchLegacyGD(logger *lib.Logger, sourceDir string) error {
 			new: "((void (*)(gdImagePtr, gdIOCtx *))func_p)(im, ctx);",
 			all: true,
 		},
+		{
+			old: "(*func_p)(im, fp);",
+			new: "((void (*)(gdImagePtr, FILE *))func_p)(im, fp);",
+			all: true,
+		},
+		{
+			old: "(*func_p)(im, fp, q);",
+			new: "((void (*)(gdImagePtr, FILE *, int))func_p)(im, fp, q);",
+			all: true,
+		},
+		{
+			old: "(*func_p)(im, fp, q, t);",
+			new: "((void (*)(gdImagePtr, FILE *, int, int))func_p)(im, fp, q, t);",
+			all: true,
+		},
+		{
+			old: "(*func_p)(im, ctx, (int) quality);",
+			new: "((void (*)(gdImagePtr, gdIOCtx *, int))func_p)(im, ctx, (int) quality);",
+			all: true,
+		},
 	}
 
 	for _, repl := range ctxRepls {
@@ -500,7 +562,8 @@ func patchLegacyGD(logger *lib.Logger, sourceDir string) error {
 			ctxData, err = replaceOnce(ctxData, repl.old, repl.new)
 		}
 		if err != nil {
-			return fmt.Errorf("patch gd_ctx.c: %w", err)
+			// Log but don't fail if pattern not found (different PHP versions may have slightly different code)
+			logger.Warn("GD ctx patch pattern not found", err.Error())
 		}
 	}
 
@@ -509,4 +572,50 @@ func patchLegacyGD(logger *lib.Logger, sourceDir string) error {
 	}
 
 	return nil
+}
+
+func findGDHeaderInsertPos(data []byte) int {
+	// Find the end of the initial includes and defines block
+	lines := bytes.Split(data, []byte("\n"))
+	includeEnd := -1
+	inIncludes := true
+
+	for i, line := range lines {
+		trimmed := bytes.TrimSpace(line)
+
+		// Stop including when we hit function definitions or code
+		if bytes.HasPrefix(trimmed, []byte("static void")) ||
+		   bytes.HasPrefix(trimmed, []byte("PHP_FUNCTION")) ||
+		   bytes.HasPrefix(trimmed, []byte("PHP_NAMED_FUNCTION")) {
+			break
+		}
+
+		// Track if we're still in the includes/defines section
+		if bytes.HasPrefix(trimmed, []byte("#include")) ||
+		   bytes.HasPrefix(trimmed, []byte("#define")) ||
+		   len(trimmed) == 0 || bytes.HasPrefix(trimmed, []byte("/*")) {
+			includeEnd = i
+			continue
+		}
+
+		// If we hit a non-include line, we're probably done with the header
+		if inIncludes && !bytes.HasPrefix(trimmed, []byte("#")) &&
+		   !bytes.HasPrefix(trimmed, []byte("/*")) &&
+		   !bytes.HasPrefix(trimmed, []byte("typedef")) &&
+		   len(trimmed) > 0 {
+			inIncludes = false
+		}
+	}
+
+	if includeEnd >= 0 {
+		// Find the byte position for the end of that line
+		pos := 0
+		for i := 0; i <= includeEnd && i < len(lines); i++ {
+			pos += len(lines[i]) + 1 // +1 for newline
+		}
+		return pos
+	}
+
+	// Fallback: insert after the first few include blocks
+	return insertAfterIncludeBlockPos(data)
 }
