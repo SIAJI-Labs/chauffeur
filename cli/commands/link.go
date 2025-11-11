@@ -3,6 +3,7 @@ package commands
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -74,11 +75,8 @@ func validatePort(port int) error {
 		return fmt.Errorf("port must be between %d and %d", minPort, maxPort)
 	}
 
-	// Warn about privileged ports
-	if port < privilegedPorts {
-		// Note: This is just a warning, not an error
-		fmt.Printf("Warning: Port %d is a privileged port (< 1024)\n", port)
-	}
+	// Note: Privileged ports (< 1024) are allowed but require root privileges
+	// This is just documented here - the actual validation allows them
 
 	return nil
 }
@@ -301,6 +299,26 @@ func RunLink(args []string) error {
 		return err
 	}
 
+	// Early validation: Check mkcert availability if SSL is requested
+	if proj.Site != nil && proj.Site.SSL {
+		logger.Info("Checking for mkcert availability...")
+		mkcertAvailable, _ := lib.CheckMkcertAvailable()
+		if !mkcertAvailable {
+			logger.Warn("mkcert not found - SSL certificates will be self-signed", "")
+			logger.Info("For trusted SSL certificates, install mkcert:")
+			logger.Info("  # Arch Linux: sudo pacman -S mkcert")
+			logger.Info("  # Ubuntu/Debian: sudo apt install mkcert")
+			logger.Info("  # Then: mkcert -install")
+			logger.Info("")
+			logger.Warn("Continue with self-signed certificates?", "This may cause browser warnings")
+			logger.Info("Press Ctrl+C to cancel, or continue to proceed...")
+			// Give user a moment to consider
+			time.Sleep(2 * time.Second)
+		} else {
+			logger.Info("mkcert found - will generate trusted certificates")
+		}
+	}
+
 	// Generate nginx template
 	templateSpin := lib.NewSpinner("link", "Generating templates")
 	templateEngine, err := templates.NewTemplateEngine()
@@ -317,23 +335,45 @@ func RunLink(args []string) error {
 		HTTPPort:  cfg.Nginx.HTTPPort,
 		HTTPSPort: cfg.Nginx.HTTPSPort,
 	}
+
+	// Handle SSL certificate generation first if SSL is enabled
+	var certType lib.SSLCertificateType
 	if proj.Site != nil && proj.Site.SSL {
 		certBase := proj.Site.Domain
 		if certBase == "" {
 			certBase = slug
 		}
 		certDir := filepath.Join(cfg.WorkspaceDir, "nginx", "certs")
-		nginxOptions.SSLCertPath = filepath.Join(certDir, fmt.Sprintf("%s.crt", certBase))
-		nginxOptions.SSLKeyPath = filepath.Join(certDir, fmt.Sprintf("%s.key", certBase))
+		certPath := filepath.Join(certDir, fmt.Sprintf("%s.crt", certBase))
+		keyPath := filepath.Join(certDir, fmt.Sprintf("%s.key", certBase))
+
+		// Set SSL paths for nginx options
+		nginxOptions.SSLCertPath = certPath
+		nginxOptions.SSLKeyPath = keyPath
+
+		// Generate SSL certificate with dedicated spinner
+		sslSpin := lib.NewSpinner("link", "Generating SSL certificates")
+		generatedCertType, err := generateSSLCertificate(logger, certPath, keyPath, certBase)
+		if err != nil {
+			sslSpin.Fail("SSL certificate generation failed")
+			return fmt.Errorf("generate SSL certificate: %w", err)
+		}
+		certType = generatedCertType
+		sslSpin.Success("SSL certificates generated")
 	}
 
-	// Generate and write nginx configuration
+	// Generate and write nginx configuration (with SSL paths if applicable)
 	if err := templateEngine.WriteNginxConfig(proj, layout, templateType, nginxOptions); err != nil {
 		templateSpin.Fail("nginx configuration generation failed")
 		logger.Warn("Failed to generate nginx configuration", err.Error())
-		// Continue even if nginx generation fails - don't return error
+		return fmt.Errorf("generate nginx configuration: %w", err)
 	} else {
 		templateSpin.Success("nginx templates generated")
+	}
+
+	// Provide SSL usage guidance if SSL was generated
+	if proj.Site != nil && proj.Site.SSL {
+		provideSSLUsageGuidance(logger, proj.Site.Domain, cfg.Nginx.HTTPSPort, certType)
 	}
 
 	logger.PrintSection(fmt.Sprintf("Project linked as %s", slug))
@@ -400,4 +440,148 @@ Note:
   When --site is not specified, the project is automatically assigned a .test domain
   based on the project directory name (e.g., "my-project" -> "my-project.test").
 `)
+}
+
+// Import SSLCertificateType from lib package
+
+// generateSSLCertificate creates an SSL certificate using the best available method
+func generateSSLCertificate(logger *lib.Logger, certPath, keyPath, domain string) (lib.SSLCertificateType, error) {
+	// Check if certificate already exists
+	if _, err := os.Stat(certPath); err == nil {
+		if _, err := os.Stat(keyPath); err == nil {
+			// Both certificate and key exist, skip generation
+			// Determine type by checking if it's an mkcert certificate
+			if lib.IsMkcertCertificate(certPath) {
+				logger.Info(fmt.Sprintf("Existing mkcert certificate found (domain: %s)", domain))
+				return lib.SSLCertificateTypeMkcert, nil
+			}
+			logger.Info(fmt.Sprintf("Existing self-signed certificate found (domain: %s)", domain))
+			return lib.SSLCertificateTypeSelfSigned, nil
+		}
+	}
+
+	// Ensure certificate directory exists
+	if err := os.MkdirAll(filepath.Dir(certPath), 0o755); err != nil {
+		return lib.SSLCertificateTypeSelfSigned, fmt.Errorf("create certificate directory: %w", err)
+	}
+
+	// Check for mkcert availability (we already did early validation, but need the command)
+	_, mkcertCmd := lib.CheckMkcertAvailable()
+	if mkcertCmd != "" {
+		logger.Info(fmt.Sprintf("Generating trusted SSL certificate using mkcert for domain: %s", domain))
+
+		// Change to workspace directory for mkcert generation
+		workspaceDir := filepath.Dir(filepath.Dir(certPath)) // ~/.chauffeur
+		if err := os.Chdir(workspaceDir); err != nil {
+			logger.Warn("Failed to change to workspace directory", err.Error())
+		}
+
+		// Generate certificate using mkcert
+		cmd := exec.Command(mkcertCmd, domain)
+		if output, err := cmd.CombinedOutput(); err != nil {
+			logger.Warn("mkcert generation failed, falling back to self-signed", fmt.Sprintf("error: %v, output: %s", err, string(output)))
+			return generateSelfSignedCertificate(logger, certPath, keyPath, domain)
+		}
+
+		// Move mkcert-generated files to expected locations
+		mkcertCertPath := fmt.Sprintf("%s.pem", domain)
+		mkcertKeyPath := fmt.Sprintf("%s-key.pem", domain)
+
+		if err := lib.MoveFile(mkcertCertPath, certPath); err != nil {
+			return lib.SSLCertificateTypeSelfSigned, fmt.Errorf("move mkcert certificate: %w", err)
+		}
+		if err := lib.MoveFile(mkcertKeyPath, keyPath); err != nil {
+			return lib.SSLCertificateTypeSelfSigned, fmt.Errorf("move mkcert private key: %w", err)
+		}
+
+		logger.Success("Trusted SSL certificate generated successfully", fmt.Sprintf("saved to: %s", certPath))
+		return lib.SSLCertificateTypeMkcert, nil
+	}
+
+	// Fall back to self-signed certificates (mkcert not available)
+	return generateSelfSignedCertificate(logger, certPath, keyPath, domain)
+}
+
+// generateSelfSignedCertificate creates a self-signed SSL certificate using OpenSSL (fallback)
+func generateSelfSignedCertificate(logger *lib.Logger, certPath, keyPath, domain string) (lib.SSLCertificateType, error) {
+	logger.Info(fmt.Sprintf("Generating self-signed SSL certificate for domain: %s", domain))
+
+	// Generate private key
+	keyCmd := exec.Command("openssl", "genrsa", "-out", keyPath, "2048")
+	if output, err := keyCmd.CombinedOutput(); err != nil {
+		return lib.SSLCertificateTypeSelfSigned, fmt.Errorf("generate private key: %w, output: %s", err, string(output))
+	}
+
+	// Generate certificate signing request (CSR)
+	csrCmd := exec.Command("openssl", "req", "-new", "-key", keyPath, "-out", "/tmp/chauffeur.csr",
+		"-subj", fmt.Sprintf("/C=US/ST=State/L=City/O=Chauffeur/OU=Development/CN=%s", domain))
+	if output, err := csrCmd.CombinedOutput(); err != nil {
+		return lib.SSLCertificateTypeSelfSigned, fmt.Errorf("generate CSR: %w, output: %s", err, string(output))
+	}
+
+	// Generate self-signed certificate
+	certCmd := exec.Command("openssl", "x509", "-req", "-days", "365", "-in", "/tmp/chauffeur.csr", "-signkey", keyPath, "-out", certPath)
+	if output, err := certCmd.CombinedOutput(); err != nil {
+		return lib.SSLCertificateTypeSelfSigned, fmt.Errorf("generate certificate: %w, output: %s", err, string(output))
+	}
+
+	// Clean up temporary CSR file
+	if err := os.Remove("/tmp/chauffeur.csr"); err != nil {
+		logger.Warn("Failed to clean up temporary CSR file", err.Error())
+	}
+
+	// Set appropriate permissions
+	if err := os.Chmod(keyPath, 0o600); err != nil {
+		return lib.SSLCertificateTypeSelfSigned, fmt.Errorf("set private key permissions: %w", err)
+	}
+	if err := os.Chmod(certPath, 0o644); err != nil {
+		return lib.SSLCertificateTypeSelfSigned, fmt.Errorf("set certificate permissions: %w", err)
+	}
+
+	logger.Success("Self-signed SSL certificate generated successfully", fmt.Sprintf("saved to: %s", certPath))
+	return lib.SSLCertificateTypeSelfSigned, nil
+}
+
+// provideSSLUsageGuidance educates users about using SSL certificates for development
+func provideSSLUsageGuidance(logger *lib.Logger, domain string, httpsPort int, certType lib.SSLCertificateType) {
+	logger.PrintSection("SSL Certificate Usage")
+
+	httpsURL := fmt.Sprintf("https://%s", domain)
+	if httpsPort != 443 {
+		httpsURL = fmt.Sprintf("https://%s:%d", domain, httpsPort)
+	}
+
+	switch certType {
+	case lib.SSLCertificateTypeMkcert:
+		logger.Success("Trusted SSL certificate generated", "mkcert certificate is automatically trusted by browsers")
+		logger.Info("✓ No browser warnings expected")
+		logger.Info("✓ Can access directly with curl or browsers")
+		logger.Info(fmt.Sprintf("  Direct access: %s", httpsURL))
+		logger.Info("Certificate type: mkcert (trusted)")
+
+	case lib.SSLCertificateTypeSelfSigned:
+		logger.Warn("Self-signed certificate detected", "Browsers and curl will reject this certificate by default")
+		logger.Info("Development Options:")
+		logger.Info("  1. Use curl with -k or --insecure flag:")
+		logger.Info(fmt.Sprintf("     curl -k %s", httpsURL))
+
+		logger.Info("  2. For browser testing:")
+		logger.Info("     - Click 'Advanced' → 'Proceed to domain (unsafe)'")
+		logger.Info("     - Or import the certificate into your system trust store")
+
+		logger.Info("  3. For better development experience (optional):")
+		logger.Info("     Install mkcert for trusted local development certificates:")
+		logger.Info("     # Arch Linux")
+		logger.Info("     sudo pacman -S mkcert")
+		logger.Info("     # Ubuntu/Debian")
+		logger.Info("     sudo apt install mkcert")
+		logger.Info("     $ mkcert -install")
+		logger.Info(fmt.Sprintf("     $ mkcert %s", domain))
+
+		logger.Info("Certificate type: self-signed (requires special handling)")
+	}
+
+	logger.Info("Certificate location:")
+	certPath := filepath.Join(os.Getenv("HOME"), ".chauffeur", "nginx", "certs", fmt.Sprintf("%s.crt", domain))
+	logger.Info(fmt.Sprintf("  Certificate: %s", certPath))
 }

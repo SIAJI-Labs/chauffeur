@@ -404,6 +404,21 @@ func RunUnlink(args []string) error {
 		restartNginxIfNeeded(logger)
 	}
 
+	// Remove SSL certificates if they exist
+	if projCfg.Site != nil && projCfg.Site.SSL {
+		certBase := projCfg.Site.Domain
+		if certBase == "" {
+			certBase = projectSlug
+		}
+		certDir := filepath.Join(cfg.WorkspaceDir, "nginx", "certs")
+		certPath := filepath.Join(certDir, fmt.Sprintf("%s.crt", certBase))
+		keyPath := filepath.Join(certDir, fmt.Sprintf("%s.key", certBase))
+
+		// Remove SSL certificates and provide structured logging
+		certExisted, wasMkcert, err := lib.RemoveSSLCertificate(certPath, keyPath, certBase)
+		provideSSLCertificateRemovalGuidance(logger, certBase, certExisted, wasMkcert, err)
+	}
+
 	// Remove the project directory
 	projectDir := layout.Root
 	if err := os.RemoveAll(projectDir); err != nil {
@@ -511,6 +526,31 @@ func unlinkAllProjects(logger *lib.Logger, cfg config.Config, force bool) error 
 			continue
 		}
 
+		// Remove SSL certificates if they exist
+		if proj.Site != nil && proj.Site.SSL {
+			certBase := proj.Site.Domain
+			if certBase == "" {
+				certBase = proj.Slug
+			}
+			certDir := filepath.Join(cfg.WorkspaceDir, "nginx", "certs")
+			certPath := filepath.Join(certDir, fmt.Sprintf("%s.crt", certBase))
+			keyPath := filepath.Join(certDir, fmt.Sprintf("%s.key", certBase))
+
+			// Remove SSL certificates and provide structured logging for bulk operations
+			certExisted, wasMkcert, err := lib.RemoveSSLCertificate(certPath, keyPath, certBase)
+			if certExisted {
+				if err != nil {
+					logger.Warn(fmt.Sprintf("Failed to remove SSL certificate for %s", proj.Slug), err.Error())
+				} else {
+					certType := "self-signed"
+					if wasMkcert {
+						certType = "mkcert (trusted)"
+					}
+					logger.Info(fmt.Sprintf("✓ SSL certificate removed (%s): %s", certType, certBase))
+				}
+			}
+		}
+
 		if err := os.RemoveAll(layout.Root); err != nil {
 			logger.Warn(fmt.Sprintf("Failed to remove project %s", proj.Slug), err.Error())
 			continue
@@ -559,6 +599,55 @@ func confirmUnlinkAction(logger *lib.Logger, prompt string) bool {
 	fmt.Scanln(&response)
 	response = strings.ToLower(strings.TrimSpace(response))
 	return response == "y" || response == "yes"
+}
+
+// provideSSLCertificateRemovalGuidance provides structured logging for SSL certificate removal
+func provideSSLCertificateRemovalGuidance(logger *lib.Logger, domain string, certExisted bool, wasMkcert bool, err error) {
+	logger.PrintSection("SSL Certificate Removal")
+
+	if !certExisted {
+		logger.Info(fmt.Sprintf("No SSL certificates found for domain: %s", domain))
+		logger.Info("Certificate removal not required")
+		return
+	}
+
+	if err != nil {
+		logger.Warn("SSL certificate removal failed", err.Error())
+		logger.Info("Certificate files may still exist on filesystem")
+		return
+	}
+
+	// Certificate was successfully removed
+	logger.Success("SSL certificates removed successfully", fmt.Sprintf("domain: %s", domain))
+
+	if wasMkcert {
+		logger.Info("Certificate type: mkcert (trusted)")
+		logger.Info("✓ Trusted certificate removed from system")
+		logger.Info("✓ Certificate files deleted from workspace")
+
+		// Attempt trust store cleanup
+		if mkcertAvailable, _ := lib.CheckMkcertAvailable(); mkcertAvailable {
+			logger.Info("Cleaning up trust store...")
+			if trustErr := lib.CleanupMkcertTrustStore(logger); trustErr != nil {
+				logger.Warn("Trust store cleanup failed", trustErr.Error())
+				logger.Info("Note: You may need to manually remove the certificate from your browser trust store")
+			} else {
+				logger.Success("Trust store cleanup completed", "mkcert certificates removed from system")
+			}
+		} else {
+			logger.Info("Note: mkcert not available - only certificate files removed")
+		}
+	} else {
+		logger.Info("Certificate type: self-signed")
+		logger.Info("✓ Self-signed certificate files deleted from workspace")
+		logger.Info("✓ No trust store cleanup needed for self-signed certificates")
+	}
+
+	logger.Info("Certificate location (removed):")
+	certPath := filepath.Join(os.Getenv("HOME"), ".chauffeur", "nginx", "certs", fmt.Sprintf("%s.crt", domain))
+	keyPath := filepath.Join(os.Getenv("HOME"), ".chauffeur", "nginx", "certs", fmt.Sprintf("%s.key", domain))
+	logger.Info(fmt.Sprintf("  Certificate: %s", certPath))
+	logger.Info(fmt.Sprintf("  Private key: %s", keyPath))
 }
 
 func restartNginxIfNeeded(logger *lib.Logger) {

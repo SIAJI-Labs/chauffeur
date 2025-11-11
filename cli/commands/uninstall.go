@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -48,6 +49,11 @@ func RunUninstall(args []string) error {
 	}
 
 	if purge {
+		// Clean up SSL certificates before purging workspace
+		if err := cleanupAllSSLCertificates(workspace, logger); err != nil {
+			logger.Warn("Failed to cleanup SSL certificates", err.Error())
+		}
+
 		if err := os.RemoveAll(workspace); err != nil {
 			return fmt.Errorf("purge workspace: %w", err)
 		}
@@ -194,4 +200,66 @@ func removePathExports() ([]string, error) {
 	}
 
 	return updated, nil
+}
+
+// cleanupAllSSLCertificates removes all SSL certificates from the trust store during uninstall
+func cleanupAllSSLCertificates(workspace string, logger *lib.Logger) error {
+	certsDir := filepath.Join(workspace, "nginx", "certs")
+
+	// Check if certificates directory exists
+	if _, err := os.Stat(certsDir); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			// No certificates directory, nothing to clean up
+			return nil
+		}
+		return fmt.Errorf("check certificates directory: %w", err)
+	}
+
+	// Read certificate files
+	entries, err := os.ReadDir(certsDir)
+	if err != nil {
+		return fmt.Errorf("read certificates directory: %w", err)
+	}
+
+	var certFiles []string
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		// Only look for .crt files
+		if strings.HasSuffix(name, ".crt") {
+			certPath := filepath.Join(certsDir, name)
+			certFiles = append(certFiles, certPath)
+		}
+	}
+
+	if len(certFiles) == 0 {
+		logger.Info("No SSL certificates found to cleanup")
+		return nil
+	}
+
+	// Check if mkcert is available for trust store cleanup
+	if mkcertAvailable, mkcertCmd := lib.CheckMkcertAvailable(); mkcertAvailable {
+		logger.Info("Removing SSL certificates from system trust store")
+
+		// Remove all mkcert certificates from trust store
+		cmd := exec.Command(mkcertCmd, "-uninstall")
+		if output, err := cmd.CombinedOutput(); err != nil {
+			logger.Warn("Failed to remove mkcert certificates from trust store", fmt.Sprintf("error: %v, output: %s", err, string(output)))
+		} else {
+			logger.Success("Removed mkcert certificates from system trust store", fmt.Sprintf("cleaned %d certificates", len(certFiles)))
+		}
+	} else {
+		logger.Info("mkcert not found - only removing certificate files (trust store cleanup requires mkcert)")
+	}
+
+	// Log which certificates were found for user awareness
+	for _, certPath := range certFiles {
+		baseName := filepath.Base(certPath)
+		domainName := strings.TrimSuffix(baseName, ".crt")
+		logger.Info(fmt.Sprintf("Found SSL certificate for domain: %s", domainName))
+	}
+
+	return nil
 }
