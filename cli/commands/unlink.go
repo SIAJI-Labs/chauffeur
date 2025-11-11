@@ -375,7 +375,7 @@ func RunUnlink(args []string) error {
 		if projCfg.Site != nil {
 			logger.Info(fmt.Sprintf("  Domain: %s (ssl=%t)", projCfg.Site.Domain, projCfg.Site.SSL))
 		}
-		logger.Warn("This will remove the project registration and all associated configuration", "Use --force to skip confirmation")
+		logger.Prompt("This will remove the project registration and all associated configuration", "Use --force to skip confirmation")
 		if !confirmUnlinkAction(logger, "Continue unlinking this project?") {
 			logger.Info("Unlink cancelled by user.")
 			return nil
@@ -489,7 +489,7 @@ func unlinkAllProjects(logger *lib.Logger, cfg config.Config, force bool) error 
 	}
 
 	if !force {
-		logger.Warn("This will remove ALL registered projects and their configurations", "Use --force to skip confirmation")
+		logger.Prompt("This will remove ALL registered projects and their configurations", "Use --force to skip confirmation")
 		if !confirmUnlinkAction(logger, "Continue unlinking all projects?") {
 			logger.Info("Unlink cancelled by user.")
 			return nil
@@ -594,7 +594,7 @@ Examples:
 }
 
 func confirmUnlinkAction(logger *lib.Logger, prompt string) bool {
-	logger.Warn(prompt, "Type 'y' to continue, anything else cancels")
+	logger.Prompt(prompt, "Type 'y' to continue, anything else cancels")
 	var response string
 	fmt.Scanln(&response)
 	response = strings.ToLower(strings.TrimSpace(response))

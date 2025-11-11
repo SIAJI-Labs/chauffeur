@@ -111,7 +111,7 @@ func checkDnsmasqConfiguration(logger *lib.Logger) error {
 		dnsLogger.Info(line)
 	}
 
-	dnsLogger.Warn("Do you want to add this configuration now?", "Type 'y' to continue")
+	dnsLogger.Prompt("Do you want to add this configuration now?", "Type 'y' to continue")
 	// SENSITIVE: User input confirmation - system configuration consent
 	var response string
 	fmt.Scanln(&response)
