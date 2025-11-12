@@ -40,8 +40,9 @@ Design themes borrowed from Valet/Herd:
 | Project linking (`chauf link/links/unlink`) | ✅ | Registers projects, writes `project.yaml`, generates nginx configs. |
 | PHP runtimes (`chauf php install/use/isolate`) | 🚧 | Builds now compile Laravel-required extensions (gd, zip, exif, freetype); additional harness tests coming soon. |
 | Service orchestration (`chauf start/stop/status`) | 🚧 | Basic process management exists; dnsmasq integration still evolving. |
-| Composer integration | ✅ | Installs Composer PHAR tied to Chauffeur’s PHP shim. |
+| Composer integration | ✅ | Installs Composer PHAR tied to Chauffeur's PHP shim. |
 | Logging revamp | ✅ | All user-facing commands now route output through `lib.Logger`; only help/usage text stays raw. |
+| Smart caching system | ✅ | Universal download cache with auto-detection and user control. |
 | Testing | ✅ | Command-level smoke tests cover init, link, php use, remove, unlink, and info; CI enforces `go test ./...` on PRs to `main`. |
 
 ## Architecture at a Glance
@@ -49,6 +50,7 @@ Design themes borrowed from Valet/Herd:
 ~/.chauffeur/
   bin/                 # shims (php, composer, nginx helpers)
   config/chauffeur.yaml
+  cache/               # download cache for faster reinstallation
   projects/<slug>/
     project.yaml
     runtime/php-fpm/
@@ -71,10 +73,11 @@ Design themes borrowed from Valet/Herd:
 | `chauf link` | `--site`, `--ssl`, `--php`, `--http-port`, `--https-port`, `--force` | Register PWD as a project and generate configs. |
 | `chauf links` | — | Table of all registered projects. |
 | `chauf unlink` | `--slug`, `--site`, `--project`, `--all`, `--force` | Remove registrations; defaults to current directory. |
+| `chauf install <service> [ver]` | `--force`, `--local`, `--no-cache` | Install services with intelligent caching (php, composer, nginx). |
 | `chauf php install <ver>` | `--force`, `--no-ext`, `--from` | Install PHP runtimes into the workspace. |
 | `chauf php use <ver>` | — | Set global default PHP version. |
 | `chauf php isolate <ver>` | — | Pin the current linked project to a version. |
-| `chauf remove <service> [ver]` | `--force` | Remove installed runtimes (php/nginx/composer). |
+| `chauf remove <service> [ver]` | `--force` | Remove installed runtimes with cache management (php/nginx/composer). |
 | `chauf install composer` | — | Download Composer PHAR + shim. |
 | `chauf self-update` | `--dev` | Pull latest release or rebuild from current repo. |
 | `chauf uninstall` | `--purge` | Remove workspace (optionally runtimes/caches). |
@@ -88,11 +91,11 @@ Design themes borrowed from Valet/Herd:
    cd chauffeur
    ./install.sh
    ```
-3. **Install services**:
+3. **Install services** (with intelligent caching):
    ```bash
-   chauf install php 8.3
-   chauf install nginx
-   chauf install composer
+   chauf install php 8.3        # First download - auto-cached for future
+   chauf install nginx           # Instant if cached, downloads if not
+   chauf install composer        # Reuses cached PHAR when available
    ```
 4. **Link a project**:
    ```bash
@@ -112,6 +115,81 @@ Design themes borrowed from Valet/Herd:
    cd /path/to/chauffeur/repo
    chauf self-update --dev
    ```
+
+## Smart Caching System
+
+Chauffeur includes a universal intelligent caching system that dramatically speeds up service installations and gives users control over cached downloads.
+
+### How It Works
+
+**Installation Priority:**
+1. **Local config paths** (for `--local` flag usage)
+2. **Universal cache** (`~/.chauffeur/cache/`)
+3. **Download from remote** (fallback when no cache available)
+
+**Cache Management:**
+- **Auto-caching**: Successful downloads are automatically cached unless `--no-cache` is used
+- **Smart reuse**: Cached files are detected and reused instantly on subsequent installations
+- **User control**: `chauf remove` prompts users to keep or remove cached files
+- **Storage**: All cached files stored in `~/.chauffeur/cache/`
+
+### Cache Files by Service
+
+| Service | Cache Files | Example Names |
+|---------|-------------|---------------|
+| **PHP** | Source tarballs | `php-8.3.27.tar.gz`, `php-8.4.14.tar.gz` |
+| **Composer** | PHAR binaries & checksums | `composer.phar`, `composer-2.8.4.phar`, `.sha256` files |
+| **Nginx** | Source tarballs | `nginx-1.29.3.tar.gz`, `nginx-1.28.2.tar.gz` |
+
+### Installation Options
+
+```bash
+# Standard installation with auto-caching
+chauf install php 8.3          # Downloads and caches for next time
+chauf install php 8.3          # Instant - reuses cached file
+
+# Skip caching (useful for testing)
+chauf install --no-cache nginx   # Download without caching
+
+# Use local tarball (advanced usage)
+chauf install php 8.3 --local    # Prompt for local tarball path
+
+# Force reinstall (ignores cache for download)
+chauf install composer --force   # Fresh download, updates cache
+```
+
+### Cache Management
+
+```bash
+# Remove with cache prompt
+chauf remove php 8.3           # Asks: keep or remove cached php-8.3.27.tar.gz?
+chauf remove composer          # Asks: keep or remove cached composer.phar?
+chauf remove nginx             # Asks: keep or remove cached nginx-1.29.3.tar.gz?
+
+# Force remove without prompts (keeps cache)
+chauf remove --force nginx     # Removes nginx installation, preserves cache
+
+# Manual cache inspection
+ls -la ~/.chauffeur/cache/    # View all cached downloads
+du -sh ~/.chauffeur/cache/    # See cache size usage
+```
+
+### Cache Behavior Explained
+
+**Keep Cached Files (Default):**
+- ✅ Faster future installations (no re-downloads)
+- ✅ Saves bandwidth and time
+- ⚠️ Uses disk space (typically 20-40MB per service, varies by versions cached)
+
+**Remove Cached Files:**
+- ✅ Frees up disk space
+- ✅ Fresh downloads ensure latest versions
+- ⚠️ Slower reinstallation (downloads again)
+
+**Universal Intelligence:**
+- Same caching logic works across all services (PHP, Composer, Nginx)
+- Automatic version detection with API + fallback system
+- Consistent user experience for cache management
 
 ### System Dependencies for PHP Builds
 Chauffeur compiles PHP from source and expects the common image/zip libraries to be available on the host. Install these once before running `chauf install php …`.

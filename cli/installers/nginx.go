@@ -151,26 +151,41 @@ func InstallNginxSource(opts InstallOptions) error {
 		opts.Client = &http.Client{Timeout: 60 * time.Second}
 	}
 
+	// Use universal version detection to get the latest version
+	version, err := getLatestServiceVersion(opts.Client, "nginx", "")
+	if err != nil {
+		nginxLogger.Warn("Failed to query Nginx version", err.Error())
+		// Fallback to a known stable version
+		version = "1.27.3"
+		nginxLogger.Info(fmt.Sprintf("Using fallback Nginx version: %s", version))
+	} else {
+		nginxLogger.Info(fmt.Sprintf("Selected Nginx release: %s", version))
+	}
+
+	// Get release metadata for download URLs
 	release, err := releases.LatestGitHubRelease(opts.Client, "nginx", "nginx")
 	if err != nil {
-		return nginxLogger.Fail("resolve latest Nginx release", err.Error())
+		nginxLogger.Warn("Failed to query GitHub releases for assets", err.Error())
 	}
 
-	tag := release.TagName
-	if tag == "" {
-		return nginxLogger.Fail("latest Nginx release has empty tag name", "")
-	}
-
-	version := strings.TrimPrefix(tag, "release-")
-	if version == tag {
-		version = strings.TrimPrefix(tag, "v")
-	}
-	if version == "" {
-		return nginxLogger.Fail("cannot derive version from tag", tag)
+	// Try to derive version from release tag as fallback
+	if release.TagName != "" {
+		tag := release.TagName
+		releaseVersion := strings.TrimPrefix(tag, "release-")
+		if releaseVersion == tag {
+			releaseVersion = strings.TrimPrefix(tag, "v")
+		}
+		if releaseVersion != "" && releaseVersion != version {
+			nginxLogger.Info(fmt.Sprintf("GitHub release shows version %s, using detected version %s", releaseVersion, version))
+		}
 	}
 
 	nginxLogger.Info("Installing nginx (source build from nginx.org release)...")
-	nginxLogger.Info(fmt.Sprintf("Release tag: %s (version %s)", tag, version))
+	releaseTag := "unknown"
+	if release.TagName != "" {
+		releaseTag = release.TagName
+	}
+	nginxLogger.Info(fmt.Sprintf("Release tag: %s (version %s)", releaseTag, version))
 	nginxLogger.Info(fmt.Sprintf("Install prefix: %s", filepath.Join(opts.Prefix, "nginx")))
 
 	binaryPath := filepath.Join(opts.Prefix, "nginx", "sbin", nginxBinaryName)
@@ -190,16 +205,52 @@ func InstallNginxSource(opts InstallOptions) error {
 	tarballName := fmt.Sprintf("nginx-%s.tar.gz", version)
 	tarballURL, ok := release.AssetURL(tarballName)
 	if !ok {
-		tarballURL = fmt.Sprintf("https://github.com/nginx/nginx/releases/download/%s/%s", tag, tarballName)
+		// Fallback to constructing URL from version if GitHub release API failed
+		if releaseTag != "unknown" {
+			tarballURL = fmt.Sprintf("https://github.com/nginx/nginx/releases/download/%s/%s", releaseTag, tarballName)
+		} else {
+			// Construct tag from version
+			constructedTag := fmt.Sprintf("release-%s", version)
+			tarballURL = fmt.Sprintf("https://github.com/nginx/nginx/releases/download/%s/%s", constructedTag, tarballName)
+		}
 	}
 
 	tarballPath := filepath.Join(tmpDir, tarballName)
 	downloadLogger := nginxLogger.NewChildLogger("download")
-	size, err := lib.DownloadToFileWithLogger(opts.Client, tarballURL, tarballPath, fmt.Sprintf("Download %s", tarballName), downloadLogger)
-	if err != nil {
-		return nginxLogger.Fail("download nginx source", err.Error())
+
+	var size int64
+	var downloadErr error
+	var usedCache bool
+
+	// Check cache first
+	cachedPath := checkForCachedFile("nginx", tarballName)
+	if cachedPath != "" {
+		if copyErr := copyFile(cachedPath, tarballPath); copyErr != nil {
+			nginxLogger.Warn("Failed to copy cached nginx file", copyErr.Error())
+			nginxLogger.Info("Falling back to download")
+		} else {
+			downloadLogger.Success(fmt.Sprintf("Reused cached %s", tarballName), cachedPath)
+			usedCache = true
+		}
 	}
-	downloadLogger.Success(fmt.Sprintf("Downloaded %s", tarballName), lib.HumanBytes(size))
+
+	// Only download if we didn't use cache
+	if !usedCache {
+		size, downloadErr = lib.DownloadToFileWithLogger(opts.Client, tarballURL, tarballPath, fmt.Sprintf("Download %s", tarballName), downloadLogger)
+		if downloadErr != nil {
+			return nginxLogger.Fail("download nginx source", downloadErr.Error())
+		}
+		downloadLogger.Success(fmt.Sprintf("Downloaded %s", tarballName), lib.HumanBytes(size))
+
+		// Auto-cache successful downloads (unless explicitly disabled)
+		if os.Getenv("CHAUFFEUR_NO_CACHE") != "1" {
+			if cacheErr := cacheDownloadedFile(tarballPath, "nginx", version, tarballName, downloadLogger); cacheErr != nil {
+				downloadLogger.Warn("Failed to cache downloaded file", cacheErr.Error())
+			} else {
+				downloadLogger.Success("Download cached for future use", "")
+			}
+		}
+	}
 
 	nginxLogger.Info("Verifying")
 	verificationLogger := nginxLogger.NewChildLogger("verifying")
@@ -207,7 +258,7 @@ func InstallNginxSource(opts InstallOptions) error {
 		return nginxLogger.Fail("verify PGP signature", err.Error())
 	}
 
-	sum, algo, err := fetchNginxChecksum(opts.Client, release, tag, version, tarballName)
+	sum, algo, err := fetchNginxChecksum(opts.Client, release, releaseTag, version, tarballName)
 	if err != nil {
 		return nginxLogger.Fail("resolve nginx checksum", err.Error())
 	}

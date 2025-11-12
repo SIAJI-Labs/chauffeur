@@ -3,6 +3,7 @@ package installers
 import (
 	"archive/tar"
 	"compress/gzip"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	"github.com/siaji/chauffeur/cli/internal/config"
+	"github.com/siaji/chauffeur/cli/internal/releases"
 	"github.com/siaji/chauffeur/cli/lib"
 )
 
@@ -121,6 +123,7 @@ var phpPkgRequirements = []pkgRequirement{
  */
 func GetSupportedPHPVersions() []PHPVersion {
 	return []PHPVersion{
+		{Version: "8.4", EndOfLife: false, MinimumGCC: "4.8", RequiredTLS: "1.1.1"},
 		{Version: "8.3", EndOfLife: false, MinimumGCC: "4.8", RequiredTLS: "1.1.1"},
 		{Version: "8.2", EndOfLife: false, MinimumGCC: "4.8", RequiredTLS: "1.1.1"},
 		{Version: "8.1", EndOfLife: false, MinimumGCC: "4.8", RequiredTLS: "1.1.1"},
@@ -238,11 +241,10 @@ func InstallPHPSource(version string, opts InstallOptions) (err error) {
 
 	tarballName := fmt.Sprintf("php-%s.tar.gz", patchVersion)
 
-	// Try official mirrors first, then build servers
+	// Try official mirrors
 	tarballURLs := []string{
 		fmt.Sprintf("https://www.php.net/distributions/%s", tarballName),
 		fmt.Sprintf("https://secure.php.net/distributions/%s", tarballName),
-		fmt.Sprintf("https://downloads.php.net/~php/%s", tarballName),
 	}
 
 	var tarballURL string
@@ -252,6 +254,7 @@ func InstallPHPSource(version string, opts InstallOptions) (err error) {
 	downloadLogger := phpLogger.NewChildLogger("download")
 	tarballPath := filepath.Join(tmpDir, tarballName)
 
+	// Check environment variable first (for --local flag)
 	if localTarball := os.Getenv("CHAUFFEUR_PHP_TARBALL"); localTarball != "" {
 		if err := copyFile(localTarball, tarballPath); err != nil {
 			downloadLogger.Warn("Failed to copy local tarball", err.Error())
@@ -261,15 +264,51 @@ func InstallPHPSource(version string, opts InstallOptions) (err error) {
 		}
 	}
 
+	// Check config for stored local tarball paths if not already found
+	if tarballURL == "" {
+		if configPath, err := checkConfigLocalTarball(version, downloadLogger); err == nil && configPath != "" {
+			if err := copyFile(configPath, tarballPath); err != nil {
+				downloadLogger.Warn("Failed to copy config tarball", err.Error())
+			} else {
+				tarballURL = "config-local"
+				downloadLogger.Success(fmt.Sprintf("Reused configured local %s", tarballName), configPath)
+			}
+		}
+	}
+
+	// Check universal cache for downloaded files if not already found
+	if tarballURL == "" {
+		cachedPath := checkForCachedFile("php", tarballName)
+		if cachedPath != "" {
+			if err := copyFile(cachedPath, tarballPath); err != nil {
+				downloadLogger.Warn("Failed to copy cached PHP file", err.Error())
+			} else {
+				tarballURL = "cache"
+				downloadLogger.Success(fmt.Sprintf("Reused cached %s", tarballName), cachedPath)
+			}
+		}
+	}
+
 	if tarballURL == "" {
 		downloadLogger.Info(fmt.Sprintf("Attempting download of %s", tarballName))
-		for _, url := range tarballURLs {
+		for i, url := range tarballURLs {
+			downloadLogger.Info(fmt.Sprintf("Trying mirror %d/%d: %s", i+1, len(tarballURLs), url))
 			size, err := lib.DownloadToFileWithLogger(opts.Client, url, tarballPath, fmt.Sprintf("Download %s", tarballName), downloadLogger)
 			if err == nil {
 				tarballURL = url
-				downloadLogger.Success(fmt.Sprintf("Downloaded %s", tarballName), lib.HumanBytes(size))
+				downloadLogger.Success(fmt.Sprintf("Downloaded %s from %s", tarballName, url), lib.HumanBytes(size))
+
+				// Auto-cache successful downloads (unless explicitly disabled)
+				if os.Getenv("CHAUFFEUR_NO_CACHE") != "1" {
+					if err := cacheDownloadedTarball(tarballPath, version, tarballName, downloadLogger); err != nil {
+						downloadLogger.Warn("Failed to cache downloaded file", err.Error())
+					} else {
+						downloadLogger.Success("Download cached for future use", "")
+					}
+				}
 				break
 			}
+			downloadLogger.Warn(fmt.Sprintf("Mirror %d failed: %s", i+1, url), err.Error())
 			downloadErr = err
 		}
 	}
@@ -364,27 +403,421 @@ func InstallPHPSource(version string, opts InstallOptions) (err error) {
 }
 
 /**
+ * PHPVersionInfo represents the structure of PHP version information from the API.
+ */
+type PHPVersionInfo struct {
+	Version string `json:"version"`
+	Date    string `json:"date"`
+	Source  []struct {
+		Filename string `json:"filename"`
+		Name     string `json:"name"`
+		SHA256   string `json:"sha256"`
+		Date     string `json:"date"`
+	} `json:"source"`
+}
+
+/**
+ * checkConfigLocalTarball checks the config for a local tarball path and validates it.
+ *
+ * @param version PHP version to check for
+ * @param logger Logger instance for reporting
+ * @return Path to valid local tarball or empty string if not found/invalid
+ */
+func checkConfigLocalTarball(version string, logger *lib.Logger) (string, error) {
+	configPath, err := getLocalTarballFromConfig(version)
+	if err != nil {
+		return "", err
+	}
+
+	if configPath == "" {
+		// Don't log anything here - the universal cache check happens next
+		return "", nil
+	}
+
+	// Validate the configured path exists and is accessible
+	if _, err := os.Stat(configPath); err != nil {
+		logger.Warn("Configured tarball not accessible", err.Error())
+		logger.Info("Removing invalid path from config")
+		// Remove invalid path from config
+		if removeErr := removeLocalTarballFromConfig(version); removeErr != nil {
+			logger.Warn("Failed to remove invalid path from config", removeErr.Error())
+		}
+		return "", nil
+	}
+
+	// Validate tarball version matches
+	if err := validatePHPTarball(configPath, version, logger); err != nil {
+		logger.Warn("Configured tarball validation failed", err.Error())
+		logger.Info("Removing invalid path from config")
+		// Remove mismatched path from config
+		if removeErr := removeLocalTarballFromConfig(version); removeErr != nil {
+			logger.Warn("Failed to remove mismatched path from config", removeErr.Error())
+		}
+		return "", nil
+	}
+
+	logger.Success("Found valid local tarball in config", configPath)
+	return configPath, nil
+}
+
+/**
+ * hasInternetConnection checks if there's internet connectivity by testing a reliable endpoint.
+ *
+ * @param client HTTP client for requests
+ * @return true if connection is available, false otherwise
+ */
+func hasInternetConnection(client *http.Client) bool {
+	if client == nil {
+		client = &http.Client{Timeout: 10 * time.Second}
+	}
+
+	// Test connectivity to a reliable endpoint with a quick HEAD request
+	req, err := http.NewRequest("HEAD", "https://www.php.net", nil)
+	if err != nil {
+		return false
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+
+	return resp.StatusCode >= 200 && resp.StatusCode < 400
+}
+
+/**
+ * fetchLatestPHPVersionFromAPI attempts to fetch the latest PHP version information from PHP.net API.
+ *
+ * @param client  HTTP client for requests
+ * @param version Major.minor version (e.g., "8.3")
+ * @return Latest full version string (e.g., "8.3.14") and error
+ */
+func fetchLatestPHPVersionFromAPI(client *http.Client, version string) (string, error) {
+	if client == nil {
+		client = &http.Client{Timeout: 15 * time.Second}
+	}
+
+	// Use the active releases API which provides latest versions for each supported series
+	apiURL := "https://www.php.net/releases/active.php?json=1"
+	req, err := http.NewRequest("GET", apiURL, nil)
+	if err != nil {
+		return "", fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("User-Agent", "chauffeur-cli")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("fetch API data: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", fmt.Errorf("API returned status %s", resp.Status)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("read API response: %w", err)
+	}
+
+	// Parse the JSON response
+	var apiData map[string]map[string]PHPVersionInfo
+	if err := json.Unmarshal(body, &apiData); err != nil {
+		return "", fmt.Errorf("parse API response: %w", err)
+	}
+
+	// Look for the major version in the API response
+	for majorVersion, versions := range apiData {
+		if !strings.HasPrefix(majorVersion, version) {
+			continue
+		}
+
+		// Find the exact version match
+		if versionInfo, exists := versions[version]; exists {
+			return versionInfo.Version, nil
+		}
+	}
+
+	return "", fmt.Errorf("PHP %s not found in API response", version)
+}
+
+/**
+ * GetLatestPHPPatchVersionForTesting is an exported version for testing purposes.
+ * This function is only used in tests and should not be called from production code.
+ *
+ * @param client  HTTP client for requests
+ * @param version Major.minor version (e.g., "8.3")
+ * @return Latest full version string (e.g., "8.3.14") and error
+ */
+func GetLatestPHPPatchVersionForTesting(client *http.Client, version string) (string, error) {
+	return getLatestPHPPatchVersion(client, version)
+}
+
+/**
+ * validatePHPTarball checks if the tarball matches the expected PHP version.
+ * @param tarballPath Path to the tarball file
+ * @param expectedVersion Expected PHP version (e.g., "8.3")
+ * @param logger Logger instance
+ * @return error if validation fails
+ */
+func validatePHPTarball(tarballPath, expectedVersion string, logger *lib.Logger) error {
+	// Extract filename and check version
+	filename := filepath.Base(tarballPath)
+
+	// Check file extension first
+	lowerFilename := strings.ToLower(filename)
+	if !strings.HasSuffix(lowerFilename, ".tar.gz") &&
+		!strings.HasSuffix(lowerFilename, ".tgz") &&
+		!strings.HasSuffix(lowerFilename, ".tar.bz2") &&
+		!strings.HasSuffix(lowerFilename, ".tar.xz") {
+		return fmt.Errorf("invalid file extension, expected .tar.gz, .tgz, .tar.bz2, or .tar.xz")
+	}
+
+	// Try to extract version from filename
+	// Common patterns: php-8.3.27.tar.gz, php-8.3.27.tgz, etc.
+	var extractedVersion string
+
+	// Remove file extensions
+	baseName := strings.TrimSuffix(filename, ".tar.gz")
+	baseName = strings.TrimSuffix(baseName, ".tgz")
+	baseName = strings.TrimSuffix(baseName, ".tar.bz2")
+	baseName = strings.TrimSuffix(baseName, ".tar.xz")
+
+	// Remove php- prefix
+	if strings.HasPrefix(baseName, "php-") {
+		extractedVersion = strings.TrimPrefix(baseName, "php-")
+	} else if strings.HasPrefix(baseName, "php") {
+		extractedVersion = strings.TrimPrefix(baseName, "php")
+	}
+
+	// Validate extracted version matches expected major.minor
+	if extractedVersion == "" {
+		return fmt.Errorf("could not extract version from filename: %s", filename)
+	}
+
+	// Extract major.minor from extracted version
+	parts := strings.Split(extractedVersion, ".")
+	if len(parts) < 2 {
+		return fmt.Errorf("invalid version format in filename: %s", extractedVersion)
+	}
+
+	majorMinor := fmt.Sprintf("%s.%s", parts[0], parts[1])
+	if majorMinor != expectedVersion {
+		return fmt.Errorf("version mismatch: filename contains PHP %s but requested PHP %s", majorMinor, expectedVersion)
+	}
+
+	return nil
+}
+
+/**
+ * ValidatePHPTarballForTesting is an exported version for testing purposes.
+ * This function is only used in tests and should not be called from production code.
+ *
+ * @param tarballPath Path to the tarball file
+ * @param expectedVersion Expected PHP version (e.g., "8.3")
+ * @param logger Logger instance (can be nil for testing)
+ * @return error if validation fails
+ */
+func ValidatePHPTarballForTesting(tarballPath, expectedVersion string, logger interface{}) error {
+	// Extract filename and check version
+	filename := filepath.Base(tarballPath)
+
+	// Check file extension first
+	lowerFilename := strings.ToLower(filename)
+	if !strings.HasSuffix(lowerFilename, ".tar.gz") &&
+		!strings.HasSuffix(lowerFilename, ".tgz") &&
+		!strings.HasSuffix(lowerFilename, ".tar.bz2") &&
+		!strings.HasSuffix(lowerFilename, ".tar.xz") {
+		return fmt.Errorf("invalid file extension, expected .tar.gz, .tgz, .tar.bz2, or .tar.xz")
+	}
+
+	// Try to extract version from filename
+	// Common patterns: php-8.3.27.tar.gz, php-8.3.27.tgz, etc.
+	var extractedVersion string
+
+	// Remove file extensions
+	baseName := strings.TrimSuffix(filename, ".tar.gz")
+	baseName = strings.TrimSuffix(baseName, ".tgz")
+	baseName = strings.TrimSuffix(baseName, ".tar.bz2")
+	baseName = strings.TrimSuffix(baseName, ".tar.xz")
+
+	// Remove php- prefix
+	if strings.HasPrefix(baseName, "php-") {
+		extractedVersion = strings.TrimPrefix(baseName, "php-")
+	} else if strings.HasPrefix(baseName, "php") {
+		extractedVersion = strings.TrimPrefix(baseName, "php")
+	}
+
+	// Validate extracted version matches expected major.minor
+	if extractedVersion == "" {
+		return fmt.Errorf("could not extract version from filename: %s", filename)
+	}
+
+	// Extract major.minor from extracted version
+	parts := strings.Split(extractedVersion, ".")
+	if len(parts) < 2 {
+		return fmt.Errorf("invalid version format in filename: %s", extractedVersion)
+	}
+
+	majorMinor := fmt.Sprintf("%s.%s", parts[0], parts[1])
+	if majorMinor != expectedVersion {
+		return fmt.Errorf("version mismatch: filename contains PHP %s but requested PHP %s", majorMinor, expectedVersion)
+	}
+
+	return nil
+}
+
+// Known stable versions for all services (used when offline)
+var knownServiceVersions = map[string]map[string]string{
+	"php": {
+		"8.4": "8.4.14",
+		"8.3": "8.3.27",
+		"8.2": "8.2.29",
+		"8.1": "8.1.33",
+		"8.0": "8.0.30",
+		"7.4": "7.4.33",
+	},
+	"composer": {
+		"2.8": "2.8.4",
+		"2.7": "2.7.9",
+		"2.6": "2.6.6",
+		"2.5": "2.5.8",
+		"2.4": "2.4.4",
+		"2.3": "2.3.17",
+		"2.2": "2.2.22",
+	},
+	"nginx": {
+		"1.29": "1.29.3",
+		"1.28": "1.28.2",
+		"1.27": "1.27.3",
+		"1.26": "1.26.2",
+		"1.25": "1.25.5",
+		"1.24": "1.24.0",
+		"1.23": "1.23.4",
+		"1.22": "1.22.1",
+	},
+}
+
+/**
+ * getLatestServiceVersion gets the latest version for any service.
+ * It first attempts API fetching when available, falling back to known versions.
+ *
+ * @param client HTTP client for requests
+ * @param service Service name (e.g., "php", "composer", "nginx")
+ * @param version Optional version constraint (e.g., "2.7" for Composer)
+ * @return Latest version string and error
+ */
+func getLatestServiceVersion(client *http.Client, service string, version string) (string, error) {
+	// Check if we have known versions for this service
+	if serviceVersions, exists := knownServiceVersions[service]; exists {
+		// If no specific version requested, get the latest known version
+		if version == "" {
+			// Try to fetch from API first for the absolute latest
+			if hasInternetConnection(client) {
+				if apiVersion, err := fetchLatestVersionFromAPI(client, service, ""); err == nil {
+					return apiVersion, nil
+				}
+			}
+			// Fallback: return the first (latest) version in the map
+			for latestVersion := range serviceVersions {
+				return serviceVersions[latestVersion], nil
+			}
+		}
+
+		// Try to get specific version if available
+		if latestVersion, exists := serviceVersions[version]; exists {
+			return latestVersion, nil
+		}
+	}
+
+	// Fallback: try to fetch from API if we have internet
+	if hasInternetConnection(client) {
+		if apiVersion, err := fetchLatestVersionFromAPI(client, service, version); err == nil {
+			return apiVersion, nil
+		}
+	}
+
+	return "", fmt.Errorf("no version information available for %s %s", service, version)
+}
+
+/**
+ * fetchLatestVersionFromAPI attempts to fetch the latest version from service APIs.
+ *
+ * @param client HTTP client for requests
+ * @param service Service name
+ * @param version Optional version constraint
+ * @return Latest version string and error
+ */
+func fetchLatestVersionFromAPI(client *http.Client, service, version string) (string, error) {
+	switch service {
+	case "php":
+		return fetchLatestPHPVersionFromAPI(client, version)
+	case "composer":
+		return fetchLatestComposerVersion(client)
+	case "nginx":
+		return fetchLatestNginxVersion(client)
+	default:
+		return "", fmt.Errorf("unsupported service for API version checking: %s", service)
+	}
+}
+
+/**
+ * fetchLatestComposerVersion gets the latest Composer version from GitHub API.
+ *
+ * @param client HTTP client for requests
+ * @return Latest version string and error
+ */
+func fetchLatestComposerVersion(client *http.Client) (string, error) {
+	release, err := releases.LatestGitHubRelease(client, "composer", "composer")
+	if err != nil {
+		return "", fmt.Errorf("fetch Composer releases: %w", err)
+	}
+
+	// Extract version from tag (e.g., "v2.8.4" -> "2.8.4")
+	version := strings.TrimPrefix(release.TagName, "v")
+	if version == "" {
+		return "", fmt.Errorf("invalid Composer release tag: %s", release.TagName)
+	}
+
+	return version, nil
+}
+
+/**
+ * fetchLatestNginxVersion gets the latest Nginx version from GitHub API.
+ *
+ * @param client HTTP client for requests
+ * @return Latest version string and error
+ */
+func fetchLatestNginxVersion(client *http.Client) (string, error) {
+	release, err := releases.LatestGitHubRelease(client, "nginx", "nginx")
+	if err != nil {
+		return "", fmt.Errorf("fetch Nginx releases: %w", err)
+	}
+
+	// Extract version from tag (e.g., "release-1.27.3" -> "1.27.3")
+	version := strings.TrimPrefix(release.TagName, "release-")
+	if version == "" {
+		version = strings.TrimPrefix(release.TagName, "v")
+	}
+	if version == "" {
+		return "", fmt.Errorf("invalid Nginx release tag: %s", release.TagName)
+	}
+
+	return version, nil
+}
+
+/**
  * getLatestPHPPatchVersion discovers the latest patch version for a given major.minor.
+ * It first attempts to fetch from PHP.net API, falling back to hardcoded versions if offline.
  *
  * @param client  HTTP client for requests
  * @param version Major.minor version (e.g., "8.3")
  * @return Latest full version string (e.g., "8.3.14") and error
  */
 func getLatestPHPPatchVersion(client *http.Client, version string) (string, error) {
-	// Fallback to pinned patch versions to avoid relying on network connectivity
-	knownVersions := map[string]string{
-		"8.3": "8.3.14",
-		"8.2": "8.2.26",
-		"8.1": "8.1.31",
-		"8.0": "8.0.30",
-		"7.4": "7.4.33",
-	}
-
-	if patch, exists := knownVersions[version]; exists {
-		return patch, nil
-	}
-
-	return "", fmt.Errorf("no patch version mapping for PHP %s", version)
+	// Use the universal version detection
+	return getLatestServiceVersion(client, "php", version)
 }
 
 /**
@@ -1439,4 +1872,513 @@ func phpExtensionDir(phpConfigPath string) (string, error) {
 		return "", errors.New("php-config returned empty extension dir")
 	}
 	return dir, nil
+}
+
+/**
+ * getLocalTarballFromConfig retrieves a local tarball path from the config.
+ * This is a wrapper around the config package to avoid circular imports.
+ *
+ * @param version PHP version
+ * @return Path to local tarball or empty string if not found
+ */
+func getLocalTarballFromConfig(version string) (string, error) {
+	// Create a simple YAML parser for our specific use case
+	// This avoids circular imports with the config package
+	workspaceDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+
+	configPath := filepath.Join(workspaceDir, ".chauffeur", "config", "chauffeur.yaml")
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return "", nil // No config file is fine
+	}
+
+	// Simple YAML parser for our specific structure
+	lines := strings.Split(string(data), "\n")
+	inPHPSection := false
+	inLocalTarballs := false
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+
+		// Check for php section
+		if trimmed == "php:" {
+			inPHPSection = true
+			continue
+		}
+
+		// Check for other sections (exit php section)
+		if inPHPSection && strings.HasSuffix(trimmed, ":") && !strings.HasPrefix(trimmed, " ") {
+			inPHPSection = false
+			inLocalTarballs = false
+			continue
+		}
+
+		// Check for local_tarballs subsection
+		if inPHPSection && trimmed == "local_tarballs:" {
+			inLocalTarballs = true
+			continue
+		}
+
+		// Look for version entry in local_tarballs
+		if inLocalTarballs && strings.HasPrefix(trimmed, "    ") && strings.Contains(trimmed, ":") {
+			parts := strings.SplitN(trimmed, ":", 2)
+			if len(parts) == 2 {
+				entryVersion := strings.TrimSpace(parts[0])
+				entryPath := strings.TrimSpace(parts[1])
+
+				// Remove quotes if present
+				entryPath = strings.Trim(entryPath, "\"'")
+
+				if entryVersion == version && entryPath != "" {
+					return entryPath, nil
+				}
+			}
+		}
+	}
+
+	return "", nil
+}
+
+/**
+ * removeLocalTarballFromConfig removes a local tarball path from the config.
+ *
+ * @param version PHP version to remove
+ * @return error if config operation fails
+ */
+func removeLocalTarballFromConfig(version string) error {
+	workspaceDir, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+
+	configPath := filepath.Join(workspaceDir, ".chauffeur", "config", "chauffeur.yaml")
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return nil // No config file is fine
+	}
+
+	// Parse and modify YAML
+	lines := strings.Split(string(data), "\n")
+	var result []string
+	inPHPSection := false
+	inLocalTarballs := false
+	versionRemoved := false
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+
+		// Check for php section
+		if trimmed == "php:" {
+			inPHPSection = true
+			result = append(result, line)
+			continue
+		}
+
+		// Check for other sections (exit php section)
+		if inPHPSection && strings.HasSuffix(trimmed, ":") && !strings.HasPrefix(trimmed, " ") {
+			inPHPSection = false
+			inLocalTarballs = false
+			result = append(result, line)
+			continue
+		}
+
+		// Check for local_tarballs subsection
+		if inPHPSection && trimmed == "local_tarballs:" {
+			inLocalTarballs = true
+			result = append(result, line)
+			continue
+		}
+
+		// Look for version entry to remove
+		if inLocalTarballs && strings.HasPrefix(trimmed, "    ") && strings.Contains(trimmed, ":") {
+			parts := strings.SplitN(trimmed, ":", 2)
+			if len(parts) == 2 {
+				entryVersion := strings.TrimSpace(parts[0])
+				if entryVersion == version {
+					// Skip this line (remove the entry)
+					versionRemoved = true
+					continue
+				}
+			}
+		}
+
+		result = append(result, line)
+	}
+
+	// Clean up empty local_tarballs section if no entries remain
+	if versionRemoved {
+		result = cleanupEmptyLocalTarballsSection(result)
+	}
+
+	// Write back modified config
+	return os.WriteFile(configPath, []byte(strings.Join(result, "\n")), 0644)
+}
+
+/**
+ * cleanupEmptyLocalTarballsSection removes the local_tarballs section if it's empty.
+ */
+func cleanupEmptyLocalTarballsSection(lines []string) []string {
+	var result []string
+	inLocalTarballs := false
+	hasEntries := false
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+
+		if trimmed == "local_tarballs:" {
+			inLocalTarballs = true
+			result = append(result, line)
+			continue
+		}
+
+		if inLocalTarballs {
+			if strings.HasPrefix(trimmed, "    ") && strings.Contains(trimmed, ":") {
+				hasEntries = true
+			} else if !strings.HasPrefix(trimmed, " ") {
+				// End of local_tarballs section
+				inLocalTarballs = false
+				if !hasEntries {
+					// Remove the local_tarballs: line from result
+					result = result[:len(result)-1]
+				}
+				result = append(result, line)
+				continue
+			}
+		}
+
+		result = append(result, line)
+	}
+
+	return result
+}
+
+/**
+ * cacheDownloadedFile copies a downloaded file to the cache directory
+ * and optionally updates the config to point to it.
+ *
+ * @param tarballPath Path to the temporary downloaded file
+ * @param service Service name (e.g., "php", "nginx", "composer")
+ * @param version Service version (optional, for service-specific caching)
+ * @param tarballName Name of the downloaded file
+ * @param logger Logger instance
+ * @return error if caching fails
+ */
+func cacheDownloadedFile(tarballPath, service, version, tarballName string, logger *lib.Logger) error {
+	// Create cache directory
+	workspaceDir, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("get home directory: %w", err)
+	}
+
+	cacheDir := filepath.Join(workspaceDir, ".chauffeur", "cache")
+	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+		return fmt.Errorf("create cache directory: %w", err)
+	}
+
+	// Destination path in cache
+	cachePath := filepath.Join(cacheDir, tarballName)
+
+	// Copy file to cache
+	if err := copyFile(tarballPath, cachePath); err != nil {
+		return fmt.Errorf("copy to cache: %w", err)
+	}
+
+	// Update config to point to cached file for PHP services
+	if service == "php" && version != "" {
+		if err := addLocalTarballToConfig(version, cachePath); err != nil {
+			logger.Warn("Failed to update config with cached path", err.Error())
+			// Don't fail the operation - the file is cached, just not in config
+		} else {
+			logger.Info(fmt.Sprintf("Updated config with cached path: %s", cachePath))
+		}
+	}
+
+	return nil
+}
+
+/**
+ * cacheDownloadedTarball copies the downloaded tarball to the cache directory
+ * and updates the config to point to it. (Legacy function for PHP compatibility)
+ *
+ * @param tarballPath Path to the temporary downloaded tarball
+ * @param version PHP version
+ * @param tarballName Name of the tarball file
+ * @param logger Logger instance
+ * @return error if caching fails
+ */
+func cacheDownloadedTarball(tarballPath, version, tarballName string, logger *lib.Logger) error {
+	return cacheDownloadedFile(tarballPath, "php", version, tarballName, logger)
+}
+
+/**
+ * checkForCachedFile checks if a downloaded file exists in the cache directory.
+ *
+ * @param service Service name
+ * @param fileName Name of the file to check
+ * @return Path to cached file if found, empty string otherwise
+ */
+func checkForCachedFile(service, fileName string) string {
+	workspaceDir, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+
+	cachePath := filepath.Join(workspaceDir, ".chauffeur", "cache", fileName)
+	if info, err := os.Stat(cachePath); err == nil && info.Mode().IsRegular() {
+		return cachePath
+	}
+
+	return ""
+}
+
+/**
+ * CheckForServiceCache checks for any cached files related to a specific service.
+ *
+ * @param service Service name (e.g., "php", "composer", "nginx")
+ * @param version Optional version (for PHP version-specific cache)
+ * @return List of cached file paths found, empty list if none
+ */
+func CheckForServiceCache(service, version string) []string {
+	var cachedFiles []string
+
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return cachedFiles
+	}
+
+	cacheDir := filepath.Join(homeDir, ".chauffeur", "cache")
+	if _, err := os.Stat(cacheDir); os.IsNotExist(err) {
+		return cachedFiles
+	}
+
+	// Read cache directory
+	entries, err := os.ReadDir(cacheDir)
+	if err != nil {
+		return cachedFiles
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+
+		fileName := entry.Name()
+		filePath := filepath.Join(cacheDir, fileName)
+
+		// Check if file belongs to the service
+		if isServiceCacheFile(service, version, fileName) {
+			cachedFiles = append(cachedFiles, filePath)
+		}
+	}
+
+	return cachedFiles
+}
+
+/**
+ * isServiceCacheFile determines if a cached file belongs to a specific service.
+ *
+ * @param service Service name
+ * @param version Optional version for version-specific matching
+ * @param fileName Cached file name
+ * @return true if file belongs to the service
+ */
+func isServiceCacheFile(service, version, fileName string) bool {
+	fileName = strings.ToLower(fileName)
+
+	switch service {
+	case "php":
+		if version != "" {
+			// Specific PHP version: php-8.3.27.tar.gz, php-8.4.14.tar.gz, etc.
+			return strings.Contains(fileName, "php-") && strings.Contains(fileName, version)
+		}
+		// Any PHP version
+		return strings.HasPrefix(fileName, "php-") && strings.HasSuffix(fileName, ".tar.gz")
+
+	case "composer":
+		// Composer cache files: composer.phar, composer-2.8.4.phar, etc.
+		return strings.HasPrefix(fileName, "composer") && (strings.HasSuffix(fileName, ".phar") || strings.Contains(fileName, "sha256"))
+
+	case "nginx":
+		// Nginx cache files: nginx-1.29.3.tar.gz, etc.
+		return strings.HasPrefix(fileName, "nginx-") && strings.HasSuffix(fileName, ".tar.gz")
+
+	default:
+		return false
+	}
+}
+
+/**
+ * GetCacheFileInfo provides human-readable information about cached files.
+ *
+ * @param cachedFiles List of cached file paths
+ * @return Formatted string with file information
+ */
+func GetCacheFileInfo(cachedFiles []string) string {
+	if len(cachedFiles) == 0 {
+		return "No cached files found"
+	}
+
+	var result strings.Builder
+	result.WriteString(fmt.Sprintf("Found %d cached file(s):\n", len(cachedFiles)))
+
+	for _, filePath := range cachedFiles {
+		if fileInfo, err := os.Stat(filePath); err == nil {
+			fileName := filepath.Base(filePath)
+			size := lib.HumanBytes(fileInfo.Size())
+			result.WriteString(fmt.Sprintf("  - %s (%s)\n", fileName, size))
+		}
+	}
+
+	return result.String()
+}
+
+/**
+ * RemoveServiceCache removes cached files for a specific service.
+ *
+ * @param service Service name
+ * @param version Optional version for version-specific removal
+ * @return Number of files removed and any error
+ */
+func RemoveServiceCache(service, version string) (int, error) {
+	cachedFiles := CheckForServiceCache(service, version)
+	removed := 0
+
+	for _, filePath := range cachedFiles {
+		if err := os.Remove(filePath); err == nil {
+			removed++
+		}
+	}
+
+	return removed, nil
+}
+
+/**
+ * addLocalTarballToConfig adds or updates a local tarball path in the config.
+ *
+ * @param version PHP version
+ * @param path Path to the tarball
+ * @return error if config update fails
+ */
+func addLocalTarballToConfig(version, path string) error {
+	workspaceDir, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+
+	configPath := filepath.Join(workspaceDir, ".chauffeur", "config", "chauffeur.yaml")
+
+	// Read existing config or create new one
+	var data []byte
+	if _, err := os.Stat(configPath); err == nil {
+		data, err = os.ReadFile(configPath)
+		if err != nil {
+			return fmt.Errorf("read config: %w", err)
+		}
+	} else {
+		// Create default config structure if it doesn't exist
+		data = []byte("version: 1\ntelemetry: false\nphp:\n  default: \"8.3\"\n")
+	}
+
+	// Parse and modify YAML
+	lines := strings.Split(string(data), "\n")
+	var result []string
+	inPHPSection := false
+	inLocalTarballs := false
+	localTarballsAdded := false
+	versionEntryAdded := false
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+
+		// Check for php section
+		if trimmed == "php:" {
+			inPHPSection = true
+			result = append(result, line)
+			continue
+		}
+
+		// Check for other sections (exit php section)
+		if inPHPSection && strings.HasSuffix(trimmed, ":") && !strings.HasPrefix(trimmed, " ") {
+			// Add local_tarballs section before exiting php section if not already added
+			if inPHPSection && !localTarballsAdded && !versionEntryAdded {
+				result = append(result, "  local_tarballs:")
+				result = append(result, fmt.Sprintf("    %s: \"%s\"", version, path))
+				versionEntryAdded = true
+				localTarballsAdded = true
+			}
+			inPHPSection = false
+			inLocalTarballs = false
+			result = append(result, line)
+			continue
+		}
+
+		// Check for local_tarballs subsection
+		if inPHPSection && trimmed == "local_tarballs:" {
+			inLocalTarballs = true
+			localTarballsAdded = true
+			result = append(result, line)
+			continue
+		}
+
+		// Look for version entry to update
+		if inLocalTarballs && strings.HasPrefix(trimmed, "    ") && strings.Contains(trimmed, ":") {
+			parts := strings.SplitN(trimmed, ":", 2)
+			if len(parts) == 2 {
+				entryVersion := strings.TrimSpace(parts[0])
+				if entryVersion == version {
+					// Update existing entry
+					result = append(result, fmt.Sprintf("    %s: \"%s\"", version, path))
+					versionEntryAdded = true
+					continue
+				}
+			}
+		}
+
+		result = append(result, line)
+	}
+
+	// Add local_tarballs section and version entry if they don't exist
+	if !versionEntryAdded {
+		if !inPHPSection {
+			// This shouldn't happen in a valid config, but handle it gracefully
+			result = append(result, "php:")
+			result = append(result, "  default: \"8.3\"")
+		}
+
+		if !localTarballsAdded {
+			// Find where to insert local_tarballs (after php section header)
+			insertIndex := -1
+			for i, line := range result {
+				if strings.TrimSpace(line) == "php:" {
+					insertIndex = i + 1
+					break
+				}
+			}
+
+			if insertIndex >= 0 {
+				// Insert local_tarballs section
+				newResult := make([]string, 0, len(result)+2)
+				newResult = append(newResult, result[:insertIndex]...)
+				newResult = append(newResult, "  local_tarballs:")
+				newResult = append(newResult, fmt.Sprintf("    %s: \"%s\"", version, path))
+				newResult = append(newResult, result[insertIndex:]...)
+				result = newResult
+			}
+		} else {
+			// Just add the version entry to existing local_tarballs section
+			result = append(result, fmt.Sprintf("    %s: \"%s\"", version, path))
+		}
+	}
+
+	// Ensure config directory exists
+	configDir := filepath.Dir(configPath)
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		return fmt.Errorf("create config directory: %w", err)
+	}
+
+	// Write back modified config
+	return os.WriteFile(configPath, []byte(strings.Join(result, "\n")), 0644)
 }

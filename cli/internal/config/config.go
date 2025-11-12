@@ -36,7 +36,8 @@ type NginxConfig struct {
 }
 
 type PHPConfig struct {
-	Default string
+	Default       string            `yaml:"default"`
+	LocalTarballs map[string]string `yaml:"local_tarballs"`
 }
 
 type PortConfig struct {
@@ -115,6 +116,33 @@ func GetDefaultPHPVersion() (string, error) {
 		return "", err
 	}
 	return cfg.PHP.Default, nil
+}
+
+func GetLocalTarballPath(version string) (string, error) {
+	cfg, err := Load()
+	if err != nil {
+		return "", err
+	}
+
+	if cfg.PHP.LocalTarballs == nil {
+		return "", nil
+	}
+
+	return cfg.PHP.LocalTarballs[version], nil
+}
+
+func SetLocalTarballPath(version, path string) error {
+	cfg, err := Load()
+	if err != nil {
+		return err
+	}
+
+	if cfg.PHP.LocalTarballs == nil {
+		cfg.PHP.LocalTarballs = make(map[string]string)
+	}
+
+	cfg.PHP.LocalTarballs[version] = path
+	return Save(cfg)
 }
 
 func filePath() (string, error) {
@@ -292,6 +320,20 @@ func parseIntoConfig(data []byte, cfg *Config) error {
 		case "php":
 			if key == "default" && value != "" {
 				cfg.PHP.Default = value
+			} else if key == "local_tarballs" {
+				// Initialize the map if nil
+				if cfg.PHP.LocalTarballs == nil {
+					cfg.PHP.LocalTarballs = make(map[string]string)
+				}
+			} else if strings.HasPrefix(key, "  ") && currentSection == "php" {
+				// Handle indented tarball paths (e.g., "  8.3: /path/to/php-8.3.27.tar.gz")
+				tarballKey := strings.TrimSpace(key)
+				if tarballKey != "" && value != "" {
+					if cfg.PHP.LocalTarballs == nil {
+						cfg.PHP.LocalTarballs = make(map[string]string)
+					}
+					cfg.PHP.LocalTarballs[tarballKey] = value
+				}
 			}
 		case "ports":
 			switch key {
@@ -329,6 +371,14 @@ func parseIntoConfig(data []byte, cfg *Config) error {
 }
 
 func renderYAML(cfg Config) string {
+	var localTarballsYAML string
+	if len(cfg.PHP.LocalTarballs) > 0 {
+		localTarballsYAML = "  local_tarballs:\n"
+		for version, path := range cfg.PHP.LocalTarballs {
+			localTarballsYAML += fmt.Sprintf("    %s: %s\n", version, path)
+		}
+	}
+
 	return fmt.Sprintf(`version: %d
 telemetry: %t
 workspace_dir: %s
@@ -338,7 +388,7 @@ nginx:
   https_port: %d
 php:
   default: %s
-ports:
+%sports:
   start_range: %d
   end_range: %d
   conflict_resolution: %s
@@ -354,6 +404,7 @@ projects_dir: %s
 		cfg.Nginx.HTTPPort,
 		cfg.Nginx.HTTPSPort,
 		cfg.PHP.Default,
+		localTarballsYAML,
 		cfg.Ports.StartRange,
 		cfg.Ports.EndRange,
 		cfg.Ports.ConflictResolution,
