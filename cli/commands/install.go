@@ -5,10 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
 	"github.com/siaji/chauffeur/cli/installers"
+	"github.com/siaji/chauffeur/cli/internal/config"
 	"github.com/siaji/chauffeur/cli/internal/system"
 	"github.com/siaji/chauffeur/cli/internal/workspace"
 	"github.com/siaji/chauffeur/cli/lib"
@@ -55,6 +57,8 @@ func RunInstall(args []string) error {
 
 	var (
 		force    bool
+		local    bool
+		noCache  bool
 		services []string
 		versions map[string]string
 	)
@@ -69,6 +73,12 @@ func RunInstall(args []string) error {
 		switch arg {
 		case "--force":
 			force = true
+			i++
+		case "--local":
+			local = true
+			i++
+		case "--no-cache":
+			noCache = true
 			i++
 		case "--help", "-h":
 			printInstallUsage()
@@ -117,7 +127,7 @@ func RunInstall(args []string) error {
 		if name == "php" {
 			// Handle PHP installation with version support
 			version := versions["php"]
-			if err := runPHPInstall(version, force); err != nil {
+			if err := runPHPInstall(version, force, local, noCache); err != nil {
 				return err
 			}
 		} else if name == "composer" {
@@ -173,7 +183,7 @@ func isValidPHPVersion(s string) bool {
 /**
  * runPHPInstall handles PHP installation with version selection.
  */
-func runPHPInstall(version string, force bool) error {
+func runPHPInstall(version string, force bool, local bool, noCache bool) error {
 	logger := lib.NewCommandLogger("install")
 
 	var err error
@@ -199,6 +209,28 @@ func runPHPInstall(version string, force bool) error {
 
 	if err := workspace.Ensure(); err != nil {
 		return err
+	}
+
+	// Handle local installation if requested
+	if local {
+		localPath, err := handleLocalPHPInstall(version, logger)
+		if err != nil {
+			return logger.Error("local php install", err.Error())
+		}
+		if localPath != "" {
+			// Set environment variable for the installer to use
+			os.Setenv("CHAUFFEUR_PHP_TARBALL", localPath)
+			logger.Info(fmt.Sprintf("Using local PHP tarball: %s", localPath))
+		} else {
+			// User chose to download from internet instead
+			logger.Info("Falling back to internet download")
+		}
+	}
+
+	// Set no-cache flag if requested
+	if noCache {
+		os.Setenv("CHAUFFEUR_NO_CACHE", "1")
+		logger.Info("Skipping download caching")
 	}
 
 	logger.Info(fmt.Sprintf("Installing PHP %s...", version))
@@ -298,26 +330,278 @@ func handleComposerInstall(prefix string, info system.Info, force bool) (bool, e
 }
 
 /**
+ * handleLocalPHPInstall manages the local tarball workflow for PHP installation.
+ * @param version PHP version being installed
+ * @param logger Logger instance
+ * @return Path to local tarball if successful/selected, empty string if user wants internet download
+ */
+func handleLocalPHPInstall(version string, logger *lib.Logger) (string, error) {
+	// 1. Check config for stored tarball path
+	configPath, err := config.GetLocalTarballPath(version)
+	if err != nil {
+		return "", fmt.Errorf("failed to read config: %w", err)
+	}
+
+	if configPath != "" {
+		// Validate the configured path exists and is accessible
+		if _, err := os.Stat(configPath); err != nil {
+			logger.Warn("Configured tarball not accessible", err.Error())
+			logger.Info("Configured path will be removed from config")
+			// Remove invalid path from config
+			if err := config.SetLocalTarballPath(version, ""); err != nil {
+				logger.Warn("Failed to remove invalid path from config", err.Error())
+			}
+		} else {
+			// Validate tarball version matches
+			if err := validatePHPTarball(configPath, version, logger); err != nil {
+				logger.Warn("Configured tarball validation failed", err.Error())
+				logger.Info("Configured path will be removed from config")
+				// Remove mismatched path from config
+				if err := config.SetLocalTarballPath(version, ""); err != nil {
+					logger.Warn("Failed to remove mismatched path from config", err.Error())
+				}
+			} else {
+				// Configured path is valid
+				logger.Success("Using configured local tarball", configPath)
+				return configPath, nil
+			}
+		}
+	}
+
+	// 2. Prompt user for tarball location
+	logger.Info("No valid local tarball found in config")
+	return promptForLocalTarball(version, logger)
+}
+
+/**
+ * validatePHPTarball checks if the tarball matches the expected PHP version.
+ * @param tarballPath Path to the tarball file
+ * @param expectedVersion Expected PHP version (e.g., "8.3")
+ * @param logger Logger instance
+ * @return error if validation fails
+ */
+func validatePHPTarball(tarballPath, expectedVersion string, logger *lib.Logger) error {
+	// Check file exists and is readable
+	info, err := os.Stat(tarballPath)
+	if err != nil {
+		return fmt.Errorf("file not accessible: %w", err)
+	}
+
+	if info.IsDir() {
+		return fmt.Errorf("path is a directory, not a file")
+	}
+
+	// Check file extension
+	if !strings.HasSuffix(strings.ToLower(tarballPath), ".tar.gz") &&
+		!strings.HasSuffix(strings.ToLower(tarballPath), ".tgz") &&
+		!strings.HasSuffix(strings.ToLower(tarballPath), ".tar.bz2") &&
+		!strings.HasSuffix(strings.ToLower(tarballPath), ".tar.xz") {
+		return fmt.Errorf("invalid file extension, expected .tar.gz, .tgz, .tar.bz2, or .tar.xz")
+	}
+
+	// Extract filename and check version
+	filename := filepath.Base(tarballPath)
+
+	// Try to extract version from filename
+	// Common patterns: php-8.3.27.tar.gz, php-8.3.27.tgz, etc.
+	var extractedVersion string
+
+	// Remove file extensions
+	baseName := strings.TrimSuffix(filename, ".tar.gz")
+	baseName = strings.TrimSuffix(baseName, ".tgz")
+	baseName = strings.TrimSuffix(baseName, ".tar.bz2")
+	baseName = strings.TrimSuffix(baseName, ".tar.xz")
+
+	// Remove php- prefix
+	if strings.HasPrefix(baseName, "php-") {
+		extractedVersion = strings.TrimPrefix(baseName, "php-")
+	} else if strings.HasPrefix(baseName, "php") {
+		extractedVersion = strings.TrimPrefix(baseName, "php")
+	}
+
+	// Validate extracted version matches expected major.minor
+	if extractedVersion == "" {
+		return fmt.Errorf("could not extract version from filename: %s", filename)
+	}
+
+	// Extract major.minor from extracted version
+	parts := strings.Split(extractedVersion, ".")
+	if len(parts) < 2 {
+		return fmt.Errorf("invalid version format in filename: %s", extractedVersion)
+	}
+
+	majorMinor := fmt.Sprintf("%s.%s", parts[0], parts[1])
+	if majorMinor != expectedVersion {
+		return fmt.Errorf("version mismatch: filename contains PHP %s but requested PHP %s", majorMinor, expectedVersion)
+	}
+
+	logger.Info(fmt.Sprintf("Validated tarball version: %s", extractedVersion))
+	return nil
+}
+
+/**
+ * promptForLocalTarball prompts the user to provide a tarball path or choose internet download.
+ * @param version PHP version being installed
+ * @param logger Logger instance
+ * @return Path to local tarball if provided, empty string if user chooses internet
+ */
+func promptForLocalTarball(version string, logger *lib.Logger) (string, error) {
+	reader := bufio.NewReader(os.Stdin)
+
+	for {
+		fmt.Printf("\nLocal PHP %s tarball not configured.\n", version)
+		fmt.Println("Options:")
+		fmt.Println("  1) Enter path to local PHP tarball")
+		fmt.Println("  2) Download from internet (default)")
+		fmt.Print("Enter your choice (1-2) or press Enter for internet download: ")
+
+		input, err := reader.ReadString('\n')
+		if err != nil {
+			return "", fmt.Errorf("failed to read input: %w", err)
+		}
+
+		input = strings.TrimSpace(input)
+		if input == "" || input == "2" {
+			// User wants internet download
+			logger.Info("User selected internet download")
+			return "", nil
+		}
+
+		if input == "1" {
+			// User wants to provide local path
+			fmt.Print("Enter path to PHP tarball: ")
+			pathInput, err := reader.ReadString('\n')
+			if err != nil {
+				return "", fmt.Errorf("failed to read path: %w", err)
+			}
+
+			tarballPath := strings.TrimSpace(pathInput)
+			if tarballPath == "" {
+				logger.Warn("Empty path provided", "Please enter a valid file path")
+				continue
+			}
+
+			// Expand ~ to home directory
+			if strings.HasPrefix(tarballPath, "~") {
+				home, err := os.UserHomeDir()
+				if err != nil {
+					logger.Warn("Could not expand home directory", err.Error())
+					continue
+				}
+				if tarballPath == "~" {
+					tarballPath = home
+				} else {
+					tarballPath = filepath.Join(home, tarballPath[2:])
+				}
+			}
+
+			// Convert to absolute path
+			absPath, err := filepath.Abs(tarballPath)
+			if err != nil {
+				logger.Warn("Could not resolve absolute path", err.Error())
+				continue
+			}
+
+			// Validate the tarball
+			if err := validatePHPTarball(absPath, version, logger); err != nil {
+				logger.Warn("Invalid tarball", err.Error())
+				fmt.Println("Would you like to:")
+				fmt.Println("  1) Try a different path")
+				fmt.Println("  2) Download from internet")
+				fmt.Print("Enter your choice (1-2): ")
+
+				choiceInput, err := reader.ReadString('\n')
+				if err != nil {
+					return "", fmt.Errorf("failed to read choice: %w", err)
+				}
+
+				choice := strings.TrimSpace(choiceInput)
+				if choice == "2" {
+					logger.Info("User selected internet download after validation failure")
+					return "", nil
+				}
+				continue
+			}
+
+			// Ask if user wants to save this path for future use
+			fmt.Printf("Save this path for future PHP %s installations? (y/N): ", version)
+			saveInput, err := reader.ReadString('\n')
+			if err != nil {
+				logger.Warn("Could not read save preference", err.Error())
+			} else if strings.ToLower(strings.TrimSpace(saveInput)) == "y" {
+				if err := config.SetLocalTarballPath(version, absPath); err != nil {
+					logger.Warn("Failed to save path to config", err.Error())
+				} else {
+					logger.Success("Saved path to config", absPath)
+				}
+			}
+
+			return absPath, nil
+		} else {
+			logger.Warn("Invalid choice", "Please enter 1 or 2")
+		}
+	}
+}
+
+/**
  * printInstallUsage renders CLI help for the install command.
  */
 func printInstallUsage() {
-	fmt.Println(`Usage: chauf install [--force] <service> [<version>...] [<service>...]
+	fmt.Println(`Usage: chauf install [--force] [--local] [--no-cache] <service> [<version>...] [<service>...]
 
 Installs one or more Chauffeur-managed services.
 
 Options:
-  --force    Reinstall even if the service is already present.
-  -h, --help Show this message.
+  --force     Reinstall even if the service is already present.
+  --local     Use local PHP tarball from config or prompt for location (PHP only).
+  --no-cache  Skip automatic caching of downloaded files (all services).
+  -h, --help  Show this message.
 
 Services:
   composer   PHP dependency manager with Chauffeur PHP version isolation.
   nginx      Source build from the latest GitHub release.
   php        Source build with development extensions.
-  
-PHP Installation:
-  chauf install php           Interactive version selection.
-  chauf install php 8.3      Install specific version.
-  chauf install php --force   Reinstall selected version.
+
+Service Installation:
+  chauf install php              Interactive PHP version selection.
+  chauf install nginx            Install latest nginx (auto-cached).
+  chauf install composer          Install Composer (auto-cached).
+  chauf install php 8.3          Install specific PHP version (auto-cached).
+  chauf install php 8.3 --local   Use local tarball for PHP 8.3.
+  chauf install composer --force  Reinstall selected service.
+  chauf install php --no-cache   Install without caching downloads.
+
+Smart Caching System (enabled by default):
+  1. Check local config paths first (PHP tarballs)
+  2. Use cached files if available
+  3. Download from remote sources as fallback
+  4. Auto-cache successful downloads for future reuse
+
+Example Workflows:
+  chauf install php 8.4        # First download, auto-cached
+  chauf install php 8.4        # Instant - uses cached file
+  chauf install nginx            # First download, auto-cached
+  chauf install nginx            # Instant - uses cached file
+  chauf install composer         # First download, auto-cached
+  chauf install composer         # Instant - uses cached file
+  chauf install --no-cache php   # Download without caching
+
+Local PHP Installation:
+  --local flag workflow:
+  1. Check config for stored tarball path
+  2. Prompt for tarball location if not configured
+  3. Validate tarball matches requested version
+  4. Fall back to internet download if desired
+
+Cache Storage:
+  Downloaded files are stored in ~/.chauffeur/cache/
+  - PHP tarballs: php-8.4.14.tar.gz, php-8.3.27.tar.gz, etc.
+  - Composer: composer.phar (versioned files)
+  - Nginx: nginx-1.25.3.tar.gz, nginx-1.24.0.tar.gz, etc.
+
+  Config is automatically updated with PHP tarball paths
+  Future installations reuse cached files without downloading
+  Use --no-cache to disable automatic caching
 
 Composer Installation:
   chauf install composer          Download and install Composer with PHP isolation.

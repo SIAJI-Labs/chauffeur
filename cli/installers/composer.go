@@ -34,16 +34,23 @@ func InstallComposer(opts InstallOptions) error {
 	}
 
 	logger.Info("Resolving Composer release metadata")
-	release, err := releases.LatestGitHubRelease(client, "composer", "composer")
+
+	// Use universal version detection to get the latest version
+	version, err := getLatestServiceVersion(client, "composer", "")
 	if err != nil {
-		logger.Warn("Failed to query GitHub releases", err.Error())
+		logger.Warn("Failed to query Composer version", err.Error())
+		// Fallback to a known stable version
+		version = "2.8.4"
+		logger.Info(fmt.Sprintf("Using fallback Composer version: %s", version))
+	} else {
+		logger.Info(fmt.Sprintf("Selected Composer release: %s", version))
 	}
 
-	version := strings.TrimPrefix(release.TagName, "v")
-	if version == "" {
-		version = "latest-stable"
+	// Get release metadata for asset resolution
+	release, err := releases.LatestGitHubRelease(client, "composer", "composer")
+	if err != nil {
+		logger.Warn("Failed to query GitHub releases for assets", err.Error())
 	}
-	logger.Info(fmt.Sprintf("Selected Composer release: %s", version))
 
 	downloadURL, checksumURLs := resolveComposerAssets(release, version)
 	if downloadURL == "" {
@@ -81,11 +88,40 @@ func InstallComposer(opts InstallOptions) error {
 	checksumPath := filepath.Join(tmpDir, composerPharName+".sha256")
 
 	downloadLogger := logger.NewChildLogger("download")
-	size, err := lib.DownloadToFileWithLogger(client, downloadURL, downloadPath, fmt.Sprintf("Download %s", composerPharName), downloadLogger)
-	if err != nil {
-		return logger.Fail("download composer", err.Error())
+
+	var size int64
+	var downloadErr error
+	var usedCache bool
+
+	// Check cache first
+	cachedPath := checkForCachedFile("composer", composerPharName)
+	if cachedPath != "" {
+		if copyErr := copyFile(cachedPath, downloadPath); copyErr != nil {
+			logger.Warn("Failed to copy cached composer file", copyErr.Error())
+			logger.Info("Falling back to download")
+		} else {
+			downloadLogger.Success(fmt.Sprintf("Reused cached %s", composerPharName), cachedPath)
+			usedCache = true
+		}
 	}
-	downloadLogger.Success(fmt.Sprintf("Downloaded %s", composerPharName), fmt.Sprintf("%d bytes", size))
+
+	// Only download if we didn't use cache
+	if !usedCache {
+		size, downloadErr = lib.DownloadToFileWithLogger(client, downloadURL, downloadPath, fmt.Sprintf("Download %s", composerPharName), downloadLogger)
+		if downloadErr != nil {
+			return logger.Fail("download composer", downloadErr.Error())
+		}
+		downloadLogger.Success(fmt.Sprintf("Downloaded %s", composerPharName), fmt.Sprintf("%d bytes", size))
+
+		// Auto-cache successful downloads (unless explicitly disabled)
+		if os.Getenv("CHAUFFEUR_NO_CACHE") != "1" {
+			if cacheErr := cacheDownloadedFile(downloadPath, "composer", "", composerPharName, downloadLogger); cacheErr != nil {
+				downloadLogger.Warn("Failed to cache downloaded file", cacheErr.Error())
+			} else {
+				downloadLogger.Success("Download cached for future use", "")
+			}
+		}
+	}
 
 	if err := downloadComposerChecksum(client, checksumURLs, checksumPath, downloadLogger); err != nil {
 		return logger.Fail("download checksum", err.Error())
@@ -117,9 +153,9 @@ func resolveComposerAssets(release releases.GitHubRelease, version string) (stri
 	var downloadURL string
 	var checksumURLs []string
 
-	tag := strings.TrimPrefix(release.TagName, "v")
-	if tag == "" {
-		tag = version
+	tag := version
+	if release.TagName != "" {
+		tag = strings.TrimPrefix(release.TagName, "v")
 	}
 
 	pharCandidates := []string{"composer.phar"}

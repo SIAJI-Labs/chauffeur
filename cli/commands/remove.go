@@ -1,12 +1,14 @@
 package commands
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/siaji/chauffeur/cli/installers"
 	"github.com/siaji/chauffeur/cli/internal/services"
 	"github.com/siaji/chauffeur/cli/internal/system"
 	"github.com/siaji/chauffeur/cli/internal/workspace"
@@ -141,6 +143,41 @@ func runRemovePHP(version string, force bool, logger *lib.Logger) error {
 		return err
 	}
 
+	// Check for cached PHP files first
+	cachedFiles := installers.CheckForServiceCache("php", version)
+	if len(cachedFiles) > 0 {
+		cacheInfo := installers.GetCacheFileInfo(cachedFiles)
+		logger.Info("Cached PHP files found")
+		fmt.Println(cacheInfo)
+
+		if !force {
+			logger.Prompt("Cache Management", "What would you like to do with cached PHP files?")
+			fmt.Println("  1) Keep cached files (faster future installations)")
+			fmt.Println("  2) Remove cached files (free up disk space)")
+			fmt.Print("Enter your choice (1-2): ")
+
+			reader := bufio.NewReader(os.Stdin)
+			input, err := reader.ReadString('\n')
+			if err != nil {
+				logger.Warn("Could not read cache choice", "Keeping cached files")
+			} else {
+				choice := strings.TrimSpace(input)
+				if choice == "2" {
+					removed, removeErr := installers.RemoveServiceCache("php", version)
+					if removeErr != nil {
+						logger.Warn("Failed to remove some cached files", removeErr.Error())
+					} else {
+						logger.Success("Removed cached files", fmt.Sprintf("%d file(s) deleted", removed))
+					}
+				} else if choice == "1" {
+					logger.Info("Keeping cached files - this speeds up future PHP installations")
+				}
+			}
+		}
+	} else {
+		logger.Info("No cached PHP files found")
+	}
+
 	if version == "" {
 		// If no version specified, remove all PHP installations
 		phpDir := filepath.Join(prefix, "php")
@@ -208,6 +245,41 @@ func runRemoveComposer(prefix string, force bool, logger *lib.Logger) error {
 		return nil
 	}
 
+	// Check for cached Composer files first
+	cachedFiles := installers.CheckForServiceCache("composer", "")
+	if len(cachedFiles) > 0 {
+		cacheInfo := installers.GetCacheFileInfo(cachedFiles)
+		logger.Info("Cached Composer files found")
+		fmt.Println(cacheInfo)
+
+		if !force {
+			logger.Prompt("Cache Management", "What would you like to do with cached Composer files?")
+			fmt.Println("  1) Keep cached files (faster future installations)")
+			fmt.Println("  2) Remove cached files (free up disk space)")
+			fmt.Print("Enter your choice (1-2): ")
+
+			reader := bufio.NewReader(os.Stdin)
+			input, err := reader.ReadString('\n')
+			if err != nil {
+				logger.Warn("Could not read cache choice", "Keeping cached files")
+			} else {
+				choice := strings.TrimSpace(input)
+				if choice == "2" {
+					removed, removeErr := installers.RemoveServiceCache("composer", "")
+					if removeErr != nil {
+						logger.Warn("Failed to remove some cached files", removeErr.Error())
+					} else {
+						logger.Success("Removed cached files", fmt.Sprintf("%d file(s) deleted", removed))
+					}
+				} else if choice == "1" {
+					logger.Info("Keeping cached files - this speeds up future Composer installations")
+				}
+			}
+		}
+	} else {
+		logger.Info("No cached Composer files found")
+	}
+
 	if !force {
 		if !confirmDestructiveAction(logger, "Remove Composer installation? This deletes the shim and Composer PHAR. Continue?") {
 			logger.Success("Operation cancelled", "")
@@ -238,6 +310,41 @@ func runRemoveService(spec ServiceSpec, force bool, logger *lib.Logger) error {
 	if !ok {
 		logger.Warn(fmt.Sprintf("%s is not installed", spec.Name), "")
 		return nil
+	}
+
+	// Check for cached service files first
+	cachedFiles := installers.CheckForServiceCache(spec.Name, "")
+	if len(cachedFiles) > 0 {
+		cacheInfo := installers.GetCacheFileInfo(cachedFiles)
+		logger.Info(fmt.Sprintf("Cached %s files found", spec.Name))
+		fmt.Println(cacheInfo)
+
+		if !force {
+			logger.Prompt("Cache Management", fmt.Sprintf("What would you like to do with cached %s files?", spec.Name))
+			fmt.Println("  1) Keep cached files (faster future installations)")
+			fmt.Println("  2) Remove cached files (free up disk space)")
+			fmt.Print("Enter your choice (1-2): ")
+
+			reader := bufio.NewReader(os.Stdin)
+			input, err := reader.ReadString('\n')
+			if err != nil {
+				logger.Warn("Could not read cache choice", "Keeping cached files")
+			} else {
+				choice := strings.TrimSpace(input)
+				if choice == "2" {
+					removed, removeErr := installers.RemoveServiceCache(spec.Name, "")
+					if removeErr != nil {
+						logger.Warn("Failed to remove some cached files", removeErr.Error())
+					} else {
+						logger.Success("Removed cached files", fmt.Sprintf("%d file(s) deleted", removed))
+					}
+				} else if choice == "1" {
+					logger.Info(fmt.Sprintf("Keeping cached files - this speeds up future %s installations", spec.Name))
+				}
+			}
+		}
+	} else {
+		logger.Info(fmt.Sprintf("No cached %s files found", spec.Name))
 	}
 
 	if !force {
@@ -356,18 +463,44 @@ func confirmDestructiveAction(logger *lib.Logger, prompt string) bool {
 func printRemoveUsage() {
 	fmt.Println(`Usage: chauf remove [--force] <service> [<version>...]
 
-Removes installed Chauffeur-managed services.
+Removes installed Chauffeur-managed services and optionally their cached downloads.
 
 Options:
-  --force    Remove without confirmation prompts.
+  --force    Remove without confirmation prompts (including cache decisions).
   -h, --help Show this message.
 
 Services:
+  composer   Remove Composer PHP dependency manager.
   nginx      Remove installed Nginx web server.
   php        Remove installed PHP runtime(s).
-  
-PHP Removal:
+
+Service Removal:
   chauf remove php           Remove all installed PHP versions (with confirmation).
   chauf remove php 8.3      Remove specific PHP version 8.3 (with confirmation).
-  chauf remove php --force   Remove without confirmation prompts.`)
+  chauf remove composer      Remove Composer installation (with confirmation).
+  chauf remove nginx         Remove Nginx installation (with confirmation).
+  chauf remove php --force   Remove without any confirmation prompts.
+
+Cache Management:
+  When removing services, Chauffeur will check for cached download files in ~/.chauffeur/cache/
+  and ask if you want to keep or remove them:
+
+  What cached files mean:
+  - Downloaded tarballs, PHARs, and binaries stored for faster reinstallation
+  - Saves time and bandwidth when reinstalling the same versions
+  - Automatically created during installation unless --no-cache is used
+
+  Cache behavior:
+  - Keep cached files: Faster future installations, uses disk space
+  - Remove cached files: Frees up disk space, requires re-downloading on next install
+
+  Cache location: ~/.chauffeur/cache/
+  - PHP: php-8.3.27.tar.gz, php-8.4.14.tar.gz, etc.
+  - Composer: composer.phar, composer-2.8.4.phar, and checksum files
+  - Nginx: nginx-1.29.3.tar.gz, nginx-1.28.2.tar.gz, etc.
+
+Examples:
+  chauf remove composer      # Remove Composer and ask about cache management
+  chauf remove php 8.3       # Remove PHP 8.3 and ask about cache management
+  chauf remove nginx --force # Remove Nginx without any prompts (keeps cache)`)
 }

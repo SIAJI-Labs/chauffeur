@@ -44,6 +44,15 @@ _A living status board for features, debt, and priorities. Keep this in sync wit
 ### CLI Infrastructure
 - Structured logging enforced across all commands (`lib.Logger` only; usage/help text excluded)
 
+### Smart Caching System
+- Universal intelligent caching system across all services (PHP, Composer, Nginx)
+- Auto-caching of successful downloads to `~/.chauffeur/cache/`
+- Cache-first installation priority (local config → cache → remote download)
+- User-controlled cache management during `chauf remove` operations
+- Consistent cache experience across all services with educational messaging
+- Smart version detection with API calls + fallback system for all services
+- Cache-aware flags: `--no-cache` (skip caching), `--local` (use local tarball), `--force` (override cache)
+
 ## 3. In Progress 🚧
 1. **Service orchestration stability** – refine `chauf start/stop/status` to handle mixed project states, better error surfacing
 2. **dnsmasq/NetworkManager automation** – ensure instructions are clear, reversible, and logged
