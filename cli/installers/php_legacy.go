@@ -384,6 +384,35 @@ typedef void (*gd_output_func_wbmp_t)(gdImagePtr, int, FILE *);
 typedef void (*gd_output_func_wbmp_ctx_t)(gdImagePtr, int, gdIOCtx *);
 typedef void (*gd_output_func_png_ex_t)(gdImagePtr, gdIOCtx *, int, int);
 
+/* Function pointer compatibility wrappers for modern libgd */
+static inline gdImagePtr php_gd_image_create_from_png_wrapper(gdIOCtx *ctx) {
+    return gdImageCreateFromPngCtx(ctx);
+}
+
+static inline gdImagePtr php_gd_image_create_from_gif_wrapper(gdIOCtx *ctx) {
+    return gdImageCreateFromGifCtx(ctx);
+}
+
+static inline gdImagePtr php_gd_image_create_from_wbmp_wrapper(gdIOCtx *ctx) {
+    return gdImageCreateFromWBMPCtx(ctx);
+}
+
+static inline gdImagePtr php_gd_image_create_from_jpeg_wrapper(gdIOCtx *ctx) {
+    return gdImageCreateFromJpegCtx(ctx);
+}
+
+static inline gdImagePtr php_gd_image_create_from_gd2_wrapper(gdIOCtx *ctx) {
+    return gdImageCreateFromGd2Ctx(ctx);
+}
+
+static inline gdImagePtr php_gd_image_create_from_bmp_wrapper(gdIOCtx *ctx) {
+    return gdImageCreateFromBmpCtx(ctx);
+}
+
+static inline gdImagePtr php_gd_image_create_from_webp_wrapper(gdIOCtx *ctx) {
+    return gdImageCreateFromWebpCtx(ctx);
+}
+
 #ifdef __cplusplus
 }
 #endif
@@ -404,72 +433,13 @@ typedef void (*gd_output_func_png_ex_t)(gdImagePtr, gdIOCtx *, int, int);
 		new string
 		all bool
 	}{
-		// Fix function signature declarations - the patterns that exist in the code
-		{
-			old: "static void _php_image_create_from(INTERNAL_FUNCTION_PARAMETERS, int image_type, char *tn, gdImagePtr (*func_p)(), gdImagePtr (*ioctx_func_p)())",
-			new: "static void _php_image_create_from(INTERNAL_FUNCTION_PARAMETERS, int image_type, char *tn, gd_input_func_t func_p, gd_input_func_t ioctx_func_p)",
-			all: false,
-		},
-		{
-			old: "static void _php_image_create_from_string(zval *data, char *tn, gdImagePtr (*ioctx_func_p)())",
-			new: "static void _php_image_create_from_string(zval *data, char *tn, gd_input_func_t ioctx_func_p)",
-			all: false,
-		},
+		// Minimal GD compatibility fixes for PHP 7.4.33
+		// The PHP 7.4.33 source code already has correct function signatures in most cases
+		// These patches handle any remaining compatibility issues
 		{
 			old: "static void _php_image_output(INTERNAL_FUNCTION_PARAMETERS, int image_type, char *tn, void (*func_p)())",
 			new: "static void _php_image_output(INTERNAL_FUNCTION_PARAMETERS, int image_type, char *tn, gd_output_func_t func_p)",
 			all: false,
-		},
-		{
-			old: "static void _php_image_output_ctx(INTERNAL_FUNCTION_PARAMETERS, int image_type, char *tn, void (*func_p)())",
-			new: "static void _php_image_output_ctx(INTERNAL_FUNCTION_PARAMETERS, int image_type, char *tn, gd_output_func_ctx_t func_p)",
-			all: false,
-		},
-		// Fix function calls to use proper casting
-		{
-			old: "im = (*func_p)(io_ctx);",
-			new: "im = ((gd_input_func_t)func_p)(io_ctx);",
-			all: true,
-		},
-		{
-			old: "im = (*func_p)(fp);",
-			new: "im = ((gd_input_func_t)func_p)(fp);",
-			all: true,
-		},
-		{
-			old: "im = (*func_p)(fp, srcx, srcy, width, height);",
-			new: "im = ((gd_input_func_4arg_t)func_p)(fp, srcx, srcy, width, height);",
-			all: true,
-		},
-		{
-			old: "(*func_p)(im, fp);",
-			new: "((gd_output_func_t)func_p)(im, fp);",
-			all: true,
-		},
-		{
-			old: "(*func_p)(im, fp, q);",
-			new: "((gd_output_func_int_t)func_p)(im, fp, q);",
-			all: true,
-		},
-		{
-			old: "(*func_p)(im, fp, q, t);",
-			new: "((gd_output_func_int2_t)func_p)(im, fp, q, t);",
-			all: true,
-		},
-		{
-			old: "(*func_p)(im, ctx);",
-			new: "((gd_output_func_ctx_t)func_p)(im, ctx);",
-			all: true,
-		},
-		{
-			old: "(*func_p)(im, ctx, (int) quality);",
-			new: "((gd_output_func_ctx_t)func_p)(im, ctx, (int) quality);",
-			all: true,
-		},
-		{
-			old: "(*func_p)(im, tmp);",
-			new: "((gd_output_func_t)func_p)(im, tmp);",
-			all: true,
 		},
 	}
 
