@@ -2,6 +2,7 @@ package installers
 
 import (
 	"archive/tar"
+	"bufio"
 	"compress/gzip"
 	"encoding/json"
 	"errors"
@@ -224,11 +225,18 @@ func InstallPHPSource(version string, opts InstallOptions) (err error) {
 		return fmt.Errorf("create temp dir: %w", err)
 	}
 
-	keepBuildDir := os.Getenv("CHAUFFEUR_KEEP_BUILD_DIR") == "1"
+	// Determine if we need to preserve build directory for GD extension build
+	needsGDExtension := (version == "7.4" || version == "8.0") && opts.EnableGD
+	keepBuildDir := os.Getenv("CHAUFFEUR_KEEP_BUILD_DIR") == "1" || needsGDExtension
+
 	if !keepBuildDir {
 		defer os.RemoveAll(tmpDir)
 	} else {
-		phpLogger.Warn("preserving PHP build directory for debugging", tmpDir)
+		if needsGDExtension {
+			phpLogger.Info("preserving PHP build directory for GD extension build")
+		} else {
+			phpLogger.Warn("preserving PHP build directory for debugging", "")
+		}
 	}
 
 	// Get latest patch version for the requested major.minor
@@ -349,6 +357,30 @@ func InstallPHPSource(version string, opts InstallOptions) (err error) {
 	}
 	spin.Success("PHP compiled and installed")
 	buildLogger.Success(fmt.Sprintf("PHP %s built and installed to %s", version, filepath.Join(opts.Prefix, "php", version)), "")
+
+	// Build bundled GD extension for legacy PHP versions if requested
+	if (version == "7.4" || version == "8.0") && opts.EnableGD {
+		gdLogger := phpLogger.NewChildLogger("gd")
+		gdLogger.Info("Building bundled GD extension...")
+		if err := buildBundledGDExtension(sourceDir, installDir, version, gdLogger); err != nil {
+			gdLogger.Warn("Failed to build bundled GD extension", err.Error())
+			gdLogger.Info("PHP installation completed without GD support")
+		} else {
+			gdLogger.Success("Bundled GD extension built and enabled", "")
+		}
+
+		// Clean up temporary build directory after GD extension build is complete
+		// Check if we should preserve directory (from CHAUFFEUR_KEEP_BUILD_DIR or GD requirements)
+		shouldPreserve := os.Getenv("CHAUFFEUR_KEEP_BUILD_DIR") == "1" || ((version == "7.4" || version == "8.0") && opts.EnableGD)
+		if !shouldPreserve {
+			sourceDirParent := filepath.Dir(sourceDir) // Get the temp directory path
+			if err := os.RemoveAll(sourceDirParent); err != nil {
+				phpLogger.Warn("Failed to clean up temporary build directory", err.Error())
+			} else {
+				gdLogger.Info("Cleaned up temporary build directory")
+			}
+		}
+	}
 
 	extensionsLogger := phpLogger.NewChildLogger("extensions")
 	if err := installImagickExtension(opts, version, installDir, extensionsLogger); err != nil {
@@ -976,38 +1008,72 @@ func buildAndInstallPHP(opts InstallOptions, version, sourceDir string, logger *
 		"--with-pdo-mysql=mysqlnd",
 	}
 
-	// Remove GD-related options for legacy versions due to compatibility issues
+	// Handle GD-related options for legacy versions
 	switch version {
 	case "8.0":
-		// Remove GD-related options for PHP 8.0 due to function pointer compatibility issues
-		var filteredArgs []string
-		gdOptions := map[string]bool{
-			"--enable-gd":        true,
-			"--with-jpeg=/usr":  true,
-			"--with-freetype=/usr": true,
-		}
-		for _, arg := range confArgs {
-			if !gdOptions[arg] {
-				filteredArgs = append(filteredArgs, arg)
+		if opts.EnableGD {
+			// User wants GD - we'll build it as bundled extension later
+			var filteredArgs []string
+			gdOptions := map[string]bool{
+				"--enable-gd":        true,
+				"--with-jpeg=/usr":  true,
+				"--with-freetype=/usr": true,
 			}
+			for _, arg := range confArgs {
+				if !gdOptions[arg] {
+					filteredArgs = append(filteredArgs, arg)
+				}
+			}
+			confArgs = filteredArgs
+			logger.Info("GD extension will be built as bundled extension after PHP compilation")
+		} else {
+			// Remove GD-related options for PHP 8.0 when user doesn't want it
+			var filteredArgs []string
+			gdOptions := map[string]bool{
+				"--enable-gd":        true,
+				"--with-jpeg=/usr":  true,
+				"--with-freetype=/usr": true,
+			}
+			for _, arg := range confArgs {
+				if !gdOptions[arg] {
+					filteredArgs = append(filteredArgs, arg)
+				}
+			}
+			confArgs = filteredArgs
+			logger.Info("GD extension disabled as requested")
 		}
-		confArgs = filteredArgs
-		logger.Info("Disabled GD extension for PHP 8.0 due to compatibility issues")
 	case "7.4":
-		// Remove GD-related options for PHP 7.4 due to function pointer compatibility issues
-		var filteredArgs []string
-		gdOptions := map[string]bool{
-			"--enable-gd":        true,
-			"--with-jpeg=/usr":  true,
-			"--with-freetype=/usr": true,
-		}
-		for _, arg := range confArgs {
-			if !gdOptions[arg] {
-				filteredArgs = append(filteredArgs, arg)
+		if opts.EnableGD {
+			// User wants GD - we'll build it as bundled extension later
+			var filteredArgs []string
+			gdOptions := map[string]bool{
+				"--enable-gd":        true,
+				"--with-jpeg=/usr":  true,
+				"--with-freetype=/usr": true,
 			}
+			for _, arg := range confArgs {
+				if !gdOptions[arg] {
+					filteredArgs = append(filteredArgs, arg)
+				}
+			}
+			confArgs = filteredArgs
+			logger.Info("GD extension will be built as bundled extension after PHP compilation")
+		} else {
+			// Remove GD-related options for PHP 7.4 when user doesn't want it
+			var filteredArgs []string
+			gdOptions := map[string]bool{
+				"--enable-gd":        true,
+				"--with-jpeg=/usr":  true,
+				"--with-freetype=/usr": true,
+			}
+			for _, arg := range confArgs {
+				if !gdOptions[arg] {
+					filteredArgs = append(filteredArgs, arg)
+				}
+			}
+			confArgs = filteredArgs
+			logger.Info("GD extension disabled as requested")
 		}
-		confArgs = filteredArgs
-		logger.Info("Disabled GD extension for PHP 7.4 due to compatibility issues")
 	default:
 		confArgs = append(confArgs, "--enable-mbstring")
 	}
@@ -2381,4 +2447,148 @@ func addLocalTarballToConfig(version, path string) error {
 
 	// Write back modified config
 	return os.WriteFile(configPath, []byte(strings.Join(result, "\n")), 0644)
+}
+
+/**
+ * buildBundledGDExtension builds the GD extension as a bundled extension from PHP source.
+ * This is used for legacy PHP versions (7.4, 8.0) that have GD compatibility issues.
+ *
+ * @param sourceDir Path to extracted PHP source directory
+ * @param installDir Path to PHP installation directory
+ * @param version PHP version
+ * @param logger Logger instance
+ * @return error if GD extension build fails
+ */
+func buildBundledGDExtension(sourceDir, installDir, version string, logger *lib.Logger) error {
+	// Construct path to GD extension source
+	gdSourceDir := filepath.Join(sourceDir, "ext", "gd")
+
+	// Verify GD source directory exists
+	if _, err := os.Stat(gdSourceDir); os.IsNotExist(err) {
+		return fmt.Errorf("GD extension source not found at %s", gdSourceDir)
+	}
+
+	logger.Info("Preparing GD extension build")
+
+	// Use phpize from the newly installed PHP
+	phpizePath := filepath.Join(installDir, "bin", "phpize")
+
+	// Run phpize in GD directory
+	if err := runCommandForPHP(gdSourceDir, nil, phpizePath); err != nil {
+		return fmt.Errorf("phpize failed: %w", err)
+	}
+
+	logger.Info("Configuring GD extension")
+
+	// Configure GD extension
+	phpConfigPath := filepath.Join(installDir, "bin", "php-config")
+	gdConfigureArgs := []string{
+		fmt.Sprintf("--with-php-config=%s", phpConfigPath),
+		"--with-gd=shared",
+		"--with-jpeg-dir=/usr",
+		"--with-freetype-dir=/usr",
+		"--with-png-dir=/usr",
+	}
+
+	if err := runCommandForPHP(gdSourceDir, nil, "./configure", gdConfigureArgs...); err != nil {
+		return fmt.Errorf("GD configure failed: %w", err)
+	}
+
+	logger.Info("Compiling GD extension")
+
+	// Compile GD extension
+	if err := runCommandForPHP(gdSourceDir, nil, "make"); err != nil {
+		return fmt.Errorf("GD make failed: %w", err)
+	}
+
+	logger.Info("Installing GD extension")
+
+	// Install GD extension
+	if err := runCommandForPHP(gdSourceDir, nil, "make", "install"); err != nil {
+		return fmt.Errorf("GD make install failed: %w", err)
+	}
+
+	// Create extension configuration directory
+	confDDir := filepath.Join(installDir, "etc", "conf.d")
+	if err := os.MkdirAll(confDDir, 0755); err != nil {
+		return fmt.Errorf("failed to create extension config directory: %w", err)
+	}
+
+	// Create gd.ini extension configuration
+	gdIniPath := filepath.Join(confDDir, "gd.ini")
+	gdIniContent := "extension=gd.so\n"
+	if err := os.WriteFile(gdIniPath, []byte(gdIniContent), 0644); err != nil {
+		return fmt.Errorf("failed to create gd.ini: %w", err)
+	}
+
+	logger.Info("Created GD extension configuration")
+
+	// Test that GD extension loads properly
+	phpBinary := filepath.Join(installDir, "bin", "php")
+	testCmd := exec.Command(phpBinary, "-m")
+	testCmd.Env = append(os.Environ(), fmt.Sprintf("PHPRC=%s", filepath.Join(installDir, "etc")))
+	output, err := testCmd.Output()
+	if err != nil {
+		logger.Warn("Failed to test GD extension", err.Error())
+		return nil // Don't fail installation, just warn
+	}
+
+	if strings.Contains(string(output), "gd") {
+		logger.Success("GD extension loaded successfully", "")
+	} else {
+		logger.Warn("GD extension not found in module list", "Extension may not be properly configured")
+	}
+
+	return nil
+}
+
+/**
+ * PromptGDExtension prompts user for GD extension preference for legacy PHP versions.
+ * Modern PHP versions (8.1+) always return true as GD is enabled by default.
+ *
+ * @param version PHP version to install
+ * @param logger Logger instance
+ * @param force Whether to skip prompts (return default behavior)
+ * @return true if GD should be enabled, false otherwise
+ */
+func PromptGDExtension(version string, logger *lib.Logger, force bool) (bool, error) {
+	// Modern PHP versions always get GD
+	if version != "7.4" && version != "8.0" {
+		return true, nil
+	}
+
+	// Skip prompting in force mode
+	if force {
+		logger.Info("Force mode: skipping GD extension prompt (GD disabled)")
+		return false, nil
+	}
+
+	logger.Warn(fmt.Sprintf("PHP %s requires additional compilation for GD support", version), "")
+	logger.Info("GD extension enables image processing (uploads, thumbnails, watermarks)")
+	logger.Info("This adds 2-3 minutes to installation time")
+
+	fmt.Printf("\nWould you like to enable GD image processing support?\n")
+	fmt.Printf("  1) Enable GD (recommended for image processing)\n")
+	fmt.Printf("  2) Skip GD (faster installation)\n")
+	fmt.Printf("Enter your choice (1-2, default=2): ")
+
+	reader := bufio.NewReader(os.Stdin)
+	input, err := reader.ReadString('\n')
+	if err != nil {
+		logger.Warn("Could not read GD choice", "Skipping GD extension")
+		return false, nil
+	}
+
+	choice := strings.TrimSpace(input)
+	switch choice {
+	case "1":
+		logger.Info("GD extension will be enabled")
+		return true, nil
+	case "2", "":
+		logger.Info("GD extension will be skipped")
+		return false, nil
+	default:
+		logger.Warn("Invalid choice", "Skipping GD extension")
+		return false, nil
+	}
 }

@@ -12,4 +12,5 @@ type InstallOptions struct {
 	Force  bool         // Reinstall even if binaries already exist
 	Client *http.Client // Optional HTTP client (defaults applied when nil)
 	Info   system.Info  // Host system metadata (distro/arch) for logging/build decisions
+	EnableGD bool       // Whether to enable GD extension (for legacy PHP versions)
 }

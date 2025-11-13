@@ -18,20 +18,21 @@ import (
 
 var phpInstallFunc = defaultPHPInstall
 
-func defaultPHPInstall(version, prefix string, force bool) error {
+func defaultPHPInstall(version, prefix string, force bool, enableGD bool) error {
 	info, err := system.Detect()
 	if err != nil {
 		return err
 	}
 	return installers.InstallPHPSource(version, installers.InstallOptions{
-		Prefix: prefix,
-		Force:  force,
-		Info:   info,
+		Prefix:   prefix,
+		Force:    force,
+		Info:     info,
+		EnableGD: enableGD,
 	})
 }
 
 // OverridePHPInstallFunc lets tests inject a fake PHP installer.
-func OverridePHPInstallFunc(fn func(version, prefix string, force bool) error) (reset func()) {
+func OverridePHPInstallFunc(fn func(version, prefix string, force bool, enableGD bool) error) (reset func()) {
 	prev := phpInstallFunc
 	if fn != nil {
 		phpInstallFunc = fn
@@ -202,6 +203,12 @@ func runPHPInstall(version string, force bool, local bool, noCache bool) error {
 		return fmt.Errorf("PHP version %s is not supported. Supported versions: %s", version, installers.GetSupportedVersionsList())
 	}
 
+	// Prompt for GD extension for legacy PHP versions
+	enableGD, err := installers.PromptGDExtension(version, logger, force)
+	if err != nil {
+		return logger.Error("gd extension prompt", err.Error())
+	}
+
 	prefix, err := workspace.Dir()
 	if err != nil {
 		return err
@@ -234,7 +241,7 @@ func runPHPInstall(version string, force bool, local bool, noCache bool) error {
 	}
 
 	logger.Info(fmt.Sprintf("Installing PHP %s...", version))
-	if err := phpInstallFunc(version, prefix, force); err != nil {
+	if err := phpInstallFunc(version, prefix, force, enableGD); err != nil {
 		return logger.Error(fmt.Sprintf("install php %s", version), err.Error())
 	}
 	logger.Success(fmt.Sprintf("Installed PHP %s successfully", version), "")
