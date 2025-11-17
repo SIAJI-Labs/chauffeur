@@ -24,6 +24,9 @@ _A living status board for features, debt, and priorities. Keep this in sync wit
 - **`chauf restart` command implementation** with service-specific, project-specific, and all-service restart capabilities
 - **Comprehensive test coverage across all packages** including installers, logging, projects, services, system, templates, and nginx templates
 - **Fixed PHP-FPM process counting** in `chauf status --detail` to correctly report master and worker processes instead of showing 0
+- **Enhanced contributor onboarding documentation** with comprehensive Go basics, AI workflow guidance, and development patterns in `docs/CONTRIBUTING.md`
+- **Release checklist documentation** with comprehensive build, test, and deployment procedures in `docs/RELEASE_CHECKLIST.md`
+- **CLI ergonomics improvement** with `-v` shorthand for `--version` flag in main command
 
 ### Project-Level PHP-FPM Architecture
 - **Project-specific FPM control**: `--dedicated-fpm` flag for isolated PHP-FPM pools per project
@@ -86,11 +89,37 @@ _A living status board for features, debt, and priorities. Keep this in sync wit
 ## 4. Planned 📋
 | Priority | Item | Notes |
 |----------|------|-------|
-| P3 | Add onboarding docs for contributors (Go basics + AI workflow) | Help new maintainers |
-| P3 | Publish release checklist (binary build, docs sync, testing) | Needed for first public release |
+| P4 | Universal service update management | `chauf update <service>` for PHP, Composer, nginx with version checking, backup, and rollback |
+| P4 | CLI command expansion and enhancement | Add new commands and flags for improved user experience and functionality |
+
+**CLI Enhancement**: ✅ Added `-v` shorthand for `--version` flag in main command
+
+**Potential Command Enhancements**:
+- `chauf logs <service>` - View service logs (nginx, PHP-FPM errors)
+- `chauf config <service>` - Edit/view service configuration files
+- `chauf doctor` - Health check and troubleshooting command
+- `chauf clean` - Clean cache, old backups, temporary files
+- `chauf export/import` - Export/import configuration and linked projects
+- Add `--force` flag to `chauf link` for overwriting existing configurations
+- Add `--quiet` flag to reduce verbosity across commands
+- Add `--json` output format for scripting/automation
 
 ## 5. Future Plans 🔮
 *Low priority items that will be addressed in future releases - no ETA.*
+
+### Auto-Start Service Integration
+- **Systemd service integration** for automatic Chauffeur startup on machine boot
+- **User-level systemd services** that don't require root privileges (`systemctl --user`)
+- **CLI command extensions**: `chauf start --enable-autostart`, `chauf status --autostart`
+- **Configuration integration**: Auto-start settings in `config/chauffeur.yaml`
+- **Service template generation**: Dynamic systemd service file creation in `~/.chauffeur/systemd/`
+- **Per-service control**: Enable/disable autostart for nginx, specific PHP-FPM versions, projects
+- **Graceful shutdown handling** during user logout/system reboot
+- **Status monitoring** with systemd integration for service health checking
+- **Project-specific autostart**: `chauf link --autostart` for individual project services
+
+**Implementation Status**: Design complete in `docs/AUTOSTART_DESIGN.md`
+**Key Files**: `cli/commands/autostart.go` (new), `cli/internal/config/config.go` (extend), systemd templates
 
 ### GD Extension for Legacy PHP (Future Enhancement)
 - **Complete bundled GD extension support for PHP 7.4/8.0**
@@ -151,4 +180,4 @@ _A living status board for features, debt, and priorities. Keep this in sync wit
 - Document real-world setups (distro, Go version, dnsmasq config) in issues to broaden coverage
 - Review AGENTS.md and propose clarifications before building new features
 
-_Last updated: 2025-11-17T09:00:00Z_
+_Last updated: 2025-11-17T09:30:00Z_
