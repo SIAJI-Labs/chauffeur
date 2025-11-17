@@ -1,0 +1,45 @@
+version: 2
+
+# Skip building as you're only generating the changelog
+builds:
+    - skip: true
+
+# Changelog configuration
+changelog:
+    use: github # Generate changelog from GitHub commits
+    groups:
+    - title: Features
+      regexp: ^feat(\(.+\))?:\s?
+      order: 0
+
+    - title: Bug Fixes
+      regexp: ^fix(\(.+\))?:\s?
+      order: 1
+
+    - title: Enhancements
+      regexp: ^chore(\(.+\))?:\s?
+      order: 2
+
+    - title: Refactor
+      regexp: ^refactor(\(.+\))?:\s?
+      order: 3
+
+    - title: Build Process Updates
+      regexp: ^(ci|build)(\(.+\))?:\s?
+      order: 4
+
+    - title: Build Test
+      regexp: ^test(\(.+\))?:\s?
+      order: 5
+
+    - title: Documentation Updates
+      regexp: ^docs(\(.+\))?:\s?
+      order: 6
+
+    - title: Others
+      order: 999
+
+# Release configuration
+release:
+    prerelease: 'true'
+    make_latest: false
