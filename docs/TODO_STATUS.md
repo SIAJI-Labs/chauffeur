@@ -81,10 +81,8 @@ _A living status board for features, debt, and priorities. Keep this in sync wit
 ## 4. Planned 📋
 | Priority | Item | Notes |
 |----------|------|-------|
-| P2 | ~~**Add `chauf restart` command**~~ | ~~Supports service-specific and project-specific restarts, preserves port forwarding state~~ ✅ |
 | P2 | Expand PHP installer matrix (8.2/8.1/7.4 legacy deps) | Ensure workspace fallback works |
 | P2 | Improve `chauf status --detail` output (tables, health info) | Align with logging spec |
-| P2 | ~~**Improve `chauf uninstall` behavior**~~ | ~~Keep cache directory, list remaining files, provide complete removal guidance~~ ✅ |
 | P3 | Add onboarding docs for contributors (Go basics + AI workflow) | Help new maintainers |
 | P3 | Publish release checklist (binary build, docs sync, testing) | Needed for first public release |
 
