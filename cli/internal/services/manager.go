@@ -117,12 +117,59 @@ func (sm *ServiceManager) ListProjectServices(projectSlug string) ([]Service, er
 		}
 	}
 
+	// Check if project has dedicated FPM
+	if projectConfig.Runtime.FPM != nil && projectConfig.Runtime.FPM.Dedicated {
+		return sm.createProjectSpecificService(projectSlug, projectConfig, phpFpmPath)
+	} else {
+		return sm.createVersionSpecificService(projectConfig.PHP, phpFpmPath)
+	}
+}
+
+// createVersionSpecificService creates a PHP-FPM service shared across all projects using the same PHP version
+func (sm *ServiceManager) createVersionSpecificService(phpVersion, phpFpmPath string) ([]Service, error) {
+	// Use version-specific runtime directory under PHP installation
+	phpVersionDir := filepath.Join(sm.workspaceDir, "php", phpVersion)
+	runtimeDir := filepath.Join(phpVersionDir, "runtime", "php-fpm")
+	logsDir := filepath.Join(phpVersionDir, "logs")
+
+	// Ensure directories exist
+	for _, dir := range []string{runtimeDir, logsDir} {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return nil, fmt.Errorf("create directory %s: %w", dir, err)
+		}
+	}
+
+	// Generate version-specific PHP-FPM config if it doesn't exist
+	configPath := filepath.Join(runtimeDir, "php-fpm.conf")
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		if err := sm.generateVersionSpecificPHPFPMConfig(phpVersion, runtimeDir, logsDir); err != nil {
+			return nil, fmt.Errorf("generate PHP-FPM config: %w", err)
+		}
+	}
+
+	services := []Service{
+		{
+			Name:    fmt.Sprintf("chauf-php-fpm-%s", phpVersion),
+			Type:    ServiceTypeGlobal, // Treat as global since it's shared
+			Slug:    phpVersion,
+			Binary:  phpFpmPath,
+			PIDFile: filepath.Join(runtimeDir, "php-fpm.pid"),
+			Args:    []string{"--nodaemonize", "--fpm-config", configPath},
+			Env:     []string{},
+		},
+	}
+
+	return services, nil
+}
+
+// createProjectSpecificService creates a PHP-FPM service specific to a single project
+func (sm *ServiceManager) createProjectSpecificService(projectSlug string, projectConfig projects.Config, phpFpmPath string) ([]Service, error) {
 	projectDir := filepath.Join(sm.projectsDir, projectSlug)
 	runtimeDir := filepath.Join(projectDir, "runtime", "php-fpm")
 	logsDir := filepath.Join(projectDir, "logs")
 
 	// Generate PHP-FPM config if it doesn't exist
-	configPath = filepath.Join(runtimeDir, "php-fpm.conf")
+	configPath := filepath.Join(runtimeDir, "php-fpm.conf")
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		if err := sm.generatePHPFPMConfig(projectSlug, projectConfig, runtimeDir, logsDir); err != nil {
 			return nil, fmt.Errorf("generate PHP-FPM config: %w", err)
@@ -182,6 +229,68 @@ php_admin_flag[log_errors] = on
 
 	return os.WriteFile(filepath.Join(runtimeDir, "php-fpm.conf"), []byte(config), 0644)
 }
+
+// generateVersionSpecificPHPFPMConfig creates a PHP-FPM pool configuration shared across all projects of a PHP version
+func (sm *ServiceManager) generateVersionSpecificPHPFPMConfig(phpVersion, runtimeDir, logsDir string) error {
+	uid := os.Getuid()
+	gid := os.Getgid()
+
+	// Use a shared socket path for the PHP version
+	socketPath := filepath.Join(runtimeDir, "php-fpm.sock")
+
+	config := fmt.Sprintf(`[chauf-php-%s]
+user = %d
+group = %d
+listen = %s
+listen.owner = %d
+listen.group = %d
+listen.mode = 0660
+pm = ondemand
+pm.max_children = 20
+pm.start_servers = 4
+pm.min_spare_servers = 2
+pm.max_spare_servers = 6
+php_admin_value[error_log] = %s/php-fpm-error.log
+php_admin_flag[log_errors] = on
+`,
+		phpVersion,
+		uid,
+		gid,
+		socketPath,
+		uid,
+		gid,
+		logsDir,
+	)
+
+	return os.WriteFile(filepath.Join(runtimeDir, "php-fpm.conf"), []byte(config), 0644)
+}
+
+// GetSocketPath returns the appropriate PHP-FPM socket path for a project based on its FPM configuration
+func (sm *ServiceManager) GetSocketPath(projectSlug, phpVersion string) (string, error) {
+	// Load project config to check FPM mode
+	configPath := filepath.Join(sm.projectsDir, projectSlug, "project.yaml")
+	projectConfig, err := projects.LoadConfig(configPath)
+	if err != nil {
+		// If project config doesn't exist yet, default to shared (for linking process)
+		phpVersionDir := filepath.Join(sm.workspaceDir, "php", phpVersion)
+		runtimeDir := filepath.Join(phpVersionDir, "runtime", "php-fpm")
+		return filepath.Join(runtimeDir, "php-fpm.sock"), nil
+	}
+
+	// Check if project has dedicated FPM
+	if projectConfig.Runtime.FPM != nil && projectConfig.Runtime.FPM.Dedicated {
+		// Use project-specific socket
+		projectDir := filepath.Join(sm.projectsDir, projectSlug)
+		runtimeDir := filepath.Join(projectDir, "runtime", "php-fpm")
+		return filepath.Join(runtimeDir, "php-fpm.sock"), nil
+	} else {
+		// Use shared socket under PHP version directory
+		phpVersionDir := filepath.Join(sm.workspaceDir, "php", phpVersion)
+		runtimeDir := filepath.Join(phpVersionDir, "runtime", "php-fpm")
+		return filepath.Join(runtimeDir, "php-fpm.sock"), nil
+	}
+}
+
 
 // IsRunning checks if a service is currently running
 func (sm *ServiceManager) IsRunning(service Service) (bool, error) {

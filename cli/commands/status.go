@@ -122,6 +122,9 @@ func RunStatus(args []string) error {
 		}
 	}
 
+	// Deduplicate services (remove duplicates with same name)
+	servicesToCheck = deduplicateServices(servicesToCheck)
+
 	if len(servicesToCheck) == 0 {
 		if projectSlug != "" {
 			logger.Info(fmt.Sprintf("No services found for project: %s", projectSlug))
@@ -228,6 +231,21 @@ func serviceTypeToString(serviceType services.ServiceType) string {
 	default:
 		return "Unknown"
 	}
+}
+
+// deduplicateServices removes duplicate services with the same name, keeping the first occurrence
+func deduplicateServices(serviceList []services.Service) []services.Service {
+	seen := make(map[string]bool)
+	var result []services.Service
+
+	for _, service := range serviceList {
+		if !seen[service.Name] {
+			seen[service.Name] = true
+			result = append(result, service)
+		}
+	}
+
+	return result
 }
 
 /**

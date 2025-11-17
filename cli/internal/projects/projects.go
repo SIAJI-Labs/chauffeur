@@ -38,9 +38,16 @@ type Site struct {
 	SSL    bool
 }
 
+// FPM holds PHP-FPM configuration for the project.
+type FPM struct {
+	Dedicated bool   `yaml:"dedicated"`
+	Socket    string `yaml:"socket"`
+}
+
 // Runtime tracks runtime layout paths for the project.
 type Runtime struct {
 	PHPFPM string
+	FPM    *FPM `yaml:"fpm"`
 }
 
 // Layout captures important directories for a project slug.
@@ -222,6 +229,15 @@ func renderYAML(cfg Config) string {
 
 	b.WriteString("runtime:\n")
 	b.WriteString(fmt.Sprintf("  php_fpm_socket: %s\n", cfg.Runtime.PHPFPM))
+
+	if cfg.Runtime.FPM != nil {
+		b.WriteString("  fpm:\n")
+		b.WriteString(fmt.Sprintf("    dedicated: %t\n", cfg.Runtime.FPM.Dedicated))
+		if cfg.Runtime.FPM.Socket != "" {
+			b.WriteString(fmt.Sprintf("    socket: %s\n", cfg.Runtime.FPM.Socket))
+		}
+	}
+
 	b.WriteString(fmt.Sprintf("created_at: %s\n", cfg.CreatedAt.UTC().Format(time.RFC3339)))
 	b.WriteString("")
 
@@ -295,6 +311,19 @@ func parseConfig(data []byte) (Config, error) {
 		case "runtime":
 			if key == "php_fpm_socket" {
 				cfg.Runtime.PHPFPM = value
+			} else if key == "fpm" {
+				// Initialize FPM config if nil
+				if cfg.Runtime.FPM == nil {
+					cfg.Runtime.FPM = &FPM{}
+				}
+			} else if cfg.Runtime.FPM != nil {
+				if key == "dedicated" {
+					if v, err := strconv.ParseBool(value); err == nil {
+						cfg.Runtime.FPM.Dedicated = v
+					}
+				} else if key == "socket" {
+					cfg.Runtime.FPM.Socket = value
+				}
 			}
 		}
 	}

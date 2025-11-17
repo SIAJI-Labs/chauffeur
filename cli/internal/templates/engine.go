@@ -171,12 +171,17 @@ func (e *TemplateEngine) GenerateNginxConfig(config projects.Config, layout proj
 		serverName = config.Site.Domain
 	}
 
-	// Prepare template data
+	// Prepare template data - use the socket path from config runtime since it accounts for FPM strategy
+	socketPath := layout.SocketPath // fallback
+	if config.Runtime.PHPFPM != "" {
+		socketPath = config.Runtime.PHPFPM
+	}
+
 	data := TemplateData{
 		ProjectSlug:  filepath.Base(layout.Root),
 		ServerName:   serverName,
 		ProjectRoot:  config.Path,
-		PHPFpmSocket: layout.SocketPath,
+		PHPFpmSocket: socketPath,
 		LogsDir:      layout.LogsDir,
 		HTTPPort:     opts.HTTPPort,
 		HTTPSPort:    opts.HTTPSPort,
@@ -360,6 +365,12 @@ func (e *TemplateEngine) generateBasicConfig(config projects.Config, layout proj
 		serverName = config.Site.Domain
 	}
 
+	// Use the socket path from config runtime since it accounts for FPM strategy
+	socketPath := layout.SocketPath // fallback
+	if config.Runtime.PHPFPM != "" {
+		socketPath = config.Runtime.PHPFPM
+	}
+
 	base := fmt.Sprintf(`# Basic nginx configuration for %s
 upstream %s_php {
     server unix:%s;
@@ -395,7 +406,7 @@ server {
 `,
 		serverName,
 		filepath.Base(layout.Root),
-		layout.SocketPath,
+		socketPath,
 		opts.HTTPPort,
 		serverName,
 		config.Path,

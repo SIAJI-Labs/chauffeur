@@ -172,15 +172,55 @@ Checklist (do not skip):
 9. **Review output**: Ensure logs look clean, colors degrade gracefully, and errors cite log file locations.
 10. **Final verification**: Re-run key commands (e.g., `chauf link --dry-run`) to validate the new behavior shown in docs.
 
-## 14. DNS & Port Automation Notes
+## 14. PHP-FPM Architecture
+
+### Project-Level PHP-FPM Control
+Chauffeur provides **project-level PHP-FPM control** to balance resource efficiency and isolation needs:
+
+### Shared FPM (Default)
+- **Resource efficient**: Multiple projects share the same PHP-FPM pool per PHP version
+- **Default behavior**: `chauf link` creates shared FPM unless `--dedicated-fpm` is specified
+- **Example**: 10 projects using PHP 8.3 = 1 shared PHP-FPM process
+- **Socket path**: `~/.chauffeur/php/8.3/runtime/php-fpm/php-fpm.sock`
+
+### Dedicated FPM (Optional)
+- **Maximum isolation**: Each project gets its own PHP-FPM pool
+- **Usage**: `chauf link --dedicated-fpm` for critical projects needing custom configuration
+- **Example**: 1 project = 1 dedicated PHP-FPM process
+- **Socket path**: `~/.chauffeur/projects/<slug>/runtime/php-fpm/php-fpm.sock`
+
+### Mixed Strategy Support
+- **Flexible workspace**: Mix shared and dedicated FPM in the same environment
+- **Automatic routing**: nginx automatically routes to the correct socket based on project configuration
+- **Clear status**: `chauf status` shows global (shared) and project-specific (dedicated) services separately
+
+### Implementation Details
+- **Project configuration**: New `fpm:` section in `project.yaml`:
+  ```yaml
+  runtime:
+    fpm:
+      dedicated: false    # or true for dedicated FPM
+      socket: /path/to/socket
+  ```
+- **Link command**: `chauf link --dedicated-fpm --php 8.1` creates dedicated FPM
+- **Service management**: `cli/internal/services/manager.go` handles mixed strategies
+- **nginx templates**: Automatically route to version-specific (shared) or project-specific (dedicated) sockets
+
+### Benefits
+- ✅ **Default efficiency**: Shared FPM conserves memory for typical development workflows
+- ✅ **Selective isolation**: Dedicated FPM available when needed for specific projects
+- ✅ **Backward compatibility**: Existing projects continue using shared FPM
+- ✅ **Simple management**: Clear project-level control via flag during linking
+
+## 15. DNS & Port Automation Notes
 - `chauf start` must verify dnsmasq configuration for `.test`. If missing, print the exact `sudo tee /etc/dnsmasq.d/chauffeur.conf` block plus restart commands; never edit system files directly.
-- Port conflicts are resolved per the config’s `ports.conflict_resolution`:
+- Port conflicts are resolved per the config's `ports.conflict_resolution`:
   - `prompt`: ask user via logger prompts.
   - `auto`: pick first free port within `start_range`/`end_range`.
   - `fail`: abort with actionable guidance.
 - Port forwarding (80→HTTP port, 443→HTTPS port) is optional and tracked in `~/.chauffeur/system/port-forwarding.json`. Cleanup happens during `chauf stop` and `chauf remove nginx`.
 - Port validators must detect when a conflict comes from Chauffeur-managed services (e.g., `chauf-nginx`). In that case, automatically restart the service to pick up new configs instead of forcing the user to pick a new port.
 - `chauf link`/`chauf unlink` must restart `chauf-nginx` whenever they change site configs so new domains go live (or disappear) immediately.
-- Nginx must always ship with a default catch-all server (`server_name _; return 404;`) on the configured HTTP port so unlinked domains don’t bleed into other projects.
+- Nginx must always ship with a default catch-all server (`server_name _; return 404;`) on the configured HTTP port so unlinked domains don't bleed into other projects.
 
-By following this handbook, every new change stays consistent with Chauffeur’s goals: Valet-like ergonomics, Linux-friendly isolation, and crystal-clear documentation.
+By following this handbook, every new change stays consistent with Chauffeur's goals: Valet-like ergonomics, Linux-friendly isolation, and crystal-clear documentation.

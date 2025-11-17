@@ -172,7 +172,9 @@ func DefaultConfig() (Config, error) {
 			HTTPPort:  8080,
 			HTTPSPort: 8443,
 		},
-		PHP:         PHPConfig{Default: "8.3"},
+		PHP: PHPConfig{
+			Default: "8.3",
+		},
 		ProjectsDir: filepath.Join(root, "projects"),
 		Ports: PortConfig{
 			StartRange:         8080,

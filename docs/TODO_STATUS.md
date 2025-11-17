@@ -15,9 +15,17 @@ _A living status board for features, debt, and priorities. Keep this in sync wit
 - Workspace layout contracts documented in AGENTS.md
 - Debug helper `CHAUFFEUR_KEEP_BUILD_DIR=1` preserves extracted PHP build directories for manual inspection when needed
 - Offline-friendly installs (`CHAUFFEUR_PHP_TARBALL`/`CHAUFFEUR_PHP_SIGNATURE`/`CHAUFFEUR_PHP_KEYRING`) to reuse cached PHP sources when mirrors are unreachable
-- Port validator recognizes Chauffeur’s own nginx usage and restarts it automatically, so `chauf link` can run while services are active without forcing new ports
-- `chauf info` reports GitHub release status plus compare-local-vs-remote commit drift so contributors know when they’re ahead/behind
+- Port validator recognizes Chauffeur's own nginx usage and restarts it automatically, so `chauf link` can run while services are active without forcing new ports
+- `chauf info` reports GitHub release status plus compare-local-vs-remote commit drift so contributors know when they're ahead/behind
 - Imagick installer fetches the latest stable tarball from PECL (with env overrides) so PHP builds keep working as releases evolve
+
+### Project-Level PHP-FPM Architecture
+- **Project-specific FPM control**: `--dedicated-fpm` flag for isolated PHP-FPM pools per project
+- **Shared FPM by default**: Resource-efficient PHP-FPM pooling per PHP version when no dedicated flag is used
+- **Mixed strategy support**: Coexistence of shared and dedicated FPM pools in the same workspace
+- **Enhanced project config**: New `fpm:` section with `dedicated: true/false` and socket path tracking
+- **Automatic socket management**: Correct socket path resolution based on project FPM settings
+- **Service separation**: Clear distinction between global (shared) and project-specific (dedicated) services in status output
 
 ### Project Registration
 - `chauf link` / `links` / `unlink` end-to-end
@@ -78,6 +86,7 @@ _A living status board for features, debt, and priorities. Keep this in sync wit
 | P2 | Expand PHP installer matrix (8.2/8.1/7.4 legacy deps) | Ensure workspace fallback works |
 | P2 | Improve `chauf status --detail` output (tables, health info) | Align with logging spec |
 | P2 | Add GD extension validation tests | Verify common PHP GD functions work correctly |
+| P2 | **Improve `chauf uninstall` behavior** | Keep cache directory, list remaining files, provide complete removal guidance |
 | P3 | Add onboarding docs for contributors (Go basics + AI workflow) | Help new maintainers |
 | P3 | Publish release checklist (binary build, docs sync, testing) | Needed for first public release |
 
