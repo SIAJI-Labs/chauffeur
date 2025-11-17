@@ -114,12 +114,13 @@ func validateProjectPath(path string) error {
 // RunLink handles `chauf link` command invocations.
 func RunLink(args []string) error {
 	var (
-		domain    string
-		phpVer    string
-		ssl       bool
-		force     bool
-		httpPort  int
-		httpsPort int
+		domain       string
+		phpVer       string
+		ssl          bool
+		force        bool
+		dedicatedFPM bool
+		httpPort     int
+		httpsPort    int
 	)
 
 	logger := lib.NewCommandLogger("link")
@@ -147,6 +148,9 @@ func RunLink(args []string) error {
 			i++
 		case "--force":
 			force = true
+			i++
+		case "--dedicated-fpm":
+			dedicatedFPM = true
 			i++
 		case "--http-port":
 			if i+1 >= len(args) {
@@ -280,12 +284,31 @@ func RunLink(args []string) error {
 		return fmt.Errorf("security validation failed: %w", err)
 	}
 
+	// Determine socket path based on dedicated FPM setting
+	var socketPath string
+	if dedicatedFPM {
+		// Use project-specific socket for dedicated FPM
+		socketPath = layout.SocketPath
+	} else {
+		// Use shared version-specific socket
+		phpVersionDir := filepath.Join(cfg.WorkspaceDir, "php", phpVer)
+		runtimeDir := filepath.Join(phpVersionDir, "runtime", "php-fpm")
+		socketPath = filepath.Join(runtimeDir, "php-fpm.sock")
+	}
+
+	// Create FPM configuration
+	fpmConfig := &projects.FPM{
+		Dedicated: dedicatedFPM,
+		Socket:    socketPath,
+	}
+
 	proj := projects.Config{
 		Version: projects.ConfigVersion,
 		Path:    cwd,
 		PHP:     phpVer,
 		Runtime: projects.Runtime{
-			PHPFPM: layout.SocketPath,
+			PHPFPM: socketPath,
+			FPM:    fpmConfig,
 		},
 		CreatedAt: time.Now().UTC(),
 	}
@@ -420,12 +443,13 @@ func printLinkUsage() {
 	fmt.Print(`Chauffeur Project Linking
 
 Usage:
-  chauf link [--site <domain>] [--ssl] [--php <version>] [--http-port <port>] [--https-port <port>] [--force]
+  chauf link [--site <domain>] [--ssl] [--php <version>] [--dedicated-fpm] [--http-port <port>] [--https-port <port>] [--force]
 
 Flags:
   --site <domain>           Register a local domain for the project (default: <slug>.test).
   --ssl                     Enable internal TLS for the domain.
   --php <version>           Override the PHP version for this project (default: global default).
+  --dedicated-fpm           Create a dedicated PHP-FPM pool for this project (instead of shared).
   --http-port <port>        Override Nginx HTTP port for this project (default: from config).
   --https-port <port>       Override Nginx HTTPS port for this project (default: from config).
   --force                   Overwrite existing project configuration.
@@ -435,6 +459,10 @@ Port Management:
     - Prompt for alternative ports (default behavior)
     - Auto-resolve to available ports (if "conflict_resolution: auto" in config)
     - Fail with error if "conflict_resolution: fail" in config
+
+FPM Strategy:
+  By default, projects share PHP-FPM pools with others using the same PHP version (resource efficient).
+  Use --dedicated-fpm to create an isolated PHP-FPM pool for this specific project.
 
 Note:
   When --site is not specified, the project is automatically assigned a .test domain

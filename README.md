@@ -59,9 +59,30 @@ Design themes borrowed from Valet/Herd:
   nginx/{bin,etc,sites-available,sites-enabled,conf.d,certs}
   logs/
 ```
-- `php` shim: Detects whether you’re inside a linked project and selects the project’s PHP version; otherwise uses the global default (fallback 8.3).
-- `chauf link`: Detects Laravel/WordPress/general layout and renders the appropriate nginx template.
+- `php` shim: Detects whether you're inside a linked project and selects the project's PHP version; otherwise uses the global default (fallback 8.3).
+- `chauf link`: Detects Laravel/WordPress/general layout and renders the appropriate nginx template with project-level FPM control (shared by default, `--dedicated-fpm` for isolation).
 - `chauf start`: Validates dnsmasq `.test` routing, offers auto-generated `sudo` commands if the host needs configuration, and manages iptables redirects recorded in `~/.chauffeur/system/port-forwarding.json`.
+
+## PHP-FPM Architecture
+
+Chauffeur provides **project-level PHP-FPM control** to balance resource efficiency and isolation:
+
+### Shared FPM (Default)
+- **Resource efficient**: Multiple projects share the same PHP-FPM pool per PHP version
+- **Default behavior**: `chauf link` creates shared FPM unless `--dedicated-fpm` is specified
+- **Example**: 10 projects using PHP 8.3 = 1 shared PHP-FPM process
+- **Socket path**: `~/.chauffeur/php/8.3/runtime/php-fpm/php-fpm.sock`
+
+### Dedicated FPM (Optional)
+- **Maximum isolation**: Each project gets its own PHP-FPM pool
+- **Usage**: `chauf link --dedicated-fpm` for critical projects needing custom configuration
+- **Example**: 1 project = 1 dedicated PHP-FPM process
+- **Socket path**: `~/.chauffeur/projects/<slug>/runtime/php-fpm/php-fpm.sock`
+
+### Mixed Strategy Support
+- **Flexible workspace**: Mix shared and dedicated FPM in the same environment
+- **Automatic routing**: nginx automatically routes to the correct socket based on project configuration
+- **Clear status**: `chauf status` shows global (shared) and project-specific (dedicated) services separately
 
 ## Command Reference
 | Command | Key Flags | Summary |
@@ -70,7 +91,7 @@ Design themes borrowed from Valet/Herd:
 | `chauf start` | `--project <path>`, `--all`, `--dry-run` | Start nginx/PHP-FPM (optionally all linked projects). |
 | `chauf stop` | `--project <path>`, `--all`, `--dry-run` | Stop services and clean redirects. |
 | `chauf status` | `[service-type]`, `--project`, `--detail`, `-v` | Inspect global or per-project services. |
-| `chauf link` | `--site`, `--ssl`, `--php`, `--http-port`, `--https-port`, `--force` | Register PWD as a project and generate configs. |
+| `chauf link` | `--site`, `--ssl`, `--php`, `--dedicated-fpm`, `--http-port`, `--https-port`, `--force` | Register PWD as a project and generate configs (shared FPM by default). |
 | `chauf links` | — | Table of all registered projects. |
 | `chauf unlink` | `--slug`, `--site`, `--project`, `--all`, `--force` | Remove registrations; defaults to current directory. |
 | `chauf install <service> [ver]` | `--force`, `--local`, `--no-cache` | Install services with intelligent caching (php, composer, nginx). |
@@ -97,15 +118,21 @@ Design themes borrowed from Valet/Herd:
    chauf install nginx           # Instant if cached, downloads if not
    chauf install composer        # Reuses cached PHAR when available
    ```
-4. **Link a project**:
+4. **Link projects** (shared FPM by default, dedicated when needed):
    ```bash
-   cd /path/to/project
-   chauf link --site myapp.test --php 8.3
+   cd ~/simple-project          # Shared FPM (resource efficient)
+   chauf link
+
+   cd ~/production-app          # Dedicated FPM (isolated)
+   chauf link --dedicated-fpm --php 8.1
+
+   cd ~/legacy-project         # Dedicated FPM (custom config needs)
+   chauf link --dedicated-fpm --php 7.4
    ```
 5. **Start services & browse**:
    ```bash
    chauf start
-   firefox http://myapp.test:8080
+   firefox http://project-name.test:8080
    ```
 
 `chauf link` automatically detects when Chauffeur’s nginx instance already owns the configured HTTP/HTTPS ports and simply restarts it so the new site configuration is loaded—no more prompts to pick new ports while services are running. Likewise, `chauf unlink` removes the generated nginx config, restarts nginx when it’s active, and the built-in catch‑all server returns a 404 for any unlinked domain so the site disappears immediately.
