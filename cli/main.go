@@ -56,9 +56,9 @@ func main() {
 	}
 
 	switch args[0] {
-	case "--version", "-V", "version":
+	case "--version", "-v", "-V", "version":
 		fmt.Printf("chauf %s (built %s, commit %s)\n", version, buildTimestamp, buildCommit)
-	case "--help", "-h":
+	case "--help", "-h", "help":
 		usage()
 	case "init":
 		if err := commands.RunInit(args[1:]); err != nil {
