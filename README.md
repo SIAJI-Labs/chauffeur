@@ -21,7 +21,7 @@
 Chauffeur was born after migrating from macOS to Linux and missing the simplicity of Valet/Herd. Rather than containerizing everything, Chauffeur keeps services on the host but isolates them per project inside `~/.chauffeur`. dnsmasq handles `.test` domains, nginx proxies to per-project PHP-FPM pools, and shims ensure `php` understands which version to use based on your current directory.
 
 Design themes borrowed from Valet/Herd:
-- One command per action (`chauf link`, `chauf start`, `chauf stop`).
+- One command per action (`chauf link`, `chauf start`, `chauf stop`, `chauf restart`).
 - Automatic nginx template selection (Laravel, WordPress, general).
 - DNS-based routing with friendly domains like `myapp.test`.
 
@@ -39,11 +39,11 @@ Design themes borrowed from Valet/Herd:
 | Workspace bootstrap (`chauf init`) | ✅ | Creates `~/.chauffeur` directories, default config, PATH guidance. |
 | Project linking (`chauf link/links/unlink`) | ✅ | Registers projects, writes `project.yaml`, generates nginx configs. |
 | PHP runtimes (`chauf php install/use/isolate`) | ✅ | Full PHP 7.4-8.4 support with smart caching; GD extension infrastructure in place (modern PHP ✅, legacy PHP 🚧); additional harness tests coming soon. |
-| Service orchestration (`chauf start/stop/status`) | 🚧 | Basic process management exists; dnsmasq integration still evolving. |
+| Service orchestration (`chauf start/stop/status/restart`) | ✅ | Full process management with service-specific and project-specific restarts; dnsmasq integration working. |
 | Composer integration | ✅ | Installs Composer PHAR tied to Chauffeur's PHP shim. |
 | Logging revamp | ✅ | All user-facing commands now route output through `lib.Logger`; only help/usage text stays raw. |
 | Smart caching system | ✅ | Universal download cache with auto-detection and user control. |
-| Testing | ✅ | Command-level smoke tests cover init, link, php use, remove, unlink, and info; CI enforces `go test ./...` on PRs to `main`. |
+| Testing | ✅ | Comprehensive test coverage across all packages including unit tests for installers, logging, projects, services, system, templates, and nginx templates; integration tests cover CLI workflows; CI enforces `go test ./...` on PRs to `main`. |
 
 ## Architecture at a Glance
 ```
@@ -90,6 +90,7 @@ Chauffeur provides **project-level PHP-FPM control** to balance resource efficie
 | `chauf init` | `--force`, `--quiet` | Bootstrap the workspace under `~/.chauffeur/`. |
 | `chauf start` | `--project <path>`, `--all`, `--dry-run` | Start nginx/PHP-FPM (optionally all linked projects). |
 | `chauf stop` | `--project <path>`, `--all`, `--dry-run` | Stop services and clean redirects. |
+| `chauf restart` | `[service-type]`, `--project <path>`, `--all`, `--dry-run` | Restart specific services, projects, or all services. |
 | `chauf status` | `[service-type]`, `--project`, `--detail`, `-v` | Inspect global or per-project services. |
 | `chauf link` | `--site`, `--ssl`, `--php`, `--dedicated-fpm`, `--http-port`, `--https-port`, `--force` | Register PWD as a project and generate configs (shared FPM by default). |
 | `chauf links` | — | Table of all registered projects. |

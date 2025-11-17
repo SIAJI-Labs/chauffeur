@@ -5,8 +5,8 @@ _A living status board for features, debt, and priorities. Keep this in sync wit
 ## 1. Snapshot
 - **Maintainer**: @siegg (solo, learning Go; heavy AI assistance)
 - **Stability**: Experimental – validated mostly on one Arch-based workstation
-- **CI**: `go test ./...` currently red; needs attention before public release
-- **Work focus**: Logging overhaul, service orchestration polish, test coverage
+- **CI**: `go test ./...` now green with comprehensive test coverage across all packages
+- **Work focus**: Service orchestration polish, documentation sync, release preparation
 
 ## 2. Completed ✅
 ### Workspace & Bootstrap
@@ -22,6 +22,7 @@ _A living status board for features, debt, and priorities. Keep this in sync wit
 - **Improved port forwarding** with better sudo detection, state validation, and fallback when privileges unavailable
 - **Robust start/stop orchestration** with comprehensive error handling and integration test coverage
 - **`chauf restart` command implementation** with service-specific, project-specific, and all-service restart capabilities
+- **Comprehensive test coverage across all packages** including installers, logging, projects, services, system, templates, and nginx templates
 
 ### Project-Level PHP-FPM Architecture
 - **Project-specific FPM control**: `--dedicated-fpm` flag for isolated PHP-FPM pools per project
@@ -126,17 +127,17 @@ _A living status board for features, debt, and priorities. Keep this in sync wit
 - Build process preserves `/tmp/chauffeur-php-*/src/php-*/ext/gd/` for debugging
 
 ## 6. Known Issues / Tech Debt
-- `go test ./...` fails due to tests importing `cli/internal/config` (Go disallows external packages from accessing internal)
 - Repo currently contains built binaries (`chauf`, `main`) checked in by mistake – remove and add to `.gitignore`
 - DNS setup path requires clearer rollback instructions when NetworkManager/systemd-resolved changes are applied manually
 
 ## 7. Testing & QA
-- Target: `go test ./...` green on Go 1.22+
+- ✅ **`go test ./...` now green on Go 1.22+** with comprehensive unit test coverage across all packages
 - Integration tests should stub HOME to temp directories, avoiding host mutation
 - CI (`.github/workflows/go-tests.yml`) runs the suite on every pull request to `main`
+- **New test coverage areas**: installers, logging, projects, services, system, templates, nginx templates with proper error handling and edge case validation
 
 ## 8. Release Readiness Checklist
-- [ ] `go test ./...` passes locally
+- [x] `go test ./...` passes locally with comprehensive test coverage
 - [ ] README.md / docs/TODO_STATUS.md / AGENTS.md agree on feature status
 - [ ] No compiled binaries or caches tracked in git
 - [ ] Logging contract enforced across commands
@@ -149,4 +150,4 @@ _A living status board for features, debt, and priorities. Keep this in sync wit
 - Document real-world setups (distro, Go version, dnsmasq config) in issues to broaden coverage
 - Review AGENTS.md and propose clarifications before building new features
 
-_Last updated: 2025-11-17T05:00:00Z_
+_Last updated: 2025-11-17T08:30:00Z_
