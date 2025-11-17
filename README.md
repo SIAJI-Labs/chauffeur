@@ -8,7 +8,7 @@
 | Purpose | Host-based CLI that installs nginx, PHP-FPM, and dnsmasq-managed `.test` routing inside `~/.chauffeur` so each project has isolated services. |
 | Scope | Linux (Arch/Ubuntu/Debian focus). Manual `chauf link` registration per project; no DB/queue helpers. |
 | Inspiration | [Laravel Valet](https://laravel.com/docs/valet) & [Beyond Code Herd](https://herd.laravel.com/). |
-| Author | @siegg — single maintainer learning Go. |
+| Author | @si-aji — single maintainer learning Go. |
 | Status | Early adopter preview. Tested mainly on one Linux machine; expect rough edges. |
 
 ## Transparency & Expectations
