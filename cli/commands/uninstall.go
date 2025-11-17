@@ -68,19 +68,24 @@ func RunUninstall(args []string) error {
 	}
 
 	keepDirs := map[string]struct{}{
-		"php": {},
-		// TODO: remove retained runtimes/caches once separate cleanup is implemented.
+		"php":   {},
+		"cache": {},
 	}
 
+	var retainedDirs []string
+	var removedDirs []string
 	retained := false
+
 	for _, entry := range entries {
 		name := entry.Name()
 		if _, keep := keepDirs[name]; keep {
+			retainedDirs = append(retainedDirs, name)
 			retained = true
 			continue
 		}
 
 		target := filepath.Join(workspace, name)
+		removedDirs = append(removedDirs, name)
 		if err := os.RemoveAll(target); err != nil {
 			return fmt.Errorf("remove %s: %w", target, err)
 		}
@@ -95,7 +100,47 @@ func RunUninstall(args []string) error {
 		return nil
 	}
 
-	logger.Info(fmt.Sprintf("Cleaned Chauffeur workspace at %s (retained runtimes in %s)", workspace, filepath.Join(workspace, "php")))
+	// List what was retained and provide guidance
+	logger.PrintSection("Uninstall Summary")
+	logger.Info(fmt.Sprintf("Workspace cleaned: %s", workspace))
+
+	if len(retainedDirs) > 0 {
+		logger.Info(fmt.Sprintf("Retained directories (%d):", len(retainedDirs)))
+		for _, dir := range retainedDirs {
+			fullPath := filepath.Join(workspace, dir)
+			size, _ := getDirectorySize(fullPath)
+			logger.Info(fmt.Sprintf("  • %s (%s)", dir, formatBytes(size)))
+		}
+		logger.Info("")
+
+		// Provide specific guidance based on what was retained
+		if contains(retainedDirs, "cache") {
+			cachePath := filepath.Join(workspace, "cache")
+			logger.Info("💡 Cache directory preserved:")
+			logger.Info("   Contains downloaded PHP, Composer, and Nginx tarballs")
+			logger.Info("   Speeds up future service installations")
+			logger.Info(fmt.Sprintf("   Location: %s", cachePath))
+			logger.Info("")
+		}
+
+		if contains(retainedDirs, "php") {
+			phpPath := filepath.Join(workspace, "php")
+			logger.Info("💡 PHP runtimes preserved:")
+			logger.Info("   Contains compiled PHP versions")
+			logger.Info("   Can be used with future Chauffeur installations")
+			logger.Info(fmt.Sprintf("   Location: %s", phpPath))
+			logger.Info("")
+		}
+
+		// Provide complete removal guidance
+		logger.PrintSection("Complete Removal Guide")
+		logger.Info("To remove all retained items manually:")
+		logger.Info(fmt.Sprintf("  rm -rf %s", workspace))
+		logger.Info("")
+		logger.Info("Or use purge flag to remove everything:")
+		logger.Info("  chauf uninstall --purge")
+	}
+
 	reportPathRemoval()
 	return nil
 }
@@ -103,9 +148,23 @@ func RunUninstall(args []string) error {
 func printUninstallUsage() {
 	fmt.Println(`Usage: chauf uninstall [--purge]
 
+Remove the Chauffeur workspace while preserving valuable cache and runtimes.
+
 Options:
-  --purge    Remove the workspace and delete cached PHP runtimes.
-  -h, --help Show this message.`)
+  --purge    Remove the workspace including all cached files and PHP runtimes.
+  -h, --help Show this message.
+
+Behavior:
+  Default uninstall preserves:
+    • cache/     - Downloaded PHP, Composer, and Nginx tarballs
+    • php/       - Compiled PHP runtime versions
+
+  These preserved items speed up future Chauffeur installations.
+  Use --purge to remove everything completely.
+
+Examples:
+  chauf uninstall           # Remove workspace but keep cache and PHP runtimes
+  chauf uninstall --purge   # Remove everything including cache and runtimes`)
 }
 
 func defaultWorkspace() (string, error) {
@@ -262,4 +321,45 @@ func cleanupAllSSLCertificates(workspace string, logger *lib.Logger) error {
 	}
 
 	return nil
+}
+
+// Helper functions for improved uninstall behavior
+
+// getDirectorySize calculates the total size of a directory recursively
+func getDirectorySize(path string) (int64, error) {
+	var size int64
+	err := filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() {
+			size += info.Size()
+		}
+		return nil
+	})
+	return size, err
+}
+
+// formatBytes formats a byte size into human-readable format
+func formatBytes(bytes int64) string {
+	const unit = 1024
+	if bytes < unit {
+		return fmt.Sprintf("%d B", bytes)
+	}
+	div, exp := int64(unit), 0
+	for n := bytes / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
+}
+
+// contains checks if a string slice contains a specific string
+func contains(slice []string, item string) bool {
+	for _, s := range slice {
+		if s == item {
+			return true
+		}
+	}
+	return false
 }
