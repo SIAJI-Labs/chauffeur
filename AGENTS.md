@@ -97,6 +97,7 @@ created_at: 2025-10-30T12:00:00+07:00
 | `chauf init` | `--force`, `--quiet` | Bootstrap workspace under `~/.chauffeur/`. Idempotent. |
 | `chauf start` | `--project <path>`, `--all`, `--dry-run` | Start nginx/PHP-FPM plus dnsmasq validation. |
 | `chauf stop` | same flags as start | Stop services and clean port-forward rules. |
+| `chauf restart` | `--project <slug>`, `--all`, `--dry-run` | Restart services (equivalent to stop then start, preserves configuration). |
 | `chauf status` | `[service-type]`, `--project`, `--detail`, `-v` | Show status for global or per-project services. |
 | `chauf link` | `--site`, `--ssl`, `--php`, `--http-port`, `--https-port`, `--force` | Register current directory, detect template (Laravel/WordPress/general), generate configs. |
 | `chauf links` | — | List all registered projects in a formatted table. |

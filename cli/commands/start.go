@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/siaji/chauffeur/cli/internal/config"
 	"github.com/siaji/chauffeur/cli/internal/services"
@@ -26,7 +27,7 @@ func checkDnsmasqConfiguration(logger *lib.Logger) error {
 
 	// Check if dnsmasq is available (NetworkManager or standalone)
 	if !system.IsDnsmasqAvailable() {
-		return dnsLogger.Fail("dnsmasq not available", "Install dnsmasq first")
+		return dnsLogger.Fail("dnsmasq not available", "Install dnsmasq first: sudo pacman -S dnsmasq (Arch) or sudo apt install dnsmasq (Ubuntu/Debian)")
 	}
 
 	// Check if chauffeur.conf exists in either location
@@ -55,84 +56,129 @@ func checkDnsmasqConfiguration(logger *lib.Logger) error {
 	if configPath != "" {
 		dnsLogger.Info(fmt.Sprintf("dnsmasq configuration found at %s (%s)", configPath, configSource))
 
-		resolves, ips, err := system.VerifyLocalDNSResolution()
-		if err != nil {
-			dnsLogger.Warn("dns probe failed", err.Error())
-		}
+		// Test DNS resolution with retries
+		if err := verifyDNSResolutionWithRetry(dnsLogger, 3); err != nil {
+			// If resolution still fails after retries, attempt to fix it
+			dnsLogger.Warn("DNS resolution verification failed", "Attempting to restart dnsmasq service")
 
-		if !resolves {
-			dnsLogger.Warn(".test domains are not resolving to localhost", "Attempting to restart dnsmasq/NetworkManager")
-
-			if err := system.SetupLocalDNSResolution(); err != nil {
+			if setupErr := system.SetupLocalDNSResolution(); setupErr != nil {
 				if system.IsNetworkManagerDnsmasqRunning() {
-					dnsLogger.Warn("dnsmasq restart reported warnings", err.Error())
+					dnsLogger.Warn("NetworkManager dnsmasq restart had issues", setupErr.Error())
+					dnsLogger.Info("Trying alternative DNS resolution check...")
+
+					// Give it a moment for NetworkManager to settle
+					time.Sleep(2 * time.Second)
+
+					// Try verification one more time
+					if retryErr := verifyDNSResolutionWithRetry(dnsLogger, 2); retryErr != nil {
+						return dnsLogger.Fail("DNS resolution unavailable", fmt.Sprintf("Final error: %v\nTroubleshooting: Check NetworkManager logs or restart with 'sudo systemctl restart NetworkManager'", retryErr))
+					}
 				} else {
-					return dnsLogger.Fail("restart dnsmasq", err.Error())
+					return dnsLogger.Fail("failed to restart dnsmasq", fmt.Sprintf("%v\nTry: sudo systemctl restart dnsmasq", setupErr))
+				}
+			} else {
+				// Setup succeeded, verify again
+				if retryErr := verifyDNSResolutionWithRetry(dnsLogger, 2); retryErr != nil {
+					return dnsLogger.Fail("DNS resolution still failing after setup", fmt.Sprintf("Final error: %v", retryErr))
 				}
 			}
-
-			var retryErr error
-			resolves, ips, retryErr = system.VerifyLocalDNSResolution()
-			if retryErr != nil {
-				return dnsLogger.Fail("verify .test domain resolution", retryErr.Error())
-			}
-
-			if !resolves {
-				dnsLogger.Warn("Local resolver is not using dnsmasq", "Ensure /etc/resolv.conf points to 127.0.0.1 or configure NetworkManager to use dnsmasq for .test domains")
-				return dnsLogger.Fail("local .test domain resolution unavailable", "Update your resolver configuration or follow the README dnsmasq instructions")
-			}
 		}
 
-		resolvedIPs := "127.0.0.1"
-		if len(ips) > 0 {
-			resolvedIPs = strings.Join(ips, ", ")
-		}
-		dnsLogger.Success("dnsmasq configuration validated", fmt.Sprintf("%s resolves to %s", system.DNSProbeDomain, resolvedIPs))
+		dnsLogger.Success("dnsmasq configuration validated", fmt.Sprintf("%s resolves correctly", system.DNSProbeDomain))
 		return nil
 	}
 
+	return setupDnsmasqConfiguration(dnsLogger)
+}
+
+/**
+ * verifyDNSResolutionWithRetry attempts to verify DNS resolution with multiple retries.
+ */
+func verifyDNSResolutionWithRetry(dnsLogger *lib.Logger, maxRetries int) error {
+	var lastErr error
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		if attempt > 1 {
+			dnsLogger.Info(fmt.Sprintf("Retrying DNS verification (attempt %d/%d)...", attempt, maxRetries))
+			time.Sleep(time.Duration(attempt) * time.Second)
+		}
+
+		resolves, ips, err := system.VerifyLocalDNSResolution()
+		if err != nil {
+			lastErr = err
+			dnsLogger.Warn(fmt.Sprintf("DNS probe failed (attempt %d/%d)", attempt, maxRetries), err.Error())
+			continue
+		}
+
+		if resolves {
+			resolvedIPs := "127.0.0.1"
+			if len(ips) > 0 {
+				resolvedIPs = strings.Join(ips, ", ")
+			}
+			dnsLogger.Info(fmt.Sprintf("DNS resolution working: %s → %s", system.DNSProbeDomain, resolvedIPs))
+			return nil
+		}
+
+		lastErr = fmt.Errorf("domain %s resolved to %v instead of 127.0.0.1", system.DNSProbeDomain, ips)
+		dnsLogger.Warn(fmt.Sprintf("Incorrect DNS resolution (attempt %d/%d)", attempt, maxRetries), lastErr.Error())
+	}
+
+	return lastErr
+}
+
+/**
+ * setupDnsmasqConfiguration prompts user to set up dnsmasq configuration.
+ */
+func setupDnsmasqConfiguration(dnsLogger *lib.Logger) error {
 	dnsLogger.Warn("dnsmasq configuration not found", "Local .test domains won't resolve")
 	dnsLogger.Info("Chauffeur requires dnsmasq configuration to resolve .test domains")
-	dnsLogger.Info("Add this configuration to make .test domains resolve to localhost:")
 
-	dnsLogger.PrintSection("Required dnsmasq configuration")
-	configLines := []string{
-		"sudo install -d -m 755 /etc/dnsmasq.d",
-		"sudo tee /etc/dnsmasq.d/chauffeur.conf >/dev/null <<'EOF'",
-		"# Chauffeur local development resolver",
-		"# Redirect all *.test domains to localhost",
-		"address=/.test/127.0.0.1",
-		"# Only listen locally",
-		"listen-address=127.0.0.1",
-		"bind-interfaces",
-		"EOF",
-	}
-	for _, line := range configLines {
-		dnsLogger.Info(line)
+	// Detect the best setup approach
+	if system.IsNetworkManagerAvailable() {
+		dnsLogger.Info("NetworkManager detected - can configure automatically")
+		dnsLogger.Info("This will configure NetworkManager's dnsmasq plugin for .test domains")
+	} else {
+		dnsLogger.Info("Standalone dnsmasq setup required")
+		dnsLogger.Info("This will create /etc/dnsmasq.d/chauffeur.conf and restart dnsmasq")
 	}
 
-	dnsLogger.Prompt("Do you want to add this configuration now?", "Type 'y' to continue")
+	dnsLogger.Prompt("Do you want to configure dnsmasq now?", "Type 'y' to continue, 'n' to skip")
+
 	// SENSITIVE: User input confirmation - system configuration consent
 	var response string
 	fmt.Scanln(&response)
 
-	if strings.ToLower(response) != "y" && strings.ToLower(response) != "yes" {
+	response = strings.ToLower(strings.TrimSpace(response))
+	if response != "y" && response != "yes" {
 		return dnsLogger.Fail("configuration declined", "Local .test domains will not work without this configuration")
 	}
 
-	// Use the new unified setup function
+	// Use the unified setup function
 	if err := system.SetupLocalDNSResolution(); err != nil {
 		if system.IsNetworkManagerDnsmasqRunning() {
-			// Don't fail hard for NetworkManager conflicts
-			dnsLogger.Warn("dnsmasq setup completed with warnings", "NetworkManager is managing DNS resolution")
-			dnsLogger.Info("Local .test domains should now resolve to localhost (Configuration updated via NetworkManager)")
+			dnsLogger.Warn("NetworkManager setup completed with warnings", err.Error())
+			dnsLogger.Info("Attempting to verify configuration...")
+
+			// Give NetworkManager time to settle
+			time.Sleep(3 * time.Second)
+
+			if verifyErr := verifyDNSResolutionWithRetry(dnsLogger, 3); verifyErr != nil {
+				return dnsLogger.Fail("configuration verification failed", fmt.Sprintf("NetworkManager setup had issues: %v", verifyErr))
+			}
 		} else {
-			return dnsLogger.Fail("setup dnsmasq configuration", err.Error())
+			return dnsLogger.Fail("setup dnsmasq configuration", fmt.Sprintf("%v\nManual setup: Edit /etc/dnsmasq.d/chauffeur.conf and restart dnsmasq", err))
 		}
 	} else {
-		dnsLogger.Success("dnsmasq configuration completed", "Local .test domains should now resolve to localhost")
+		dnsLogger.Success("dnsmasq configuration completed", "Verifying DNS resolution...")
+
+		// Verify the configuration works
+		time.Sleep(2 * time.Second)
+		if verifyErr := verifyDNSResolutionWithRetry(dnsLogger, 3); verifyErr != nil {
+			return dnsLogger.Fail("configuration verification failed", fmt.Sprintf("Setup completed but DNS not working: %v", verifyErr))
+		}
 	}
 
+	dnsLogger.Success("dnsmasq setup successful", fmt.Sprintf("%s now resolves to localhost", system.DNSProbeDomain))
 	return nil
 }
 
@@ -301,15 +347,34 @@ func RunStart(args []string) error {
 		if cfgErr != nil {
 			logger.Warn("Port forwarding skipped", cfgErr.Error())
 		} else {
+			// Validate port configuration first
+			if err := system.ValidatePortConfiguration(cfg.Nginx.HTTPPort, cfg.Nginx.HTTPSPort); err != nil {
+				logger.Error("Invalid port configuration", err.Error())
+				return fmt.Errorf("port configuration validation failed: %w", err)
+			}
+
 			forwardingNeeded := (cfg.Nginx.HTTPPort > 0 && cfg.Nginx.HTTPPort != 80) ||
 				(cfg.Nginx.HTTPSPort > 0 && cfg.Nginx.HTTPSPort != 443)
 			if forwardingNeeded {
 				portsLogger := logger.NewChildLogger("ports")
-				if err := system.EnsurePortForwarding(cfg.WorkspaceDir, cfg.Nginx.HTTPPort, cfg.Nginx.HTTPSPort); err != nil {
-					portsLogger.Warn("Port forwarding not configured", err.Error())
+
+				// Check current port forwarding status
+				currentHTTP, currentHTTPS, err := system.GetPortForwardingStatus(cfg.WorkspaceDir)
+				if err != nil {
+					portsLogger.Warn("Could not check current port forwarding status", err.Error())
 				} else {
-					portsLogger.Success("Port forwarding active", fmt.Sprintf("80→%d, 443→%d", cfg.Nginx.HTTPPort, cfg.Nginx.HTTPSPort))
+					portsLogger.Info(fmt.Sprintf("Current port forwarding: HTTP 80→%d, HTTPS 443→%d", currentHTTP, currentHTTPS))
 				}
+
+				if err := system.EnsurePortForwarding(cfg.WorkspaceDir, cfg.Nginx.HTTPPort, cfg.Nginx.HTTPSPort); err != nil {
+					portsLogger.Error("Port forwarding failed", err.Error())
+					// Don't return error here - allow nginx to start without port forwarding
+					portsLogger.Info(fmt.Sprintf("nginx will start without port forwarding - access directly on ports %d/%d", cfg.Nginx.HTTPPort, cfg.Nginx.HTTPSPort))
+				} else {
+					portsLogger.Success("Port forwarding configured", fmt.Sprintf("HTTP 80→%d, HTTPS 443→%d", cfg.Nginx.HTTPPort, cfg.Nginx.HTTPSPort))
+				}
+			} else {
+				logger.Info("No port forwarding needed (using default privileged ports)")
 			}
 		}
 	}

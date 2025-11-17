@@ -18,6 +18,10 @@ _A living status board for features, debt, and priorities. Keep this in sync wit
 - Port validator recognizes Chauffeur's own nginx usage and restarts it automatically, so `chauf link` can run while services are active without forcing new ports
 - `chauf info` reports GitHub release status plus compare-local-vs-remote commit drift so contributors know when they're ahead/behind
 - Imagick installer fetches the latest stable tarball from PECL (with env overrides) so PHP builds keep working as releases evolve
+- **Enhanced DNS resolution error handling** with retry logic, NetworkManager awareness, and graceful failure recovery
+- **Improved port forwarding** with better sudo detection, state validation, and fallback when privileges unavailable
+- **Robust start/stop orchestration** with comprehensive error handling and integration test coverage
+- **`chauf restart` command implementation** with service-specific, project-specific, and all-service restart capabilities
 
 ### Project-Level PHP-FPM Architecture
 - **Project-specific FPM control**: `--dedicated-fpm` flag for isolated PHP-FPM pools per project
@@ -71,15 +75,12 @@ _A living status board for features, debt, and priorities. Keep this in sync wit
 - Build infrastructure successfully initiates GD extension compilation for legacy PHP versions
 
 ## 3. In Progress 🚧
-1. **Service orchestration stability** – refine `chauf start/stop/status` to handle mixed project states, better error surfacing
-2. **dnsmasq/NetworkManager automation** – ensure instructions are clear, reversible, and logged
 3. **Documentation sync discipline** – ongoing effort to keep README, AGENTS, and this tracker aligned
 
 ## 4. Planned 📋
 | Priority | Item | Notes |
 |----------|------|-------|
-| P1 | Rework tests to avoid importing internal packages | Required for Go module hygiene |
-| P1 | Stabilize `chauf start/stop` interaction with dnsmasq & port forwarding | Needs integration tests |
+| P2 | ~~**Add `chauf restart` command**~~ | ~~Supports service-specific and project-specific restarts, preserves port forwarding state~~ ✅ |
 | P2 | Expand PHP installer matrix (8.2/8.1/7.4 legacy deps) | Ensure workspace fallback works |
 | P2 | Improve `chauf status --detail` output (tables, health info) | Align with logging spec |
 | P2 | ~~**Improve `chauf uninstall` behavior**~~ | ~~Keep cache directory, list remaining files, provide complete removal guidance~~ ✅ |
@@ -148,4 +149,4 @@ _A living status board for features, debt, and priorities. Keep this in sync wit
 - Document real-world setups (distro, Go version, dnsmasq config) in issues to broaden coverage
 - Review AGENTS.md and propose clarifications before building new features
 
-_Last updated: 2025-11-17T03:20:00Z_
+_Last updated: 2025-11-17T05:00:00Z_

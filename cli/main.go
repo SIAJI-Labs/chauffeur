@@ -32,6 +32,7 @@ Usage:
   chauf nginx [args...]  Run the managed nginx binary with passthrough args.
   chauf start            Start Chauffeur services with chauf- prefix.
   chauf stop             Stop Chauffeur services with chauf- prefix.
+  chauf restart          Restart Chauffeur services with chauf- prefix.
   chauf status           Show status of Chauffeur services.
   chauf hello-world      Print a friendly greeting message.
   chauf link             Register current directory as a project.
@@ -111,6 +112,11 @@ func main() {
 		}
 	case "stop":
 		if err := commands.RunStop(args[1:]); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+	case "restart":
+		if err := commands.RunRestart(args[1:]); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
