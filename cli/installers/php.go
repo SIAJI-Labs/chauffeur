@@ -99,6 +99,15 @@ type pkgRequirement struct {
 	BlockedVersions []string
 }
 
+// legacyDependency represents version-specific dependency constraints for legacy PHP versions
+type legacyDependency struct {
+	PHPVersion    string
+	PackageName   string
+	MinVersion    string
+	MaxVersion    string // Upper bound for legacy compatibility
+	BlockedVersions []string // Versions explicitly blocked for this PHP version
+}
+
 const (
 	defaultImagickVersion = "3.8.0"
 	imagickIniContent     = "extension=imagick\n"
@@ -115,6 +124,39 @@ var phpPkgRequirements = []pkgRequirement{
 	{Name: "libxslt", Package: "libxslt"},
 	{Name: "readline", Package: "readline"},
 	{Name: "ImageMagick (MagickWand)", Package: "MagickWand"},
+}
+
+// legacyDependencyMatrix defines version-specific dependency constraints for legacy PHP versions
+var legacyDependencyMatrix = []legacyDependency{
+	// PHP 7.4 has stricter compatibility requirements due to age
+	{
+		PHPVersion:     "7.4",
+		PackageName:    "libxml-2.0",
+		MaxVersion:     "2.12.0", // libxml 2.12+ has API changes that break PHP 7.4
+	},
+	{
+		PHPVersion:     "7.4",
+		PackageName:    "libcurl",
+		MaxVersion:     "8.0.0", // Very new libcurl may have compatibility issues
+	},
+	{
+		PHPVersion:     "7.4",
+		PackageName:    "MagickWand",
+		MinVersion:     "6.9.0",
+		MaxVersion:     "7.1.0", // ImageMagick 7+ can have issues with legacy PHP
+	},
+
+	// PHP 8.0 has some constraints but is more flexible than 7.4
+	{
+		PHPVersion:     "8.0",
+		PackageName:    "libxml-2.0",
+		MaxVersion:     "2.13.0",
+	},
+	{
+		PHPVersion:     "8.0",
+		PackageName:    "MagickWand",
+		MinVersion:     "6.9.0",
+	},
 }
 
 /**
@@ -146,6 +188,27 @@ func IsPHPVersionSupported(version string) bool {
 		}
 	}
 	return false
+}
+
+// isLegacyPHPVersion checks if a PHP version requires legacy dependency handling
+func isLegacyPHPVersion(version string) bool {
+	legacyVersions := []string{"7.4", "8.0"}
+	for _, v := range legacyVersions {
+		if version == v {
+			return true
+		}
+	}
+	return false
+}
+
+// getLegacyDependencyRequirement returns legacy-specific constraints for a PHP version and package
+func getLegacyDependencyRequirement(phpVersion, packageName string) (legacyDependency, bool) {
+	for _, dep := range legacyDependencyMatrix {
+		if dep.PHPVersion == phpVersion && dep.PackageName == packageName {
+			return dep, true
+		}
+	}
+	return legacyDependency{}, false
 }
 
 /**
@@ -191,7 +254,7 @@ func InstallPHPSource(version string, opts InstallOptions) (err error) {
 
 	phpLogger.Info("Checking host dependencies")
 	depsLogger := phpLogger.NewChildLogger("deps")
-	if err := ensurePHPBuildDependencies(depsLogger); err != nil {
+	if err := ensurePHPBuildDependenciesForVersion(depsLogger, version); err != nil {
 		return err
 	}
 
@@ -1350,6 +1413,11 @@ func patchImagickStubConditionals(sourceDir string, logger *lib.Logger) error {
 }
 
 func ensurePHPBuildDependencies(logger *lib.Logger) error {
+	return ensurePHPBuildDependenciesForVersion(logger, "")
+}
+
+// ensurePHPBuildDependenciesForVersion validates dependencies with legacy version constraints
+func ensurePHPBuildDependenciesForVersion(logger *lib.Logger, phpVersion string) error {
 	if logger == nil {
 		logger = lib.NewCommandLogger("deps")
 	}
@@ -1360,9 +1428,14 @@ func ensurePHPBuildDependencies(logger *lib.Logger) error {
 	}
 	logger.Success("pkg-config found", "")
 
+	// Add legacy version context to logging if applicable
+	if phpVersion != "" && isLegacyPHPVersion(phpVersion) {
+		logger.Info(fmt.Sprintf("Validating dependencies for legacy PHP %s", phpVersion))
+	}
+
 	for _, req := range phpPkgRequirements {
 		logger.Info(fmt.Sprintf("Checking %s development headers", req.Name))
-		version, err := ensurePkgRequirement(logger, req)
+		version, err := ensurePkgRequirementWithLegacy(logger, req, phpVersion)
 		if err != nil {
 			return err
 		}
@@ -1417,6 +1490,52 @@ func ensurePkgRequirement(logger *lib.Logger, req pkgRequirement) (string, error
 		if compareSemver(version, blockedVersion) == 0 {
 			context := fmt.Sprintf("Detected %s which PHP explicitly blocks.\n%s", version, remediation)
 			return "", logger.Fail(fmt.Sprintf("unsupported %s release detected", req.Name), context)
+		}
+	}
+
+	return version, nil
+}
+
+// ensurePkgRequirementWithLegacy validates package requirements with legacy-specific constraints
+func ensurePkgRequirementWithLegacy(logger *lib.Logger, req pkgRequirement, phpVersion string) (string, error) {
+	// First perform standard validation
+	version, err := ensurePkgRequirement(logger, req)
+	if err != nil {
+		return "", err
+	}
+
+	// If no PHP version specified or not a legacy version, return standard result
+	if phpVersion == "" || !isLegacyPHPVersion(phpVersion) {
+		return version, nil
+	}
+
+	// Apply legacy-specific constraints
+	legacyReq, hasLegacyReq := getLegacyDependencyRequirement(phpVersion, req.Package)
+	if !hasLegacyReq {
+		return version, nil
+	}
+
+	const remediation = "Ensure required development headers are installed. See README \"System Dependencies for PHP Builds\"."
+
+	// Check maximum version constraint for legacy compatibility
+	if legacyReq.MaxVersion != "" && compareSemver(version, legacyReq.MaxVersion) > 0 {
+		context := fmt.Sprintf("Detected %s which may be incompatible with legacy PHP %s (max: %s).\n%s",
+			version, phpVersion, legacyReq.MaxVersion, remediation)
+		return "", logger.Fail(fmt.Sprintf("%s version too new for legacy PHP %s", req.Name, phpVersion), context)
+	}
+
+	// Check minimum version constraint for legacy requirements
+	if legacyReq.MinVersion != "" && compareSemver(version, legacyReq.MinVersion) < 0 {
+		context := fmt.Sprintf("Detected %s which is below minimum required for PHP %s (min: %s).\n%s",
+			version, phpVersion, legacyReq.MinVersion, remediation)
+		return "", logger.Fail(fmt.Sprintf("%s version too old for legacy PHP %s", req.Name, phpVersion), context)
+	}
+
+	// Check legacy-specific blocked versions
+	for _, blockedVersion := range legacyReq.BlockedVersions {
+		if compareSemver(version, blockedVersion) == 0 {
+			context := fmt.Sprintf("Detected %s which PHP %s explicitly blocks.\n%s", version, phpVersion, remediation)
+			return "", logger.Fail(fmt.Sprintf("unsupported %s release for PHP %s", req.Name, phpVersion), context)
 		}
 	}
 

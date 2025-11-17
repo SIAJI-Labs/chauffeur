@@ -362,6 +362,155 @@ func (l *Logger) PrintTable(headers []string, rows [][]string) {
 	}
 }
 
+// PrintEnhancedTable prints a formatted table with dynamic column widths and alignment
+func (l *Logger) PrintEnhancedTable(headers []string, rows [][]string, alignments []string) {
+	if len(headers) == 0 {
+		return
+	}
+
+	// Calculate column widths
+	colWidths := make([]int, len(headers))
+	for i := range headers {
+		colWidths[i] = len(headers[i])
+	}
+
+	// Find maximum width for each column from rows
+	for _, row := range rows {
+		for i, cell := range row {
+			if i < len(colWidths) && len(cell) > colWidths[i] {
+				colWidths[i] = len(cell)
+			}
+		}
+	}
+
+	// Format and print header
+	headerCells := make([]string, len(headers))
+	for i, header := range headers {
+		if i < len(colWidths) {
+			headerCells[i] = fmt.Sprintf("%-*s", colWidths[i], header)
+		} else {
+			headerCells[i] = header
+		}
+	}
+	fmt.Printf("%s %s\n", l.prefix(), l.bold(strings.Join(headerCells, "  ")))
+
+	// Print divider
+	dividerCells := make([]string, len(colWidths))
+	for i, width := range colWidths {
+		dividerCells[i] = strings.Repeat("-", width)
+	}
+	fmt.Printf("%s %s\n", l.prefix(), strings.Join(dividerCells, "  "))
+
+	// Print rows
+	for _, row := range rows {
+		rowCells := make([]string, len(colWidths))
+		for i := range colWidths {
+			if i < len(row) {
+				cell := row[i]
+				if i < len(alignments) {
+					switch alignments[i] {
+					case "center":
+						rowCells[i] = fmt.Sprintf("%-*s", colWidths[i], cell)
+					case "right":
+						rowCells[i] = fmt.Sprintf("%*s", colWidths[i], cell)
+					default: // left
+						rowCells[i] = fmt.Sprintf("%-*s", colWidths[i], cell)
+					}
+				} else {
+					rowCells[i] = fmt.Sprintf("%-*s", colWidths[i], cell)
+				}
+			} else {
+				rowCells[i] = strings.Repeat(" ", colWidths[i])
+			}
+		}
+		fmt.Printf("%s %s\n", l.prefix(), strings.Join(rowCells, "  "))
+	}
+}
+
+// PrintServiceTable prints a service status table with enhanced formatting
+func (l *Logger) PrintServiceTable(headers []string, rows [][]string) {
+	if len(headers) == 0 {
+		return
+	}
+
+	// Calculate column widths with minimum widths
+	colWidths := make([]int, len(headers))
+	minWidths := []int{3, 15, 10, 12, 8, 8} // Minimum widths for STATUS, SERVICE, TYPE, STATUS, UPTIME, MEM
+
+	for i := range headers {
+		if i < len(minWidths) {
+			colWidths[i] = minWidths[i]
+		} else {
+			colWidths[i] = len(headers[i])
+		}
+	}
+
+	// Find maximum width for each column from rows
+	for _, row := range rows {
+		for i, cell := range row {
+			if i < len(colWidths) && len(cell) > colWidths[i] {
+				colWidths[i] = len(cell)
+			}
+		}
+	}
+
+	// Add padding
+	for i := range colWidths {
+		colWidths[i] += 2
+	}
+
+	// Print header
+	headerLine := make([]string, len(headers))
+	for i, header := range headers {
+		if i < len(colWidths) {
+			headerLine[i] = fmt.Sprintf("%-*s", colWidths[i], l.bold(header))
+		}
+	}
+	fmt.Printf("%s %s\n", l.prefix(), strings.Join(headerLine, ""))
+
+	// Print divider
+	dividerLine := make([]string, len(colWidths))
+	for i, width := range colWidths {
+		dividerLine[i] = strings.Repeat("─", width)
+	}
+	fmt.Printf("%s %s\n", l.prefix(), strings.Join(dividerLine, ""))
+
+	// Print rows
+	for _, row := range rows {
+		rowLine := make([]string, len(colWidths))
+		for i, width := range colWidths {
+			if i < len(row) {
+				cell := row[i]
+				// Apply color based on content
+				switch i {
+				case 0: // Status icon column
+					if cell == "✅" {
+						cell = l.green(cell)
+					} else if cell == "⚠️" {
+						cell = l.yellow(cell)
+					} else if cell == "🔴" {
+						cell = l.red(cell)
+					} else if cell == "🔘" {
+						cell = l.gray(cell)
+					}
+				case 3: // Status text column
+					if strings.Contains(cell, "running") {
+						cell = l.green(cell)
+					} else if strings.Contains(cell, "stopped") {
+						cell = l.gray(cell)
+					} else if strings.Contains(cell, "error") || strings.Contains(cell, "failed") {
+						cell = l.red(cell)
+					}
+				}
+				rowLine[i] = fmt.Sprintf("%-*s", width, cell)
+			} else {
+				rowLine[i] = strings.Repeat(" ", width)
+			}
+		}
+		fmt.Printf("%s %s\n", l.prefix(), strings.Join(rowLine, ""))
+	}
+}
+
 // Prompt prints a user prompt message with readable context
 func (l *Logger) Prompt(message, context string) {
 	promptIndent := "  →"

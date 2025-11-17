@@ -3,7 +3,7 @@
 _A living status board for features, debt, and priorities. Keep this in sync with README.md and AGENTS.md._
 
 ## 1. Snapshot
-- **Maintainer**: @siegg (solo, learning Go; heavy AI assistance)
+- **Maintainer**: @si-aji (solo, learning Go; heavy AI assistance)
 - **Stability**: Experimental – validated mostly on one Arch-based workstation
 - **CI**: `go test ./...` now green with comprehensive test coverage across all packages
 - **Work focus**: Service orchestration polish, documentation sync, release preparation
@@ -23,6 +23,7 @@ _A living status board for features, debt, and priorities. Keep this in sync wit
 - **Robust start/stop orchestration** with comprehensive error handling and integration test coverage
 - **`chauf restart` command implementation** with service-specific, project-specific, and all-service restart capabilities
 - **Comprehensive test coverage across all packages** including installers, logging, projects, services, system, templates, and nginx templates
+- **Fixed PHP-FPM process counting** in `chauf status --detail` to correctly report master and worker processes instead of showing 0
 
 ### Project-Level PHP-FPM Architecture
 - **Project-specific FPM control**: `--dedicated-fpm` flag for isolated PHP-FPM pools per project
@@ -49,6 +50,8 @@ _A living status board for features, debt, and priorities. Keep this in sync wit
 - PHP installer validates `pkg-config` + all required libraries (libzip/libjpeg/libpng/freetype/libxml2/libcurl/zlib/libxslt/readline/MagickWand) before starting long builds so users get actionable remediation early
 - PHP runtimes ship with GNU Readline enabled so PsySH / `php artisan tinker` arrow keys and history behave like system PHP builds
 - PHP builds enable mysqlnd-based `mysqli` and `PDO_MySQL` extensions so database-backed apps run immediately after `chauf install php`
+- **Enhanced PHP legacy dependency matrix** with version-specific constraints for PHP 7.4/8.0 (libxml, ImageMagick, libcurl compatibility)
+- **Legacy dependency validation** that warns about incompatible system package versions for legacy PHP versions
 
 ### Self-update
 - `chauf self-update` fetches latest git release
@@ -56,6 +59,8 @@ _A living status board for features, debt, and priorities. Keep this in sync wit
 
 ### CLI Infrastructure
 - Structured logging enforced across all commands (`lib.Logger` only; usage/help text excluded)
+- **Enhanced table formatting** with dynamic column widths, alignment options, and color-coded status indicators
+- **Comprehensive service health monitoring** with process information, uptime, memory usage, and resource tracking
 
 ### Smart Caching System
 - Universal intelligent caching system across all services (PHP, Composer, Nginx)
@@ -81,8 +86,6 @@ _A living status board for features, debt, and priorities. Keep this in sync wit
 ## 4. Planned 📋
 | Priority | Item | Notes |
 |----------|------|-------|
-| P2 | Expand PHP installer matrix (8.2/8.1/7.4 legacy deps) | Ensure workspace fallback works |
-| P2 | Improve `chauf status --detail` output (tables, health info) | Align with logging spec |
 | P3 | Add onboarding docs for contributors (Go basics + AI workflow) | Help new maintainers |
 | P3 | Publish release checklist (binary build, docs sync, testing) | Needed for first public release |
 
@@ -148,4 +151,4 @@ _A living status board for features, debt, and priorities. Keep this in sync wit
 - Document real-world setups (distro, Go version, dnsmasq config) in issues to broaden coverage
 - Review AGENTS.md and propose clarifications before building new features
 
-_Last updated: 2025-11-17T08:30:00Z_
+_Last updated: 2025-11-17T09:00:00Z_

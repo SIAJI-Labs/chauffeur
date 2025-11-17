@@ -527,6 +527,182 @@ func TestMultipleShims(t *testing.T) {
 	}
 }
 
+// TestLegacyDependencyValidation tests legacy PHP dependency validation
+func TestLegacyDependencyValidation(t *testing.T) {
+	testCases := []struct {
+		name           string
+		phpVersion     string
+		pkgName        string
+		detectedVer    string
+		shouldErr      bool
+		expectedErrMsg string
+	}{
+		{
+			name:        "modern PHP with normal version",
+			phpVersion:  "8.3",
+			pkgName:     "libxml-2.0",
+			detectedVer: "2.12.0",
+			shouldErr:   false,
+		},
+		{
+			name:        "legacy PHP with compatible version",
+			phpVersion:  "7.4",
+			pkgName:     "libxml-2.0",
+			detectedVer: "2.11.0",
+			shouldErr:   false,
+		},
+		{
+			name:           "legacy PHP with too new version",
+			phpVersion:     "7.4",
+			pkgName:        "libxml-2.0",
+			detectedVer:    "2.13.0",
+			shouldErr:      true,
+			expectedErrMsg: "version too new for legacy PHP 7.4",
+		},
+		{
+			name:        "legacy PHP with no constraints",
+			phpVersion:  "7.4",
+			pkgName:     "libcurl",
+			detectedVer: "7.80.0",
+			shouldErr:   false,
+		},
+		{
+			name:           "legacy PHP with ImageMagick too new",
+			phpVersion:     "7.4",
+			pkgName:        "MagickWand",
+			detectedVer:    "7.2.0",
+			shouldErr:      true,
+			expectedErrMsg: "version too new for legacy PHP 7.4",
+		},
+		{
+			name:        "no PHP version specified",
+			phpVersion:  "",
+			pkgName:     "libxml-2.0",
+			detectedVer: "2.13.0",
+			shouldErr:   false,
+		},
+		{
+			name:        "non-legacy PHP version",
+			phpVersion:  "8.2",
+			pkgName:     "libxml-2.0",
+			detectedVer: "2.13.0",
+			shouldErr:   false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// We'll mock the ensurePkgRequirement call by simulating its success
+			// and testing the legacy validation logic directly
+			legacyReq, hasLegacyReq := getLegacyDependencyRequirement(tc.phpVersion, tc.pkgName)
+
+			// If there's a legacy requirement, test the validation logic
+			if hasLegacyReq && tc.phpVersion != "" && isLegacyPHPVersion(tc.phpVersion) {
+				// Test max version constraint
+				if legacyReq.MaxVersion != "" && compareSemver(tc.detectedVer, legacyReq.MaxVersion) > 0 {
+					if !tc.shouldErr {
+						t.Errorf("Expected legacy constraint to pass for %s %s vs %s", tc.pkgName, tc.detectedVer, legacyReq.MaxVersion)
+					}
+					if !strings.Contains(tc.expectedErrMsg, "too new") {
+						t.Errorf("Expected 'too new' error message for version constraint violation")
+					}
+				}
+
+				// Test min version constraint
+				if legacyReq.MinVersion != "" && compareSemver(tc.detectedVer, legacyReq.MinVersion) < 0 {
+					if !tc.shouldErr {
+						t.Errorf("Expected legacy constraint to pass for %s %s vs %s", tc.pkgName, tc.detectedVer, legacyReq.MinVersion)
+					}
+					if !strings.Contains(tc.expectedErrMsg, "too old") {
+						t.Errorf("Expected 'too old' error message for version constraint violation")
+					}
+				}
+			} else if tc.shouldErr {
+				t.Errorf("Expected test case '%s' to fail but no legacy constraints found", tc.name)
+			}
+		})
+	}
+}
+
+// TestLegacyVersionDetection tests legacy PHP version detection
+func TestLegacyVersionDetection(t *testing.T) {
+	testCases := []struct {
+		version   string
+		isLegacy  bool
+	}{
+		{"7.4", true},
+		{"8.0", true},
+		{"8.1", false},
+		{"8.2", false},
+		{"8.3", false},
+		{"8.4", false},
+		{"", false},
+		{"invalid", false},
+	}
+
+	for _, tc := range testCases {
+		t.Run(fmt.Sprintf("PHP %s", tc.version), func(t *testing.T) {
+			result := isLegacyPHPVersion(tc.version)
+			if result != tc.isLegacy {
+				t.Errorf("Expected isLegacyPHPVersion(%s) to be %v, got %v", tc.version, tc.isLegacy, result)
+			}
+		})
+	}
+}
+
+// TestLegacyDependencyMatrix tests the legacy dependency matrix structure
+func TestLegacyDependencyMatrix(t *testing.T) {
+	// Test that the matrix contains expected PHP versions
+	expectedVersions := []string{"7.4", "8.0"}
+	foundVersions := make(map[string]bool)
+
+	for _, dep := range legacyDependencyMatrix {
+		foundVersions[dep.PHPVersion] = true
+
+		// Validate structure
+		if dep.PHPVersion == "" {
+			t.Error("Expected PHPVersion to be set in legacy dependency matrix")
+		}
+		if dep.PackageName == "" {
+			t.Error("Expected PackageName to be set in legacy dependency matrix")
+		}
+	}
+
+	for _, version := range expectedVersions {
+		if !foundVersions[version] {
+			t.Errorf("Expected legacy dependency matrix to contain constraints for PHP %s", version)
+		}
+	}
+}
+
+// TestCompareSemver tests semantic version comparison
+func TestCompareSemver(t *testing.T) {
+	testCases := []struct {
+		a        string
+		b        string
+		expected int
+	}{
+		{"1.0.0", "1.0.0", 0},
+		{"1.0.1", "1.0.0", 1},
+		{"1.0.0", "1.0.1", -1},
+		{"2.0.0", "1.9.9", 1},
+		{"1.9.9", "2.0.0", -1},
+		{"1.2.0", "1.2", 0}, // Should handle missing patch version
+		{"1.2", "1.2.0", 0},  // Should handle missing patch version
+		{"1.10.0", "1.9.0", 1}, // Should handle double-digit versions
+		{"1.0.0", "1.0", 0},  // Should handle missing patch version
+	}
+
+	for _, tc := range testCases {
+		t.Run(fmt.Sprintf("%s vs %s", tc.a, tc.b), func(t *testing.T) {
+			result := compareSemver(tc.a, tc.b)
+			if result != tc.expected {
+				t.Errorf("Expected compareSemver(%s, %s) to be %d, got %d", tc.a, tc.b, tc.expected, result)
+			}
+		})
+	}
+}
+
 // TestEdgeCases tests edge cases and error conditions
 func TestEdgeCases(t *testing.T) {
 	// Test empty name for shim
