@@ -71,26 +71,36 @@ _A living status board for features, debt, and priorities. Keep this in sync wit
 - Build infrastructure successfully initiates GD extension compilation for legacy PHP versions
 
 ## 3. In Progress 🚧
-1. **GD Extension Compilation for Legacy PHP** – Complete bundled GD extension support for PHP 7.4/8.0
-2. **Service orchestration stability** – refine `chauf start/stop/status` to handle mixed project states, better error surfacing
-3. **dnsmasq/NetworkManager automation** – ensure instructions are clear, reversible, and logged
-4. **Documentation sync discipline** – ongoing effort to keep README, AGENTS, and this tracker aligned
+1. **Service orchestration stability** – refine `chauf start/stop/status` to handle mixed project states, better error surfacing
+2. **dnsmasq/NetworkManager automation** – ensure instructions are clear, reversible, and logged
+3. **Documentation sync discipline** – ongoing effort to keep README, AGENTS, and this tracker aligned
 
 ## 4. Planned 📋
 | Priority | Item | Notes |
 |----------|------|-------|
-| P1 | Complete GD extension compilation for PHP 7.4/8.0 | Fix remaining `make` phase errors during bundled GD build |
 | P1 | Rework tests to avoid importing internal packages | Required for Go module hygiene |
 | P1 | Stabilize `chauf start/stop` interaction with dnsmasq & port forwarding | Needs integration tests |
-| P1 | Validate GD extension functionality across all PHP versions (7.4, 8.0, 8.1, 8.2, 8.3, 8.4) | Test image processing, thumbnails, watermarks |
 | P2 | Expand PHP installer matrix (8.2/8.1/7.4 legacy deps) | Ensure workspace fallback works |
 | P2 | Improve `chauf status --detail` output (tables, health info) | Align with logging spec |
-| P2 | Add GD extension validation tests | Verify common PHP GD functions work correctly |
-| P2 | **Improve `chauf uninstall` behavior** | Keep cache directory, list remaining files, provide complete removal guidance |
+| P2 | ~~**Improve `chauf uninstall` behavior**~~ | ~~Keep cache directory, list remaining files, provide complete removal guidance~~ ✅ |
 | P3 | Add onboarding docs for contributors (Go basics + AI workflow) | Help new maintainers |
 | P3 | Publish release checklist (binary build, docs sync, testing) | Needed for first public release |
 
-## 5. GD Extension Technical Status
+## 5. Future Plans 🔮
+*Low priority items that will be addressed in future releases - no ETA.*
+
+### GD Extension for Legacy PHP (Future Enhancement)
+- **Complete bundled GD extension support for PHP 7.4/8.0**
+- **Validate GD extension functionality across all PHP versions** (7.4, 8.0, 8.1, 8.2, 8.3, 8.4)
+- **Add GD extension validation tests** to verify common PHP GD functions work correctly
+
+**Current Status**: Infrastructure is in place with interactive prompting, patching system, and graceful failure handling. Modern PHP (8.1+) works perfectly. Legacy PHP compilation fails during `make` phase due to function pointer compatibility issues between old PHP GD source and modern libgd libraries.
+
+**Technical Details**: Function signature mismatches between PHP 7.4/8.0 GD source and modern libgd libraries require additional compiler flags or libgd version constraints. The build process successfully initiates GD compilation but fails during final linking.
+
+**Future Approach**: Will investigate alternative compilation strategies, potentially targeting specific libgd versions or implementing additional compatibility layers for legacy PHP versions.
+
+## 6. GD Extension Technical Status
 ### Current Implementation Status
 - **PHP 8.1+**: GD extension works ✅ (modern PHP versions have compatible libgd integration)
 - **PHP 8.0/7.4**: GD infrastructure in place, compilation failing during `make` phase ⚠️
@@ -118,7 +128,6 @@ _A living status board for features, debt, and priorities. Keep this in sync wit
 - `go test ./...` fails due to tests importing `cli/internal/config` (Go disallows external packages from accessing internal)
 - Repo currently contains built binaries (`chauf`, `main`) checked in by mistake – remove and add to `.gitignore`
 - DNS setup path requires clearer rollback instructions when NetworkManager/systemd-resolved changes are applied manually
-- GD extension compilation for PHP 7.4/8.0 fails during make phase (infrastructure works, compilation errors remain)
 
 ## 7. Testing & QA
 - Target: `go test ./...` green on Go 1.22+
@@ -131,7 +140,7 @@ _A living status board for features, debt, and priorities. Keep this in sync wit
 - [ ] No compiled binaries or caches tracked in git
 - [ ] Logging contract enforced across commands
 - [ ] dnsmasq/NetworkManager instructions reviewed and verified
-- [ ] GD extension compilation verified for PHP 7.4/8.0 (optional for release)
+- [x] GD extension infrastructure complete (legacy PHP compilation is future enhancement)
 
 ## 9. How to Help
 - Help expand service orchestration tests/logging and harden dnsmasq/NetworkManager flows
@@ -139,4 +148,4 @@ _A living status board for features, debt, and priorities. Keep this in sync wit
 - Document real-world setups (distro, Go version, dnsmasq config) in issues to broaden coverage
 - Review AGENTS.md and propose clarifications before building new features
 
-_Last updated: 2025-11-13T02:20:00Z_
+_Last updated: 2025-11-17T03:20:00Z_
