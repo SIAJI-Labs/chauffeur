@@ -89,6 +89,9 @@ _A living status board for features, debt, and priorities. Keep this in sync wit
 ## 4. Planned 📋
 | Priority | Item | Notes |
 |----------|------|-------|
+| **P1** | **Multi-domain support for single projects** | Enable multiple domains (e.g., `landing-page.test`, `homepage.test`) pointing to the same project directory for white-label development. Critical for real-world multi-brand scenarios. |
+| P2 | Enhanced service monitoring and logging | Add `chauf logs <service>` command and improved service health monitoring with historical data |
+| P3 | Project management utilities | Add `chauf doctor` for health checks, `chauf clean` for maintenance, and better project migration tools |
 | P4 | Universal service update management | `chauf update <service>` for PHP, Composer, nginx with version checking, backup, and rollback |
 | P4 | CLI command expansion and enhancement | Add new commands and flags for improved user experience and functionality |
 
@@ -163,7 +166,7 @@ _A living status board for features, debt, and priorities. Keep this in sync wit
 ## 7. Testing & QA
 - ✅ **`go test ./...` now green on Go 1.22+** with comprehensive unit test coverage across all packages
 - Integration tests should stub HOME to temp directories, avoiding host mutation
-- CI (`.github/workflows/go-tests.yml`) runs the suite on every pull request to `main`
+- CI (`.github/workflows/go-tests.yml`) runs the suite on every pull request to `release`
 - **New test coverage areas**: installers, logging, projects, services, system, templates, nginx templates with proper error handling and edge case validation
 
 ## 8. Release Readiness Checklist
