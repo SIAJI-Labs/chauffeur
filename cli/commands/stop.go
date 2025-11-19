@@ -20,6 +20,11 @@ import (
  * @return error when prerequisite checks or stop operations fail.
  */
 func RunStop(args []string) error {
+	// Validate workspace exists, offer to initialize if not (skip for help)
+	if err := lib.ValidateWorkspace(args); err != nil {
+		return err
+	}
+
 	var (
 		projectPath string
 		all         bool

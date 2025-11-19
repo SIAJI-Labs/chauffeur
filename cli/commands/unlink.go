@@ -97,6 +97,11 @@ func validateUnlinkPath(path string) error {
 
 // RunUnlink handles `chauf unlink` command invocations.
 func RunUnlink(args []string) error {
+	// Validate workspace exists, offer to initialize if not (skip for help)
+	if err := lib.ValidateWorkspace(args); err != nil {
+		return err
+	}
+
 	var (
 		slug    string
 		domain  string

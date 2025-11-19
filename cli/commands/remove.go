@@ -17,6 +17,11 @@ import (
 
 // RunRemove handles `chauf remove <service>` logic for removing installed services.
 func RunRemove(args []string) error {
+	// Validate workspace exists, offer to initialize if not (skip for help)
+	if err := lib.ValidateWorkspace(args); err != nil {
+		return err
+	}
+
 	if len(args) == 0 {
 		printRemoveUsage()
 		return errors.New("no services specified")

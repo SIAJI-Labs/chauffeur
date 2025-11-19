@@ -20,6 +20,11 @@ import (
  * @return error when prerequisite checks or restart operations fail.
  */
 func RunRestart(args []string) error {
+	// Validate workspace exists, offer to initialize if not (skip for help)
+	if err := lib.ValidateWorkspace(args); err != nil {
+		return err
+	}
+
 	var (
 		serviceNames  []string
 		filterProject string

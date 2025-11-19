@@ -113,6 +113,11 @@ func validateProjectPath(path string) error {
 
 // RunLink handles `chauf link` command invocations.
 func RunLink(args []string) error {
+	// Validate workspace exists, offer to initialize if not (skip for help)
+	if err := lib.ValidateWorkspace(args); err != nil {
+		return err
+	}
+
 	var (
 		domain       string
 		phpVer       string
