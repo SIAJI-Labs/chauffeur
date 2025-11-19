@@ -124,6 +124,7 @@ var phpPkgRequirements = []pkgRequirement{
 	{Name: "libxslt", Package: "libxslt"},
 	{Name: "readline", Package: "readline"},
 	{Name: "ImageMagick (MagickWand)", Package: "MagickWand"},
+	{Name: "GMP", Package: "gmp"},
 }
 
 // legacyDependencyMatrix defines version-specific dependency constraints for legacy PHP versions
@@ -1069,6 +1070,8 @@ func buildAndInstallPHP(opts InstallOptions, version, sourceDir string, logger *
 		"--with-readline",
 		"--with-mysqli=mysqlnd",
 		"--with-pdo-mysql=mysqlnd",
+		"--enable-gmp",
+		"--enable-bcmath",
 	}
 
 	// Handle GD-related options for legacy versions
