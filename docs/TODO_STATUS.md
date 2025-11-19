@@ -36,6 +36,18 @@ _A living status board for features, debt, and priorities. Keep this in sync wit
 - **Automatic socket management**: Correct socket path resolution based on project FPM settings
 - **Service separation**: Clear distinction between global (shared) and project-specific (dedicated) services in status output
 
+### Multi-Domain Support for Single Projects ✅
+- **Multiple domains per project**: `--alias` flag during linking to add additional domains (e.g., `admin.test`, `api.test`)
+- **Dynamic alias management**: `chauf link --alias` command to add domains to existing projects without unlinking
+- **Alias removal**: `--alias` flag in unlink command to remove specific domains from projects
+- **White-label development**: Support for multiple brands/domains pointing to same project directory
+- **Backward compatibility**: Existing single-domain configurations continue to work unchanged
+- **Multi-domain SSL certificates**: SAN certificates covering all SSL-enabled domains (primary + aliases)
+- **Enhanced SSL support**: Trusted certificates via mkcert, automatic regeneration, per-alias SSL control
+- **nginx integration**: Automatic generation of multi-domain server blocks in nginx configuration
+- **Enhanced display**: `chauf links` shows primary domain and aliases with SSL indicators `(*)`
+- **Improved unlink confirmation**: Shows all domains (primary + aliases) with individual SSL status
+
 ### Project Registration
 - `chauf link` / `links` / `unlink` end-to-end
 - Project type detection (Laravel, WordPress, general)
@@ -89,7 +101,6 @@ _A living status board for features, debt, and priorities. Keep this in sync wit
 ## 4. Planned 📋
 | Priority | Item | Notes |
 |----------|------|-------|
-| **P1** | **Multi-domain support for single projects** | Enable multiple domains (e.g., `landing-page.test`, `homepage.test`) pointing to the same project directory for white-label development. Critical for real-world multi-brand scenarios. |
 | P2 | Enhanced service monitoring and logging | Add `chauf logs <service>` command and improved service health monitoring with historical data |
 | P3 | Project management utilities | Add `chauf doctor` for health checks, `chauf clean` for maintenance, and better project migration tools |
 | P4 | Universal service update management | `chauf update <service>` for PHP, Composer, nginx with version checking, backup, and rollback |
@@ -183,4 +194,4 @@ _A living status board for features, debt, and priorities. Keep this in sync wit
 - Document real-world setups (distro, Go version, dnsmasq config) in issues to broaden coverage
 - Review AGENTS.md and propose clarifications before building new features
 
-_Last updated: 2025-11-17T09:30:00Z_
+_Last updated: 2025-11-19T21:58:00Z_

@@ -30,5 +30,5 @@ func TestPHPIsolateUpdatesProjectConfig(t *testing.T) {
 	}
 
 	projectConfig := filepath.Join(workspace, "projects", "isolated-app", "project.yaml")
-	helpers.AssertFileContains(t, projectConfig, "php: 8.2")
+	helpers.AssertFileContains(t, projectConfig, `php: "8.2"`)
 }

@@ -126,6 +126,8 @@ func RunLink(args []string) error {
 		dedicatedFPM bool
 		httpPort     int
 		httpsPort    int
+		aliases      []string
+		addAlias     bool
 	)
 
 	logger := lib.NewCommandLogger("link")
@@ -187,6 +189,20 @@ func RunLink(args []string) error {
 			}
 			httpsPort = val
 			i += 2
+		case "--alias":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--alias requires a domain value")
+			}
+			aliasDomain := args[i+1]
+			// Security: Validate alias domain format
+			if err := validateDomain(aliasDomain); err != nil {
+				return fmt.Errorf("invalid alias domain: %w", err)
+			}
+			aliases = append(aliases, aliasDomain)
+			i += 2
+		case "--add-alias":
+			addAlias = true
+			i++
 		default:
 			if strings.HasPrefix(arg, "-") {
 				return fmt.Errorf("unknown flag for link: %s", arg)
@@ -196,6 +212,11 @@ func RunLink(args []string) error {
 	}
 
 	// SSL now works with both explicit and default .test domains
+
+	// Handle alias mode for existing projects (alias flags without linking)
+	if len(aliases) > 0 && !addAlias && domain == "" && phpVer == "" && !dedicatedFPM && httpPort == 0 && httpsPort == 0 && !force {
+		return handleAddAlias(args, aliases)
+	}
 
 	cfg, err := config.Load()
 	if err != nil {
@@ -323,12 +344,23 @@ func RunLink(args []string) error {
 		SSL:    ssl,
 	}
 
+	// Add alias domains if specified
+	if len(aliases) > 0 {
+		logger.Info(fmt.Sprintf("Adding %d alias domain(s)...", len(aliases)))
+		for _, alias := range aliases {
+			if err := proj.AddAlias(alias, ssl); err != nil {
+				return logger.Error(fmt.Sprintf("Failed to add alias %s", alias), err.Error())
+			}
+			logger.Success(fmt.Sprintf("Added alias: %s", alias), "")
+		}
+	}
+
 	if err := projects.WriteConfig(proj, layout.ConfigPath, force); err != nil {
 		return err
 	}
 
 	// Early validation: Check mkcert availability if SSL is requested
-	if proj.Site != nil && proj.Site.SSL {
+	if proj.HasSSLEnabled() {
 		logger.Info("Checking for mkcert availability...")
 		mkcertAvailable, _ := lib.CheckMkcertAvailable()
 		if !mkcertAvailable {
@@ -366,8 +398,15 @@ func RunLink(args []string) error {
 
 	// Handle SSL certificate generation first if SSL is enabled
 	var certType lib.SSLCertificateType
-	if proj.Site != nil && proj.Site.SSL {
-		certBase := proj.Site.Domain
+	if proj.HasSSLEnabled() {
+		// Get all domains for multi-domain certificate
+		allDomains := proj.GetAllDomains()
+		if len(allDomains) == 0 {
+			allDomains = []projects.DomainAlias{{Domain: proj.GetPrimaryDomain()}}
+		}
+
+		// Use primary domain as base filename
+		certBase := proj.GetPrimaryDomain()
 		if certBase == "" {
 			certBase = slug
 		}
@@ -379,15 +418,24 @@ func RunLink(args []string) error {
 		nginxOptions.SSLCertPath = certPath
 		nginxOptions.SSLKeyPath = keyPath
 
-		// Generate SSL certificate with dedicated spinner
+		// Generate multi-domain SSL certificate with dedicated spinner
 		sslSpin := lib.NewSpinner("link", "Generating SSL certificates")
-		generatedCertType, err := generateSSLCertificate(logger, certPath, keyPath, certBase)
+		logger.Info("Generating multi-domain certificate for:")
+		for _, domain := range allDomains {
+			if domain.SSL {
+				logger.Info(fmt.Sprintf("  - %s (HTTPS)", domain.Domain))
+			} else {
+				logger.Info(fmt.Sprintf("  - %s (HTTP)", domain.Domain))
+			}
+		}
+
+		generatedCertType, err := generateMultiDomainSSLCertificate(logger, certPath, keyPath, certBase, allDomains)
 		if err != nil {
 			sslSpin.Fail("SSL certificate generation failed")
 			return fmt.Errorf("generate SSL certificate: %w", err)
 		}
 		certType = generatedCertType
-		sslSpin.Success("SSL certificates generated")
+		sslSpin.Success("Multi-domain SSL certificates generated")
 	}
 
 	// Generate and write nginx configuration (with SSL paths if applicable)
@@ -448,7 +496,8 @@ func printLinkUsage() {
 	fmt.Print(`Chauffeur Project Linking
 
 Usage:
-  chauf link [--site <domain>] [--ssl] [--php <version>] [--dedicated-fpm] [--http-port <port>] [--https-port <port>] [--force]
+  chauf link [--site <domain>] [--ssl] [--php <version>] [--dedicated-fpm] [--http-port <port>] [--https-port <port>] [--alias <domain>]... [--force]
+  chauf link --add-alias --alias <domain> [--alias <domain>]...    # Add aliases to existing project
 
 Flags:
   --site <domain>           Register a local domain for the project (default: <slug>.test).
@@ -457,6 +506,8 @@ Flags:
   --dedicated-fpm           Create a dedicated PHP-FPM pool for this project (instead of shared).
   --http-port <port>        Override Nginx HTTP port for this project (default: from config).
   --https-port <port>       Override Nginx HTTPS port for this project (default: from config).
+  --alias <domain>          Add alias domains that point to the same project (can be used multiple times).
+  --add-alias               Add aliases to an existing linked project (use with --alias).
   --force                   Overwrite existing project configuration.
 
 Port Management:
@@ -469,10 +520,152 @@ FPM Strategy:
   By default, projects share PHP-FPM pools with others using the same PHP version (resource efficient).
   Use --dedicated-fpm to create an isolated PHP-FPM pool for this specific project.
 
+Multi-domain Examples:
+  # Link with multiple aliases
+  chauf link --site myapp.test --alias admin.test --alias api.test --ssl
+
+  # Add aliases for white-label scenarios
+  chauf link --site brand-a.test --alias brand-b.test --alias landing.test
+
+  # Add aliases to existing project
+  chauf link --add-alias --alias admin.test --alias api.test
+
+Add-alias Mode:
+  Use --add-alias to add new domains to an already linked project without
+  recreating it. This command automatically regenerates nginx configuration
+  and restarts the service to apply changes.
+
 Note:
   When --site is not specified, the project is automatically assigned a .test domain
   based on the project directory name (e.g., "my-project" -> "my-project.test").
+
+  Alias domains inherit SSL settings from the primary domain. All domains will
+  serve the same content from the project directory.
 `)
+}
+
+// handleAddAlias adds alias domains to an existing project
+func handleAddAlias(args []string, aliases []string) error {
+	if len(aliases) == 0 {
+		return fmt.Errorf("--alias requires at least one domain value")
+	}
+
+	logger := lib.NewCommandLogger("add-alias")
+
+	cfg, err := config.Load()
+	if err != nil {
+		return fmt.Errorf("load configuration: %w", err)
+	}
+
+	// Get current working directory
+	cwd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("determine current directory: %w", err)
+	}
+
+	// Find existing project
+	proj, layout, err := projects.FindByPath(cfg.ProjectsDir, cwd)
+	if err != nil {
+		return logger.Error(
+			"No linked project found in current directory",
+			"Use 'chauf link' to create a new project first",
+		)
+	}
+
+	// Check if primary domain exists
+	if proj.Site == nil || proj.Site.Domain == "" {
+		return logger.Error(
+			"Project has no primary domain configured",
+			"Primary domain must exist before adding aliases. Use 'chauf link --site <domain>' first.",
+		)
+	}
+
+	logger.Info(fmt.Sprintf("Found linked project: %s", layout.Root))
+	logger.Info(fmt.Sprintf("Primary domain: %s", proj.Site.Domain))
+
+	// Check if SSL is requested in args
+	sslRequested := false
+	for _, arg := range args {
+		if arg == "--ssl" {
+			sslRequested = true
+			break
+		}
+	}
+
+	// Add each alias
+	for _, alias := range aliases {
+		aliasSSL := sslRequested || (proj.Site != nil && proj.Site.SSL)
+		if err := proj.AddAlias(alias, aliasSSL); err != nil {
+			return logger.Error(fmt.Sprintf("Failed to add alias %s", alias), err.Error())
+		}
+		sslStatus := "HTTP"
+		if aliasSSL {
+			sslStatus = "HTTPS"
+		}
+		logger.Success(fmt.Sprintf("Added alias: %s (%s)", alias, sslStatus), "")
+	}
+
+	// Save updated configuration
+	if err := projects.WriteConfig(proj, layout.ConfigPath, true); err != nil {
+		return logger.Error("Failed to save project configuration", err.Error())
+	}
+
+	// Regenerate nginx configuration with new domains
+	templateEngine, err := templates.NewTemplateEngine()
+	if err != nil {
+		return logger.Error("Template engine initialization failed", err.Error())
+	}
+
+	templateType := templateEngine.DetectTemplateType(cwd)
+	nginxOptions := templates.NginxConfigOptions{
+		HTTPPort:  cfg.Nginx.HTTPPort,
+		HTTPSPort: cfg.Nginx.HTTPSPort,
+	}
+
+	// Handle SSL certificate paths if SSL is enabled
+	if proj.HasSSLEnabled() {
+		certBase := proj.GetPrimaryDomain()
+		if certBase == "" {
+			certBase = projects.Slugify(filepath.Base(cwd))
+		}
+		certDir := filepath.Join(cfg.WorkspaceDir, "nginx", "certs")
+		certPath := filepath.Join(certDir, fmt.Sprintf("%s.crt", certBase))
+		keyPath := filepath.Join(certDir, fmt.Sprintf("%s.key", certBase))
+
+		nginxOptions.SSLCertPath = certPath
+		nginxOptions.SSLKeyPath = keyPath
+
+		// Regenerate SSL certificates with all SSL-enabled domains
+		sslSpin := lib.NewSpinner("add-alias", "Regenerating SSL certificates")
+		allDomains := proj.GetAllDomains()
+
+		logger.Info("Regenerating SSL certificate to include new domains:")
+		for _, domain := range allDomains {
+			if domain.SSL {
+				logger.Info(fmt.Sprintf("  - %s (HTTPS)", domain.Domain))
+			} else {
+				logger.Info(fmt.Sprintf("  - %s (HTTP)", domain.Domain))
+			}
+		}
+
+		_, err := generateMultiDomainSSLCertificate(logger, certPath, keyPath, certBase, allDomains)
+		if err != nil {
+			sslSpin.Fail("SSL certificate regeneration failed")
+			return logger.Error("Failed to regenerate SSL certificates", err.Error())
+		}
+		sslSpin.Success("SSL certificates regenerated")
+	}
+
+	// Generate and write nginx configuration
+	if err := templateEngine.WriteNginxConfig(proj, layout, templateType, nginxOptions); err != nil {
+		return logger.Error("Failed to regenerate nginx configuration", err.Error())
+	}
+
+	// Note: nginx should be restarted to apply changes
+	logger.Info("Restart nginx to apply changes: chauf restart")
+
+	logger.Success("Aliases added successfully", fmt.Sprintf("Total aliases: %d", len(aliases)))
+	return nil
 }
 
 // Import SSLCertificateType from lib package
@@ -573,6 +766,171 @@ func generateSelfSignedCertificate(logger *lib.Logger, certPath, keyPath, domain
 
 	logger.Success("Self-signed SSL certificate generated successfully", fmt.Sprintf("saved to: %s", certPath))
 	return lib.SSLCertificateTypeSelfSigned, nil
+}
+
+// generateMultiDomainSSLCertificate generates SSL certificates that support multiple domains (SAN certificates)
+func generateMultiDomainSSLCertificate(logger *lib.Logger, certPath, keyPath, certBase string, domains []projects.DomainAlias) (lib.SSLCertificateType, error) {
+	// Filter SSL-enabled domains
+	var sslDomains []string
+	for _, domain := range domains {
+		if domain.SSL {
+			sslDomains = append(sslDomains, domain.Domain)
+		}
+	}
+
+	if len(sslDomains) == 0 {
+		return lib.SSLCertificateTypeSelfSigned, fmt.Errorf("no SSL-enabled domains found")
+	}
+
+	// Ensure certificate directory exists
+	if err := os.MkdirAll(filepath.Dir(certPath), 0o755); err != nil {
+		return lib.SSLCertificateTypeSelfSigned, fmt.Errorf("create certificate directory: %w", err)
+	}
+
+	// Check for mkcert availability first
+	_, mkcertCmd := lib.CheckMkcertAvailable()
+	if mkcertCmd != "" {
+		logger.Info("Generating trusted multi-domain SSL certificate using mkcert")
+
+		// Get the workspace directory (parent of certs directory)
+		workspaceDir := filepath.Dir(filepath.Dir(certPath)) // ~/.chauffeur from ~/.chauffeur/nginx/certs/file.crt
+		originalDir, _ := os.Getwd()
+		defer os.Chdir(originalDir) // Always restore original directory
+
+		if err := os.Chdir(workspaceDir); err != nil {
+			logger.Warn("Failed to change to workspace directory", err.Error())
+			return generateMultiDomainSelfSignedCertificate(logger, certPath, keyPath, sslDomains)
+		}
+
+		// Generate multi-domain certificate using mkcert with all SSL-enabled domains
+		args := append([]string{}, sslDomains...)
+		cmd := exec.Command(mkcertCmd, args...)
+		cmd.Dir = workspaceDir // Ensure command runs in workspace directory
+
+		if output, err := cmd.CombinedOutput(); err != nil {
+			logger.Warn("mkcert multi-domain generation failed, falling back to self-signed", fmt.Sprintf("error: %v, output: %s", err, string(output)))
+			return generateMultiDomainSelfSignedCertificate(logger, certPath, keyPath, sslDomains)
+		}
+
+		// Find the actual mkcert-generated files (they use pattern: basename+N.pem where N = number of domains)
+		var mkcertCertPath, mkcertKeyPath string
+		domainCount := len(sslDomains)
+
+		// Try different naming patterns mkcert might use
+		candidateCerts := []string{
+			certBase + ".pem",
+			fmt.Sprintf("%s+%d.pem", certBase, domainCount-1), // hja-cms.test+2.pem for 3 domains
+			fmt.Sprintf("%s+%d.pem", certBase, domainCount),   // hja-cms.test+3.pem for 3 domains
+		}
+
+		candidateKeys := []string{
+			certBase + "-key.pem",
+			fmt.Sprintf("%s+%d-key.pem", certBase, domainCount-1),
+			fmt.Sprintf("%s+%d-key.pem", certBase, domainCount),
+		}
+
+		// Find existing certificate file
+		for _, candidate := range candidateCerts {
+			if _, err := os.Stat(filepath.Join(workspaceDir, candidate)); err == nil {
+				mkcertCertPath = filepath.Join(workspaceDir, candidate)
+				break
+			}
+		}
+
+		// Find existing key file
+		for _, candidate := range candidateKeys {
+			if _, err := os.Stat(filepath.Join(workspaceDir, candidate)); err == nil {
+				mkcertKeyPath = filepath.Join(workspaceDir, candidate)
+				break
+			}
+		}
+
+		if mkcertCertPath == "" {
+			return lib.SSLCertificateTypeSelfSigned, fmt.Errorf("mkcert certificate file not found for base %s with %d domains", certBase, domainCount)
+		}
+		if mkcertKeyPath == "" {
+			return lib.SSLCertificateTypeSelfSigned, fmt.Errorf("mkcert private key file not found for base %s with %d domains", certBase, domainCount)
+		}
+
+		if err := lib.MoveFile(mkcertCertPath, certPath); err != nil {
+			return lib.SSLCertificateTypeSelfSigned, fmt.Errorf("move mkcert certificate: %w", err)
+		}
+		if err := lib.MoveFile(mkcertKeyPath, keyPath); err != nil {
+			return lib.SSLCertificateTypeSelfSigned, fmt.Errorf("move mkcert private key: %w", err)
+		}
+
+		logger.Success("Multi-domain SSL certificate generated successfully with mkcert", fmt.Sprintf("domains: %s", strings.Join(sslDomains, ", ")))
+		return lib.SSLCertificateTypeMkcert, nil
+	}
+
+	// Fall back to self-signed multi-domain certificate
+	return generateMultiDomainSelfSignedCertificate(logger, certPath, keyPath, sslDomains)
+}
+
+// generateMultiDomainSelfSignedCertificate generates a self-signed certificate with multiple Subject Alternative Names
+func generateMultiDomainSelfSignedCertificate(logger *lib.Logger, certPath, keyPath string, domains []string) (lib.SSLCertificateType, error) {
+	logger.Info("Generating multi-domain self-signed SSL certificate")
+
+	// Create OpenSSL configuration for SAN certificate
+	opensslConfig := createSANConfig(domains)
+	configPath := "/tmp/chauffeur-san.conf"
+	if err := os.WriteFile(configPath, []byte(opensslConfig), 0o644); err != nil {
+		return lib.SSLCertificateTypeSelfSigned, fmt.Errorf("write OpenSSL config: %w", err)
+	}
+	defer os.Remove(configPath)
+
+	// Generate private key
+	keyCmd := exec.Command("openssl", "genrsa", "-out", keyPath, "2048")
+	if output, err := keyCmd.CombinedOutput(); err != nil {
+		return lib.SSLCertificateTypeSelfSigned, fmt.Errorf("generate private key: %w, output: %s", err, string(output))
+	}
+
+	// Generate certificate with SAN extensions
+	certCmd := exec.Command("openssl", "req", "-new", "-x509", "-key", keyPath, "-out", certPath,
+		"-days", "365", "-config", configPath)
+	if output, err := certCmd.CombinedOutput(); err != nil {
+		return lib.SSLCertificateTypeSelfSigned, fmt.Errorf("generate multi-domain certificate: %w, output: %s", err, string(output))
+	}
+
+	// Set appropriate permissions
+	if err := os.Chmod(keyPath, 0o600); err != nil {
+		return lib.SSLCertificateTypeSelfSigned, fmt.Errorf("set private key permissions: %w", err)
+	}
+	if err := os.Chmod(certPath, 0o644); err != nil {
+		return lib.SSLCertificateTypeSelfSigned, fmt.Errorf("set certificate permissions: %w", err)
+	}
+
+	logger.Success("Multi-domain self-signed SSL certificate generated successfully", fmt.Sprintf("domains: %s", strings.Join(domains, ", ")))
+	return lib.SSLCertificateTypeSelfSigned, nil
+}
+
+// createSANConfig creates OpenSSL configuration for SAN certificates
+func createSANConfig(domains []string) string {
+	config := `[req]
+distinguished_name = req_distinguished_name
+req_extensions = v3_req
+prompt = no
+
+[req_distinguished_name]
+C = US
+ST = State
+L = City
+O = Chauffeur
+OU = Development
+CN = ` + domains[0] + `
+
+[v3_req]
+keyUsage = keyEncipherment, dataEncipherment
+extendedKeyUsage = serverAuth
+subjectAltName = @alt_names
+
+[alt_names]
+`
+	for i, domain := range domains {
+		config += fmt.Sprintf("DNS.%d = %s\n", i+1, domain)
+	}
+
+	return config
 }
 
 // provideSSLUsageGuidance educates users about using SSL certificates for development

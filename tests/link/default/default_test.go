@@ -40,7 +40,7 @@ func TestLinkRegistersCurrentDirectory(t *testing.T) {
 	if !strings.Contains(content, "domain: demo-app.test") {
 		t.Fatalf("expected default .test domain in project config:\n%s", content)
 	}
-	if !strings.Contains(content, "php: 8.3") {
+	if !strings.Contains(content, `php: "8.3"`) && !strings.Contains(content, "php: 8.3") {
 		t.Fatalf("expected php version 8.3 in project config:\n%s", content)
 	}
 }
