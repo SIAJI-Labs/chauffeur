@@ -1,4 +1,4 @@
-name: Create Release PR on Tag Published
+name: Create Release PR on Goreleaser Complete
 
 on:
   workflow_run:
@@ -9,14 +9,17 @@ jobs:
   create-release-pr:
     name: Create Release PR
     runs-on: ubuntu-latest
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up GitHub CLI
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gh
 
       - name: Configure Git
         run: |
@@ -25,11 +28,23 @@ jobs:
 
       - name: Get latest release info
         id: release_info
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           LATEST_TAG=$(git describe --tags $(git rev-list --tags --max-count=1))
           TODAY_DATE=$(date +'%Y-%m-%d')
           echo "latest_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
           echo "today_date=$TODAY_DATE" >> $GITHUB_OUTPUT
+
+          # Verify that this tag actually has a GitHub release
+          echo "Checking for GitHub release for tag: $LATEST_TAG"
+          if gh release view "$LATEST_TAG" > /dev/null 2>&1; then
+            echo "✅ GitHub release found for $LATEST_TAG"
+          else
+            echo "❌ No GitHub release found for tag $LATEST_TAG"
+            echo "This indicates Goreleaser may have failed to create the release"
+            exit 1
+          fi
           echo "Release tag: $LATEST_TAG"
           echo "Date: $TODAY_DATE"
 
@@ -53,9 +68,15 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "🔄 Closing existing PR #${{ steps.check_existing.outputs.existing_pr }}"
-          gh pr comment ${{ steps.check_existing.outputs.existing_pr }} --body "🔄 This PR is being superseded by new release ${{ steps.release_info.outputs.latest_tag }}.
 
-Previous release changes will be included in the new PR."
+          # Create comment using proper markdown handling
+          cat > /tmp/close_comment.md << 'EOF'
+          🔄 This PR is being superseded by new release ${{ steps.release_info.outputs.latest_tag }}.
+
+          Previous release changes will be included in the new PR.
+          EOF
+
+          gh pr comment ${{ steps.check_existing.outputs.existing_pr }} --body-file /tmp/close_comment.md
           gh pr close ${{ steps.check_existing.outputs.existing_pr }} --repo "${{ github.repository }}"
 
       - name: Create Release PR
@@ -65,43 +86,48 @@ Previous release changes will be included in the new PR."
         run: |
           echo "🚚 Creating Release PR for ${{ steps.release_info.outputs.latest_tag }}"
 
+          # Create PR body using proper markdown handling
+          cat > /tmp/pr_body.md << 'EOF'
+          ## 🚀 Release ${{ steps.release_info.outputs.latest_tag }}
+
+          **Date:** ${{ steps.release_info.outputs.today_date }}
+          **Status:** Ready for review
+
+          ### 📋 Overview
+          This PR contains the stable changes for release **${{ steps.release_info.outputs.latest_tag }}** that have been published via Goreleaser.
+
+          ### ✅ Verification Checklist
+          - [ ] Release ${{ steps.release_info.outputs.latest_tag }} published successfully
+          - [ ] All tests pass on main branch
+          - [ ] Release artifacts generated correctly
+          - [ ] Documentation is up to date
+
+          ### 🔄 Changes Included
+          - All changes from main branch since last release
+          - Release ${{ steps.release_info.outputs.latest_tag }} artifacts and binaries
+          - Updated documentation and changelog
+
+          ### 📦 Release Info
+          - **Tag:** ${{ steps.release_info.outputs.latest_tag }}
+          - **Build:** [View Workflow Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          - **Assets:** Check GitHub Releases page
+
+          ### 🎯 Next Steps
+          After review and approval:
+          1. Merge this PR to release branch
+          2. Release branch will contain only stable releases
+          3. Production deployments use release branch
+
+          ---
+
+          *🤖 Auto-generated PR created on successful release publication*
+          EOF
+
           PR_URL=$(gh pr create \
             --base release \
             --head main \
             --title "🚚 Release: ${{ steps.release_info.outputs.latest_tag }}" \
-            --body "## 🚀 Release ${{ steps.release_info.outputs.latest_tag }}
-
-**Date:** ${{ steps.release_info.outputs.today_date }}
-**Status:** Ready for review
-
-### 📋 Overview
-This PR contains the stable changes for release **${{ steps.release_info.outputs.latest_tag }}** that have been published via Goreleaser.
-
-### ✅ Verification Checklist
-- [ ] Release ${{ steps.release_info.outputs.latest_tag }} published successfully
-- [ ] All tests pass on main branch
-- [ ] Release artifacts generated correctly
-- [ ] Documentation is up to date
-
-### 🔄 Changes Included
-- All changes from main branch since last release
-- Release ${{ steps.release_info.outputs.latest_tag }} artifacts and binaries
-- Updated documentation and changelog
-
-### 📦 Release Info
-- **Tag:** ${{ steps.release_info.outputs.latest_tag }}
-- **Build:** [View Workflow Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
-- **Assets:** Check GitHub Releases page
-
-### 🎯 Next Steps
-After review and approval:
-1. Merge this PR to release branch
-2. Release branch will contain only stable releases
-3. Production deployments use release branch
-
----
-
-*🤖 Auto-generated PR created on successful release publication*" \
+            --body-file /tmp/pr_body.md \
             --reviewer ${{ github.repository_owner }})
 
           echo "✅ Release PR created: $PR_URL"
