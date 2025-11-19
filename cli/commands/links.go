@@ -61,6 +61,7 @@ func RunLinks(args []string) error {
 
 	maxPath := 20
 	maxDomain := 10
+	maxAlias := 8
 	maxSlug := 10
 
 	// First pass to determine column widths and prepare domain defaults
@@ -73,30 +74,69 @@ func RunLinks(args []string) error {
 			maxSlug = len(project.Slug)
 		}
 
-		// Copy the project and set default domain if needed
-		projectsWithDomains[i] = project
-		if projectsWithDomains[i].Site == nil {
-			projectsWithDomains[i].Site = &projects.Site{
-				Domain: project.Slug + ".test",
-				SSL:    false,
+		// Copy the project and calculate domains display
+		projectWithConfig, err := projects.LoadConfig(filepath.Join(projectsDir, project.Slug, "project.yaml"))
+		if err != nil {
+			// Fallback to basic project structure
+			projectsWithDomains[i] = project
+			if projectsWithDomains[i].Site == nil {
+				projectsWithDomains[i].Site = &projects.Site{
+					Domain: project.Slug + ".test",
+					SSL:    false,
+				}
+			}
+		} else {
+			// Use full config to get all domains
+			allDomains := projectWithConfig.GetAllDomains()
+			primaryDomain := projectWithConfig.GetPrimaryDomain()
+
+			var aliasDomains []string
+			for _, d := range allDomains {
+				if d.Domain != primaryDomain {
+					aliasStr := d.Domain
+					if d.SSL {
+						aliasStr += " (*)"
+					}
+					aliasDomains = append(aliasDomains, aliasStr)
+				}
+			}
+			aliasesStr := strings.Join(aliasDomains, ", ")
+			if aliasesStr == "" {
+				aliasesStr = "-"
+			}
+
+			projectsWithDomains[i] = linkedProject{
+				Slug:      project.Slug,
+				Path:      project.Path,
+				PHP:       project.PHP,
+				Site:      projectWithConfig.Site,
+				Domain:    primaryDomain,
+				Aliases:   aliasesStr,
+				SSL:       projectWithConfig.HasSSLEnabled(),
+				CreatedAt: projectWithConfig.CreatedAt,
 			}
 		}
 
-		domain := projectsWithDomains[i].Site.Domain
-		if len(domain) > maxDomain {
-			maxDomain = len(domain)
+		// Check max widths for domain and alias columns
+		if len(projectsWithDomains[i].Domain) > maxDomain {
+			maxDomain = len(projectsWithDomains[i].Domain)
+		}
+		if len(projectsWithDomains[i].Aliases) > maxAlias {
+			maxAlias = len(projectsWithDomains[i].Aliases)
 		}
 	}
 
-	header := fmt.Sprintf("%-*s  %-*s  %-*s  %-3s  %-4s  %s",
+	header := fmt.Sprintf("%-*s  %-*s  %-*s  %-*s  %-3s  %-4s  %s",
 		maxSlug, "SLUG",
 		maxPath, "PATH",
 		maxDomain, "DOMAIN",
+		maxAlias, "ALIAS",
 		"SSL", "PHP", "CREATED")
-	divider := fmt.Sprintf("%s  %s  %s  ---  ----  %s",
+	divider := fmt.Sprintf("%s  %s  %s  %s  ---  ----  %s",
 		strings.Repeat("-", maxSlug),
 		strings.Repeat("-", maxPath),
 		strings.Repeat("-", maxDomain),
+		strings.Repeat("-", maxAlias),
 		strings.Repeat("-", 19))
 
 	logger.Info(header)
@@ -105,16 +145,23 @@ func RunLinks(args []string) error {
 	// Project rows
 	for _, project := range projectsWithDomains {
 		ssl := " "
-		if project.Site.SSL {
+		if project.SSL {
 			ssl = "*"
 		}
 
 		created := project.CreatedAt.Format("2006-01-02 15:04")
 
-		row := fmt.Sprintf("%-*s  %-*s  %-*s  %-3s  %-4s  %s",
+		// Use domain and aliases from separate fields
+		domainDisplay := project.Domain
+		if domainDisplay == "" && project.Site != nil {
+			domainDisplay = project.Site.Domain
+		}
+
+		row := fmt.Sprintf("%-*s  %-*s  %-*s  %-*s  %-3s  %-4s  %s",
 			maxSlug, project.Slug,
 			maxPath, project.Path,
-			maxDomain, project.Site.Domain,
+			maxDomain, domainDisplay,
+			maxAlias, project.Aliases,
 			ssl,
 			project.PHP,
 			created)
@@ -129,6 +176,9 @@ type linkedProject struct {
 	Path      string
 	PHP       string
 	Site      *projects.Site
+	Domain    string  // Primary domain only
+	Aliases   string  // Alias domains as comma-separated string
+	SSL       bool    // SSL status (from project config)
 	CreatedAt time.Time
 }
 
@@ -177,6 +227,12 @@ func printLinksUsage() {
 
 Usage:
   chauf links          List all registered projects and their configurations.
+
+Output:
+  The DOMAIN column shows the primary domain for each project.
+  The ALIAS column shows additional domains (comma-separated) that point
+  to the same project. An asterisk (*) in the SSL column indicates that
+  SSL/TLS is enabled for at least one domain.
 
 Flags:
   --help, -h          Show this help message.
