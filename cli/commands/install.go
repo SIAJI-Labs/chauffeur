@@ -49,6 +49,11 @@ func OverridePHPInstallFunc(fn func(version, prefix string, force bool, enableGD
  * @return error when parsing fails or an installation step errors.
  */
 func RunInstall(args []string) error {
+	// Validate workspace exists, offer to initialize if not (skip for help)
+	if err := lib.ValidateWorkspace(args); err != nil {
+		return err
+	}
+
 	logger := lib.NewCommandLogger("install")
 
 	if len(args) == 0 {

@@ -189,6 +189,11 @@ func setupDnsmasqConfiguration(dnsLogger *lib.Logger) error {
  * @return error when prerequisite checks or start operations fail.
  */
 func RunStart(args []string) error {
+	// Validate workspace exists, offer to initialize if not (skip for help)
+	if err := lib.ValidateWorkspace(args); err != nil {
+		return err
+	}
+
 	var (
 		serviceNames  []string
 		filterProject string
