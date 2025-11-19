@@ -128,7 +128,7 @@ jobs:
             --head main \
             --title "🚚 Release: ${{ steps.release_info.outputs.latest_tag }}" \
             --body-file /tmp/pr_body.md \
-            --reviewer ${{ github.repository_owner }})
+            --reviewer si-aji)
 
           echo "✅ Release PR created: $PR_URL"
           echo "📋 PR ready for review"
