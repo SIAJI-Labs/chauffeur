@@ -236,6 +236,11 @@ func formatServiceType(serviceType services.ServiceType) string {
  * @return error when status checking fails.
  */
 func RunStatus(args []string) error {
+	// Validate workspace exists, offer to initialize if not (skip for help)
+	if err := lib.ValidateWorkspace(args); err != nil {
+		return err
+	}
+
 	// Create logger for status command
 	logger := lib.NewCommandLogger("status")
 
