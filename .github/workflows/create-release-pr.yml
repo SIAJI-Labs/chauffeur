@@ -1,0 +1,59 @@
+name: Create Release PR on Tag Published
+
+on:
+  workflow_run:
+    workflows: ["Goreleaser"]
+    types: [completed]
+
+jobs:
+  create-release-pr:
+    name: Create Release PR
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "github-actions"
+          git config --global user.email "github-actions@users.noreply.github.com"
+
+      - name: Get latest release info
+        id: release_info
+        run: |
+          LATEST_TAG=$(git describe --tags $(git rev-list --tags --max-count=1))
+          TODAY_DATE=$(date +'%Y-%m-%d')
+          echo "latest_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
+          echo "today_date=$TODAY_DATE" >> $GITHUB_OUTPUT
+
+      - name: Create Release PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          LATEST_TAG="${{ steps.release_info.outputs.latest_tag }}"
+          TODAY_DATE="${{ steps.release_info.outputs.today_date }}"
+
+          gh pr create \
+            --base release \
+            --head main \
+            --title "Release: $LATEST_TAG" \
+            --body "Release $LATEST_TAG published on $TODAY_DATE
+
+This PR contains stable changes that have been published via Goreleaser.
+
+Verification checklist:
+- Release $LATEST_TAG published successfully
+- All tests pass on main branch
+- Release artifacts generated correctly
+
+Next steps:
+1. Merge this PR to release branch
+2. Release branch will contain only stable releases" \
+            --reviewer "${{ github.repository_owner }}"
+
+          echo "✅ Release PR created successfully"
