@@ -108,6 +108,7 @@ func RunUnlink(args []string) error {
 		project string
 		all     bool
 		force   bool
+		aliases []string
 	)
 
 	for i := 0; i < len(args); {
@@ -152,6 +153,17 @@ func RunUnlink(args []string) error {
 		case "--all":
 			all = true
 			i++
+		case "--alias":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--alias requires a domain value")
+			}
+			aliasDomain := args[i+1]
+			// Security: Validate alias domain format
+			if err := validateUnlinkDomain(aliasDomain); err != nil {
+				return fmt.Errorf("security validation failed: %w", err)
+			}
+			aliases = append(aliases, aliasDomain)
+			i += 2
 		default:
 			return fmt.Errorf("unknown flag for unlink: %s", arg)
 		}
@@ -168,6 +180,11 @@ func RunUnlink(args []string) error {
 	// Handle --all flag
 	if all {
 		return unlinkAllProjects(logger, cfg, force)
+	}
+
+	// Handle --alias flag: remove specific aliases from existing project
+	if len(aliases) > 0 {
+		return handleRemoveAliases(logger, &cfg, aliases, force)
 	}
 
 	// Initialize variables
@@ -377,9 +394,24 @@ func RunUnlink(args []string) error {
 		logger.Info(fmt.Sprintf("  Slug: %s", projectSlug))
 		logger.Info(fmt.Sprintf("  Path: %s", projCfg.Path))
 		logger.Info(fmt.Sprintf("  PHP: %s", projCfg.PHP))
+
+		// Show domain information
 		if projCfg.Site != nil {
-			logger.Info(fmt.Sprintf("  Domain: %s (ssl=%t)", projCfg.Site.Domain, projCfg.Site.SSL))
+			logger.Info(fmt.Sprintf("  Primary Domain: %s (ssl=%t)", projCfg.Site.Domain, projCfg.Site.SSL))
 		}
+
+		// Show alias domains if they exist
+		if projCfg.Domains != nil && len(projCfg.Domains.Aliases) > 0 {
+			logger.Info("  Alias Domains:")
+			for _, alias := range projCfg.Domains.Aliases {
+				sslStatus := "HTTP"
+				if alias.SSL {
+					sslStatus = "HTTPS"
+				}
+				logger.Info(fmt.Sprintf("    - %s (%s)", alias.Domain, sslStatus))
+			}
+		}
+
 		logger.Prompt("This will remove the project registration and all associated configuration", "Use --force to skip confirmation")
 		if !confirmUnlinkAction(logger, "Continue unlinking this project?") {
 			logger.Info("Unlink cancelled by user.")
@@ -574,6 +606,90 @@ type unlinkProject struct {
 	CreatedAt time.Time
 }
 
+// handleRemoveAliases removes specific alias domains from an existing project
+func handleRemoveAliases(logger *lib.Logger, cfg *config.Config, aliases []string, force bool) error {
+	// Get current working directory to find the project
+	cwd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("determine current directory: %w", err)
+	}
+
+	// Find existing project
+	proj, layout, err := projects.FindByPath(cfg.ProjectsDir, cwd)
+	if err != nil {
+		return logger.Error(
+			"No linked project found in current directory",
+			"Use 'chauf link' to create a new project first",
+		)
+	}
+
+	logger.Info(fmt.Sprintf("Found linked project: %s", layout.Root))
+
+	// Check if project has any aliases
+	if proj.Domains == nil || len(proj.Domains.Aliases) == 0 {
+		logger.Info("No alias domains configured for this project")
+		return nil
+	}
+
+	// Remove each alias
+	removedAliases := 0
+	for _, alias := range aliases {
+		if err := proj.RemoveAlias(alias); err != nil {
+			if !force {
+				return logger.Error(fmt.Sprintf("Failed to remove alias %s", alias), err.Error())
+			}
+			logger.Warn(fmt.Sprintf("Failed to remove alias %s", alias), err.Error())
+			continue
+		}
+		logger.Success(fmt.Sprintf("Removed alias: %s", alias), "")
+		removedAliases++
+	}
+
+	if removedAliases == 0 {
+		logger.Info("No aliases were removed")
+		return nil
+	}
+
+	// Save updated configuration
+	if err := projects.WriteConfig(proj, layout.ConfigPath, true); err != nil {
+		return logger.Error("Failed to save project configuration", err.Error())
+	}
+
+	// Regenerate nginx configuration with updated domains
+	templateEngine, err := templates.NewTemplateEngine()
+	if err != nil {
+		return logger.Error("Template engine initialization failed", err.Error())
+	}
+
+	templateType := templateEngine.DetectTemplateType(cwd)
+	nginxOptions := templates.NginxConfigOptions{
+		HTTPPort:  cfg.Nginx.HTTPPort,
+		HTTPSPort: cfg.Nginx.HTTPSPort,
+	}
+
+	// Handle SSL certificate paths if SSL is enabled
+	if proj.HasSSLEnabled() {
+		certBase := proj.GetPrimaryDomain()
+		if certBase == "" {
+			certBase = projects.Slugify(filepath.Base(cwd))
+		}
+		certDir := filepath.Join(cfg.WorkspaceDir, "nginx", "certs")
+		nginxOptions.SSLCertPath = filepath.Join(certDir, fmt.Sprintf("%s.crt", certBase))
+		nginxOptions.SSLKeyPath = filepath.Join(certDir, fmt.Sprintf("%s.key", certBase))
+	}
+
+	// Generate and write nginx configuration
+	if err := templateEngine.WriteNginxConfig(proj, layout, templateType, nginxOptions); err != nil {
+		return logger.Error("Failed to regenerate nginx configuration", err.Error())
+	}
+
+	// Note: nginx should be restarted to apply changes
+	logger.Info("Restart nginx to apply changes: chauf restart")
+
+	logger.Success("Aliases removed successfully", fmt.Sprintf("Total removed: %d", removedAliases))
+	return nil
+}
+
 func printUnlinkUsage() {
 	fmt.Print(`Chauffeur Project Unlinking
 
@@ -583,10 +699,15 @@ Usage:
   chauf unlink --site <domain>       Unlink project by domain
   chauf unlink --project <path>       Unlink project by directory path
   chauf unlink --all                 Unlink all registered projects
+  chauf unlink --alias <domain>       Remove alias domains from current project
 
 Flags:
-  --force                           Proceed without confirmation.
+  --slug <slug>                     Remove project by slug.
+  --site <domain>                   Remove project by domain.
+  --project <path>                  Remove project by directory path.
+  --alias <domain>                  Remove alias domain(s) from current project (can be used multiple times).
   --all                             Remove all registered projects.
+  --force                           Proceed without confirmation.
   --help, -h                        Show this help message.
 
 Examples:
@@ -595,6 +716,12 @@ Examples:
   chauf unlink --site myproject.test
   chauf unlink --project /path/to/project
   chauf unlink --all --force
+  chauf unlink --alias admin.test --alias api.test  # remove specific aliases
+
+Alias Removal:
+  Use --alias to remove specific alias domains from a project without
+  unlinking the entire project. This automatically regenerates nginx
+  configuration and restarts services to apply changes.
 `)
 }
 

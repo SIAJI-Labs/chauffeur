@@ -435,7 +435,7 @@ func (l *Logger) PrintServiceTable(headers []string, rows [][]string) {
 
 	// Calculate column widths with minimum widths
 	colWidths := make([]int, len(headers))
-	minWidths := []int{3, 15, 10, 12, 8, 8} // Minimum widths for STATUS, SERVICE, TYPE, STATUS, UPTIME, MEM
+	minWidths := []int{3, 18, 8, 10, 8, 8} // Minimum widths for STATUS, SERVICE, TYPE, PROJECT, UPTIME, MEMORY
 
 	for i := range headers {
 		if i < len(minWidths) {
@@ -463,9 +463,13 @@ func (l *Logger) PrintServiceTable(headers []string, rows [][]string) {
 	headerLine := make([]string, len(headers))
 	for i, header := range headers {
 		if i < len(colWidths) {
-			headerLine[i] = fmt.Sprintf("%-*s", colWidths[i], l.bold(header))
+			boldHeader := l.bold(header)
+			// Calculate actual display width excluding ANSI escape codes
+			actualWidth := colWidths[i] + (len(boldHeader) - len(header)) // Add space for ANSI codes
+			headerLine[i] = fmt.Sprintf("%-*s", actualWidth, boldHeader)
 		}
 	}
+	// Print header
 	fmt.Printf("%s %s\n", l.prefix(), strings.Join(headerLine, ""))
 
 	// Print divider

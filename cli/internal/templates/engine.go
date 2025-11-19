@@ -165,10 +165,11 @@ func (e *TemplateEngine) processTemplate(content string, data TemplateData) (str
 func (e *TemplateEngine) GenerateNginxConfig(config projects.Config, layout projects.Layout, templateType string, opts NginxConfigOptions) (string, error) {
 	opts.applyDefaults()
 
-	// Determine server name
-	serverName := layout.Root
-	if config.Site != nil && config.Site.Domain != "" {
-		serverName = config.Site.Domain
+	// Determine server names (primary + aliases)
+	serverName := config.GetServerNames()
+	if serverName == "" {
+		// Fallback to project directory name if no domains configured
+		serverName = filepath.Base(layout.Root)
 	}
 
 	// Prepare template data - use the socket path from config runtime since it accounts for FPM strategy
@@ -190,7 +191,7 @@ func (e *TemplateEngine) GenerateNginxConfig(config projects.Config, layout proj
 	}
 
 	// Configure SSL if enabled
-	if config.Site != nil && config.Site.SSL {
+	if config.HasSSLEnabled() {
 		data.SSL = true
 	}
 
@@ -212,7 +213,7 @@ func (e *TemplateEngine) GenerateNginxConfig(config projects.Config, layout proj
 
 // WriteNginxConfig writes the generated nginx configuration to the workspace
 func (e *TemplateEngine) WriteNginxConfig(config projects.Config, layout projects.Layout, templateType string, opts NginxConfigOptions) error {
-	if config.Site != nil && config.Site.SSL {
+	if config.HasSSLEnabled() {
 		if opts.SSLCertPath == "" || opts.SSLKeyPath == "" {
 			return fmt.Errorf("ssl enabled but certificate paths were not provided")
 		}
@@ -360,9 +361,11 @@ server {
 func (e *TemplateEngine) generateBasicConfig(config projects.Config, layout projects.Layout, opts NginxConfigOptions) string {
 	opts.applyDefaults()
 
-	serverName := filepath.Base(layout.Root)
-	if config.Site != nil && config.Site.Domain != "" {
-		serverName = config.Site.Domain
+	// Determine server names (primary + aliases)
+	serverName := config.GetServerNames()
+	if serverName == "" {
+		// Fallback to project directory name if no domains configured
+		serverName = filepath.Base(layout.Root)
 	}
 
 	// Use the socket path from config runtime since it accounts for FPM strategy

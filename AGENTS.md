@@ -86,6 +86,12 @@ php: 8.3
 site:
   domain: slug.test
   ssl: false
+domains:
+  aliases:
+    - domain: admin.test
+      ssl: true
+    - domain: api.test
+      ssl: false
 runtime:
   php_fpm_socket: ~/.chauffeur/projects/<slug>/runtime/php-fpm/php-fpm.sock
 created_at: 2025-10-30T12:00:00+07:00
@@ -99,9 +105,9 @@ created_at: 2025-10-30T12:00:00+07:00
 | `chauf stop` | same flags as start | Stop services and clean port-forward rules. |
 | `chauf restart` | `--project <slug>`, `--all`, `--dry-run` | Restart services (equivalent to stop then start, preserves configuration). |
 | `chauf status` | `[service-type]`, `--project`, `--detail`, `-v` | Show status for global or per-project services. |
-| `chauf link` | `--site`, `--ssl`, `--php`, `--http-port`, `--https-port`, `--force` | Register current directory, detect template (Laravel/WordPress/general), generate configs. |
+| `chauf link` | `--site`, `--ssl`, `--php`, `--http-port`, `--https-port`, `--alias`, `--add-alias`, `--force` | Register current directory, detect template (Laravel/WordPress/general), generate configs with multi-domain support. |
 | `chauf links` | — | List all registered projects in a formatted table. |
-| `chauf unlink` | `--slug`, `--site`, `--project`, `--all`, `--force` | Remove registrations. Defaults to current dir. |
+| `chauf unlink` | `--slug`, `--site`, `--project`, `--alias`, `--all`, `--force` | Remove registrations or specific aliases. Defaults to current dir. |
 | `chauf php install <ver>` | `--force`, `--no-ext`, `--from` | Build/install PHP runtime under workspace. |
 | `chauf php use <ver>` | — | Set global default PHP. |
 | `chauf php isolate <ver>` | — | Pin current linked project to a version. |
@@ -123,14 +129,76 @@ created_at: 2025-10-30T12:00:00+07:00
 - Composer shim (`~/.chauffeur/bin/composer`) always uses Chauffeur’s PHP shim so `composer install` respects isolation.
 - Removing PHP versions via `chauf remove php <ver>` must update shims and reassign defaults when necessary.
 
-## 8. Logging & Output Standards
+## 8. Multi-Domain Architecture
+
+Chauffeur supports multiple domains per project with isolated SSL certificate management and alias-specific configuration.
+
+### Data Structures
+```go
+type Config struct {
+    Version   int
+    Path      string
+    PHP       string
+    Site      *Site           // Primary domain
+    Domains   *Domains        // Alias domains
+    Runtime   Runtime
+    CreatedAt time.Time
+}
+
+type Site struct {
+    Domain string
+    SSL    bool
+}
+
+type DomainAlias struct {
+    Domain string `yaml:"domain"`
+    SSL    bool   `yaml:"ssl"`
+}
+
+type Domains struct {
+    Aliases []DomainAlias `yaml:"aliases,omitempty"`
+}
+```
+
+### SSL Certificate Management
+- **Multi-domain SAN certificates**: Single certificate covers all SSL-enabled domains (primary + aliases)
+- **Certificate generation**: Supports both mkcert (trusted) and self-signed certificates
+- **Automatic regeneration**: Certificates regenerated when SSL aliases are added/removed
+- **File naming**: Uses base domain as certificate filename (e.g., `hja-cms.test.crt`)
+
+### Certificate Implementation
+```go
+// generateMultiDomainSSLCertificate creates SAN certificates
+func generateMultiDomainSSLCertificate(logger, certPath, keyPath, certBase string, domains []DomainAlias)
+
+// OpenSSL SAN configuration generation
+func createSANConfig(domains []string) string
+```
+
+### Domain Resolution
+- **Primary domain**: From `proj.Site.Domain` (legacy support)
+- **Alias domains**: From `proj.Domains.Aliases` array
+- **Helper methods**: `GetAllDomains()`, `GetServerNames()`, `HasSSLEnabled()`
+- **nginx integration**: Template engine uses `GetServerNames()` for multi-domain server blocks
+
+### User Experience
+- **Links display**: `(*)` indicators show SSL-enabled aliases
+- **Unlink confirmation**: Shows all domains (primary + aliases) with SSL status
+- **Command interface**: `--alias` flag for adding domains, `--ssl` for per-alias SSL control
+
+### Backward Compatibility
+- Existing single-domain configurations unchanged
+- Legacy `site.domain` and `site.ssl` fields maintained
+- Migration path: single domains automatically work with new multi-domain system
+
+## 9. Logging & Output Standards
 - **Single logger**: Each command must create a `logger := lib.NewCommandLogger("<command>")`. No raw `fmt.Printf` for user-facing output.
 - **Helpers only**: Use `logger.Info/Success/Warn/Error`, `logger.PrintSection`, `logger.PrintSummary`, `lib.NewSpinner`, and `lib.NewProgressPrinter`. Prevent duplicate spinner/progress implementations.
 - **TTY detection**: Colors, spinners, and progress bars must disable themselves when stdout isn’t a terminal.
 - **Structured failures**: Errors show `✗` marker, the human-readable fix, and the path to detailed log under `~/.chauffeur/logs/<command>/...log`.
 - **Duration reporting**: Long operations log start/end with human-readable durations using `lib.formatDuration` helpers.
 
-## 9. Writing Standards
+## 10. Writing Standards
 1. **Language**: Go only. Commands live in `cli/commands`, helpers in `cli/lib` or `cli/internal/*` packages.
 2. **Re-use helpers**: Before writing new utilities, look for existing helpers (ports, downloads, logging, checksum). Extend them instead of duplicating logic.
 3. **Readable & visual**: Output should be human-friendly (clear sections, tables, color cues) yet informative enough for debugging.
@@ -139,7 +207,7 @@ created_at: 2025-10-30T12:00:00+07:00
 6. **Comments**: Only for non-obvious logic; keep concise.
 7. **No secrets**: Never log tokens or credentials. Mask paths only when necessary.
 
-## 10. Documentation Synchronization
+## 11. Documentation Synchronization
 Every code change requires immediate updates to:
 1. **README.md** – feature status (✅/🚧/📋/🎯), installation changes, new commands/examples, roadmap tweaks.
 2. **docs/TODO_STATUS.md** – mark tasks as ✅, move items between sections, update release notes/priority queue.
@@ -150,7 +218,7 @@ Checklist (do not skip):
 - [ ] AGENTS.md matches actual behavior.
 - [ ] Examples and commands have been run/tested.
 
-## 11. Testing Standards
+## 12. Testing Standards
 - **Location**: Place tests in `tests/` or alongside packages as `*_test.go`, but external tests may not import `cli/internal/**`. Use exported seams instead.
 - **Execution**: `go test ./...` must pass before you push. Tests must isolate HOME/workspace via `t.TempDir()` and `t.Setenv` so they never touch the real user state.
 - **Coverage**: Aim ≥80% on new packages. Use table-driven tests for commands, and capture output via helpers (see existing tests) instead of relying on global state.

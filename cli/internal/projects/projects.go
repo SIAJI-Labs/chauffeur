@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"gopkg.in/yaml.v2"
 )
 
 const (
@@ -28,6 +29,7 @@ type Config struct {
 	Path      string
 	PHP       string
 	Site      *Site
+	Domains   *Domains `yaml:"domains,omitempty"`
 	Runtime   Runtime
 	CreatedAt time.Time
 }
@@ -36,6 +38,17 @@ type Config struct {
 type Site struct {
 	Domain string
 	SSL    bool
+}
+
+// DomainAlias represents an alias domain configuration.
+type DomainAlias struct {
+	Domain string `yaml:"domain"`
+	SSL    bool   `yaml:"ssl"`
+}
+
+// Domains holds multi-domain configuration for the project.
+type Domains struct {
+	Aliases []DomainAlias `yaml:"aliases,omitempty"`
 }
 
 // FPM holds PHP-FPM configuration for the project.
@@ -111,8 +124,11 @@ func WriteConfig(cfg Config, path string, force bool) error {
 		}
 	}
 
-	data := renderYAML(cfg)
-	if err := os.WriteFile(path, []byte(data), 0o644); err != nil {
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("marshal project config: %w", err)
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
 		return fmt.Errorf("write project config: %w", err)
 	}
 	return nil
@@ -124,8 +140,8 @@ func LoadConfig(path string) (Config, error) {
 	if err != nil {
 		return Config{}, fmt.Errorf("read project config: %w", err)
 	}
-	cfg, err := parseConfig(data)
-	if err != nil {
+	var cfg Config
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return Config{}, fmt.Errorf("parse project config: %w", err)
 	}
 	return cfg, nil
@@ -227,6 +243,15 @@ func renderYAML(cfg Config) string {
 		b.WriteString(fmt.Sprintf("  ssl: %t\n", cfg.Site.SSL))
 	}
 
+	if cfg.Domains != nil && len(cfg.Domains.Aliases) > 0 {
+		b.WriteString("domains:\n")
+		b.WriteString("  aliases:\n")
+		for _, alias := range cfg.Domains.Aliases {
+			b.WriteString(fmt.Sprintf("    - domain: %s\n", alias.Domain))
+			b.WriteString(fmt.Sprintf("      ssl: %t\n", alias.SSL))
+		}
+	}
+
 	b.WriteString("runtime:\n")
 	b.WriteString(fmt.Sprintf("  php_fpm_socket: %s\n", cfg.Runtime.PHPFPM))
 
@@ -308,6 +333,27 @@ func parseConfig(data []byte) (Config, error) {
 					cfg.Site.SSL = v
 				}
 			}
+		case "domains":
+			// Just track that we're in the domains section - actual parsing handled by line detection
+		case "aliases":
+			// Aliases section - look for domain entries
+			if strings.Contains(trimmed, "- domain:") {
+				if cfg.Domains == nil {
+					cfg.Domains = &Domains{}
+				}
+				// Extract domain from "- domain: cms-hja.test"
+				if parts := strings.SplitN(trimmed, ":", 2); len(parts) == 2 {
+					domain := strings.TrimSpace(parts[1])
+					alias := DomainAlias{Domain: domain, SSL: false} // Default SSL to false
+					cfg.Domains.Aliases = append(cfg.Domains.Aliases, alias)
+				}
+			} else if key == "ssl" && len(cfg.Domains.Aliases) > 0 {
+				// Set SSL for the last added alias
+				if v, err := strconv.ParseBool(value); err == nil {
+					lastIndex := len(cfg.Domains.Aliases) - 1
+					cfg.Domains.Aliases[lastIndex].SSL = v
+				}
+			}
 		case "runtime":
 			if key == "php_fpm_socket" {
 				cfg.Runtime.PHPFPM = value
@@ -347,11 +393,173 @@ func IsPHPVersionInstalled(version string) bool {
 		return false
 	}
 	workspaceDir := filepath.Join(home, ".chauffeur")
-	
+
 	// Check if PHP binary exists
 	binary := filepath.Join(workspaceDir, "php", version, "bin", "php")
 	if _, err := os.Stat(binary); err != nil {
 		return false
 	}
 	return true
+}
+
+// GetAllDomains returns all domains for a project (primary + aliases)
+func (c *Config) GetAllDomains() []DomainAlias {
+	var domains []DomainAlias
+
+	// Add primary domain from site (legacy support)
+	if c.Site != nil && c.Site.Domain != "" {
+		domains = append(domains, DomainAlias{
+			Domain: c.Site.Domain,
+			SSL:    c.Site.SSL,
+		})
+	}
+
+	// Add alias domains
+	if c.Domains != nil {
+		for _, alias := range c.Domains.Aliases {
+			domains = append(domains, alias)
+		}
+	}
+
+	return domains
+}
+
+// GetPrimaryDomain returns the primary domain for the project
+func (c *Config) GetPrimaryDomain() string {
+	if c.Site != nil && c.Site.Domain != "" {
+		return c.Site.Domain
+	}
+	return ""
+}
+
+// GetServerNames returns a space-separated list of all server names for nginx config
+func (c *Config) GetServerNames() string {
+	domains := c.GetAllDomains()
+	if len(domains) == 0 {
+		return ""
+	}
+
+	var serverNames []string
+	for _, domain := range domains {
+		serverNames = append(serverNames, domain.Domain)
+	}
+
+	return strings.Join(serverNames, " ")
+}
+
+// HasSSLEnabled returns true if any domain (primary or alias) has SSL enabled
+func (c *Config) HasSSLEnabled() bool {
+	// Check primary domain
+	if c.Site != nil && c.Site.SSL {
+		return true
+	}
+
+	// Check alias domains
+	if c.Domains != nil {
+		for _, alias := range c.Domains.Aliases {
+			if alias.SSL {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// AddAlias adds a new alias domain to the project
+func (c *Config) AddAlias(domain string, ssl bool) error {
+	// Validate domain format (basic check)
+	if domain == "" {
+		return fmt.Errorf("domain cannot be empty")
+	}
+
+	// Initialize domains if nil
+	if c.Domains == nil {
+		c.Domains = &Domains{}
+	}
+
+	// Check if alias already exists
+	for _, alias := range c.Domains.Aliases {
+		if alias.Domain == domain {
+			return fmt.Errorf("alias domain %s already exists", domain)
+		}
+	}
+
+	// Add the new alias
+	c.Domains.Aliases = append(c.Domains.Aliases, DomainAlias{
+		Domain: domain,
+		SSL:    ssl,
+	})
+
+	return nil
+}
+
+// RemoveAlias removes an alias domain from the project
+func (c *Config) RemoveAlias(domain string) error {
+	if c.Domains == nil {
+		return fmt.Errorf("no alias domains configured")
+	}
+
+	// Find and remove the alias
+	for i, alias := range c.Domains.Aliases {
+		if alias.Domain == domain {
+			c.Domains.Aliases = append(c.Domains.Aliases[:i], c.Domains.Aliases[i+1:]...)
+			return nil
+		}
+	}
+
+	return fmt.Errorf("alias domain %s not found", domain)
+}
+
+// FindByDomain locates a project configuration by any domain (primary or alias)
+func FindByDomain(baseDir, domain string) (Config, Layout, error) {
+	if baseDir == "" {
+		return Config{}, Layout{}, fmt.Errorf("projects base directory is empty")
+	}
+
+	entries, err := os.ReadDir(baseDir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return Config{}, Layout{}, fmt.Errorf("%w: domain %s", ErrProjectNotFound, domain)
+		}
+		return Config{}, Layout{}, fmt.Errorf("read projects directory: %w", err)
+	}
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		layout, err := EnsureLayout(baseDir, entry.Name())
+		if err != nil {
+			return Config{}, Layout{}, err
+		}
+
+		cfg, err := LoadConfig(layout.ConfigPath)
+		if err != nil {
+			return Config{}, Layout{}, fmt.Errorf("load project config %s: %w", layout.ConfigPath, err)
+		}
+
+		// Check primary domain
+		if cfg.Site != nil && cfg.Site.Domain == domain {
+			if cfg.Runtime.PHPFPM == "" {
+				cfg.Runtime.PHPFPM = layout.SocketPath
+			}
+			return cfg, layout, nil
+		}
+
+		// Check alias domains
+		if cfg.Domains != nil {
+			for _, alias := range cfg.Domains.Aliases {
+				if alias.Domain == domain {
+					if cfg.Runtime.PHPFPM == "" {
+						cfg.Runtime.PHPFPM = layout.SocketPath
+					}
+					return cfg, layout, nil
+				}
+			}
+		}
+	}
+
+	return Config{}, Layout{}, fmt.Errorf("%w: domain %s", ErrProjectNotFound, domain)
 }

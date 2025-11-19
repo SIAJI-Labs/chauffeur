@@ -37,7 +37,7 @@ Design themes borrowed from Valet/Herd:
 | Area | Status | Notes |
 |------|--------|-------|
 | Workspace bootstrap (`chauf init`) | ✅ | Creates `~/.chauffeur` directories, default config, PATH guidance. |
-| Project linking (`chauf link/links/unlink`) | ✅ | Registers projects, writes `project.yaml`, generates nginx configs. |
+| Project linking (`chauf link/links/unlink`) | ✅ | Multi-domain support with SSL certificates, alias management, enhanced UI. |
 | PHP runtimes (`chauf php install/use/isolate`) | ✅ | Full PHP 7.4-8.4 support with smart caching; GD extension infrastructure in place (modern PHP ✅, legacy PHP 🚧); additional harness tests coming soon. |
 | Service orchestration (`chauf start/stop/status/restart`) | ✅ | Full process management with service-specific and project-specific restarts; dnsmasq integration working. |
 | Composer integration | ✅ | Installs Composer PHAR tied to Chauffeur's PHP shim. |
@@ -92,9 +92,9 @@ Chauffeur provides **project-level PHP-FPM control** to balance resource efficie
 | `chauf stop` | `--project <path>`, `--all`, `--dry-run` | Stop services and clean redirects. |
 | `chauf restart` | `[service-type]`, `--project <path>`, `--all`, `--dry-run` | Restart specific services, projects, or all services. |
 | `chauf status` | `[service-type]`, `--project`, `--detail`, `-v` | Inspect global or per-project services. |
-| `chauf link` | `--site`, `--ssl`, `--php`, `--dedicated-fpm`, `--http-port`, `--https-port`, `--force` | Register PWD as a project and generate configs (shared FPM by default). |
-| `chauf links` | — | Table of all registered projects. |
-| `chauf unlink` | `--slug`, `--site`, `--project`, `--all`, `--force` | Remove registrations; defaults to current directory. |
+| `chauf link` | `--site`, `--ssl`, `--php`, `--dedicated-fpm`, `--http-port`, `--https-port`, `--alias`, `--force` | Register project with multi-domain support (shared FPM by default). |
+| `chauf links` | — | Table of all registered projects with SSL indicators for aliases. |
+| `chauf unlink` | `--alias`, `--slug`, `--site`, `--project`, `--all`, `--force` | Remove registrations or specific aliases; defaults to current directory. |
 | `chauf install <service> [ver]` | `--force`, `--local`, `--no-cache` | Install services with intelligent caching (php, composer, nginx). |
 | `chauf php install <ver>` | `--force`, `--no-ext`, `--from` | Install PHP runtimes into the workspace. |
 | `chauf php use <ver>` | — | Set global default PHP version. |
@@ -136,7 +136,117 @@ Chauffeur provides **project-level PHP-FPM control** to balance resource efficie
    firefox http://project-name.test:8080
    ```
 
-`chauf link` automatically detects when Chauffeur’s nginx instance already owns the configured HTTP/HTTPS ports and simply restarts it so the new site configuration is loaded—no more prompts to pick new ports while services are running. Likewise, `chauf unlink` removes the generated nginx config, restarts nginx when it’s active, and the built-in catch‑all server returns a 404 for any unlinked domain so the site disappears immediately.
+`chauf link` automatically detects when Chauffeur's nginx instance already owns the configured HTTP/HTTPS ports and simply restarts it so the new site configuration is loaded—no more prompts to pick new ports while services are running. Likewise, `chauf unlink` removes the generated nginx config, restarts nginx when it's active, and the built-in catch‑all server returns a 404 for any unlinked domain so the site disappears immediately.
+
+## Multi-Domain Support
+
+Chauffeur supports multiple domains pointing to the same project directory, perfect for white-label development or multi-tenant applications.
+
+### Multi-Domain Project Setup
+
+**Link with multiple domains:**
+```bash
+# Link project with primary domain and aliases
+chauf link --site myapp.test --alias admin.myapp.test --alias api.myapp.test --ssl
+
+# Add aliases to existing projects
+chauf link --alias www.myapp.test --ssl
+chauf link --alias staging.myapp.test    # HTTP only
+```
+
+**View all projects with domains:**
+```bash
+chauf links
+```
+Output:
+```
+[ links ] Linked Projects (2)
+[ links ] SLUG    PATH                    DOMAIN           ALIAS                              SSL  PHP   CREATED
+[ links ] ------  ----------------------  ---------------  ---------------------------------  ---  ----  -------------------
+[ links ] myapp   /home/user/myapp        myapp.test       admin.myapp.test (*), api.myapp.test (*)  *    8.3   2025-11-19 15:00
+[ links ] cms     /home/user/cms          cms.test         -                                 *    8.3   2025-11-19 14:30
+```
+
+**Key Features:**
+- `(*)` indicates aliases with SSL enabled
+- Automatic multi-domain SSL certificates with SAN (Subject Alternative Names)
+- Per-alias SSL configuration (HTTP/HTTPS)
+- Backward compatible with existing single-domain projects
+
+### SSL Certificate Management
+
+**Multi-Domain SSL Certificates:**
+- Single certificate covers all SSL-enabled domains
+- Trusted certificates via mkcert (no browser warnings)
+- Automatic regeneration when adding/removing SSL aliases
+- Support for both primary and alias domains
+
+**SSL Usage Examples:**
+```bash
+# All domains work with HTTPS
+curl -k https://myapp.test:8443
+curl -k https://admin.myapp.test:8443
+curl -k https://api.myapp.test:8443
+
+# HTTP access for non-SSL aliases
+curl http://staging.myapp.test:8080
+```
+
+### Alias Management
+
+**Add aliases to existing projects:**
+```bash
+# Add SSL-enabled alias
+chauf link --alias new.domain.test --ssl
+
+# Add multiple aliases
+chauf link --alias www.domain.test --alias api.domain.test --ssl
+```
+
+**Remove specific aliases:**
+```bash
+chauf unlink --alias unwanted.domain.test
+```
+
+**Remove entire project (all domains):**
+```bash
+chauf unlink  # Shows confirmation with all domains listed
+```
+
+The enhanced unlink command displays all domains before confirmation:
+```
+[ unlink ] Project to unlink
+[ unlink ]   Slug: myapp
+[ unlink ]   Primary Domain: myapp.test (ssl=true)
+[ unlink ]   Alias Domains:
+[ unlink ]     - admin.myapp.test (HTTPS)
+[ unlink ]     - api.myapp.test (HTTPS)
+[ unlink ]     - staging.myapp.test (HTTP)
+```
+
+### Configuration Schema
+
+Multi-domain configuration is stored in `~/.chauffeur/projects/{slug}/project.yaml`:
+
+```yaml
+version: 1
+path: /home/user/myapp
+php: "8.3"
+site:
+  domain: myapp.test
+  ssl: true
+domains:
+  aliases:
+    - domain: admin.myapp.test
+      ssl: true
+    - domain: api.myapp.test
+      ssl: true
+    - domain: staging.myapp.test
+      ssl: false
+runtime:
+  php_fpm_socket: /home/user/.chauffeur/projects/myapp/runtime/php-fpm/php-fpm.sock
+created_at: "2025-11-19T15:00:00Z"
+```
 
 6. **Update the binary from source (optional, run inside repo)**:
    ```bash
