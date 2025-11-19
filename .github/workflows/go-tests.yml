@@ -20,6 +20,34 @@ jobs:
         with:
           go-version: '1.22'
 
+      - name: Install system dependencies for doctor command tests
+        run: |
+          # Install dependencies required for PHP builds and doctor command
+          sudo apt-get update
+          sudo apt-get install -y \
+            pkg-config \
+            libzip-dev \
+            libjpeg-dev \
+            libpng-dev \
+            libfreetype6-dev \
+            libxml2-dev \
+            libcurl4-openssl-dev \
+            libssl-dev \
+            libxslt1-dev \
+            libreadline-dev \
+            libmagickwand-dev \
+            libgmp-dev \
+            dnsmasq
+
+      - name: Install mkcert for SSL certificate tests
+        run: |
+          # Install mkcert
+          curl -L https://dl.filippo.io/mkcert/latest?for=linux/amd64 -o mkcert
+          chmod +x mkcert
+          sudo mv mkcert /usr/local/bin/
+          # Install local CA
+          mkcert -install
+
       - name: Run tests
         env:
           GOCACHE: /tmp/go-build-cache
