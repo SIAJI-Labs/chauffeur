@@ -1,8 +1,19 @@
 version: 2
 
-# Skip building as you're only generating the changelog
+# Build configuration for binary releases
 builds:
-    - skip: true
+    - env: [CGO_ENABLED=0]
+      goos: [linux]
+      goarch: [amd64, arm64]
+      binary: chauf
+      dir: ./cli
+      main: .
+      ldflags:
+        - -s -w
+        - -X main.version={{.Version}}
+        - -X main.commit={{.Commit}}
+        - -X main.date={{.Date}}
+        - -X main.builtBy=goreleaser
 
 # Changelog configuration
 changelog:
@@ -39,7 +50,53 @@ changelog:
     - title: Others
       order: 999
 
+# Archives configuration
+archives:
+    - name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+      files:
+        - README.md
+        - install.sh
+
+# Checksums configuration
+checksum:
+    name_template: "{{ .ProjectName }}_{{ .Version }}_checksums.txt"
+
+
 # Release configuration
 release:
-    prerelease: 'true'
-    make_latest: false
+    prerelease: auto
+    make_latest: true
+    header: |
+      ## Chauffeur {{ .Version }}
+
+      Linux-first valet-style CLI for per-project PHP services.
+    footer: |
+      ## Installation
+
+      ### Quick Install
+      ```bash
+      curl -sSL https://github.com/siaji/chauffeur/releases/latest/download/install.sh | bash
+      ```
+
+      ### Manual Install
+      ```bash
+      wget https://github.com/siaji/chauffeur/releases/latest/download/chauf_{{ .Version }}_linux_amd64.tar.gz
+      tar -xzf chauf_{{ .Version }}_linux_amd64.tar.gz
+      sudo cp chauf /usr/local/bin/
+      ```
+
+      ## Getting Started
+
+      After installation, initialize your Chauffeur workspace:
+      ```bash
+      chauf init
+      ```
+
+      Then install PHP and start developing:
+      ```bash
+      chauf install php 8.3
+      chauf link           # Link your current project
+      chauf start          # Start services
+      ```
+
+  
