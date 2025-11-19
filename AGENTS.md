@@ -113,9 +113,10 @@ created_at: 2025-10-30T12:00:00+07:00
 
 ## 7. PHP & Composer Behavior
 - PHP shims always prefer the project’s isolated version (from `project.yaml`). Outside linked projects they use the global default (`chauf php use`) and fall back to 8.3 if nothing is configured.
-- `chauf install php` must verify `pkg-config` is available and that all required dev headers (`libzip`, `libjpeg`, `libpng`, `freetype`, `libxml2`, `libcurl`, `zlib`, `libxslt`, `readline`, `MagickWand`) are discoverable via `pkg-config --modversion …`, failing fast with remediation guidance when anything is missing/outdated.
+- `chauf install php` must verify `pkg-config` is available and that all required dev headers (`libzip`, `libjpeg`, `libpng`, `freetype`, `libxml2`, `libcurl`, `zlib`, `libxslt`, `readline`, `MagickWand`, `gmp`) are discoverable via `pkg-config --modversion …`, failing fast with remediation guidance when anything is missing/outdated.
 - PHP needs readline-style line editing for PsySH/Laravel Tinker parity, so every build must pass `--with-readline` (or `--with-libedit` if ever required) and ensure the dependency is documented for users.
 - Every PHP runtime must compile mysqlnd-based `mysqli` and `pdo_mysql` extensions so Laravel migrations and other PDO clients have a working driver immediately after installation.
+- Every PHP runtime must include `gmp` (for arbitrary-precision mathematics) and `bcmath` (for precision decimal math) extensions, which are compiled directly into PHP rather than as separate extensions.
 - `chauf install php` must build and enable the PECL `imagick` extension (requiring MagickWand/ImageMagick dev headers) so image-heavy apps work without follow-up steps. Drop `imagick.ini` into `etc/conf.d/` for each runtime.
 - Imagick builds should default to the latest stable release reported by PECL’s REST API while allowing overrides via `CHAUFFEUR_IMAGICK_VERSION`/`CHAUFFEUR_IMAGICK_TARBALL`. Fall back to the pinned default when the API is unreachable.
 - `chauf link` validates `--php` versions are installed before writing configs.
