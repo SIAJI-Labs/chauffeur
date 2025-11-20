@@ -34,6 +34,9 @@ Usage:
   chauf stop             Stop Chauffeur services with chauf- prefix.
   chauf restart          Restart Chauffeur services with chauf- prefix.
   chauf status           Show status of Chauffeur services.
+  chauf logs [service]   View and follow logs from Chauffeur services.
+  chauf clean [target]   Clean up workspace files and free up disk space.
+  chauf migrate <project> <workspace>  Migrate a project to a different workspace.
   chauf hello-world      Print a friendly greeting message.
   chauf link             Register current directory as a project.
   chauf links            List all registered projects.
@@ -128,6 +131,21 @@ func main() {
 		}
 	case "status":
 		if err := commands.RunStatus(args[1:]); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+	case "logs":
+		if err := commands.RunLogs(args[1:]); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+	case "clean":
+		if err := commands.RunClean(args[1:]); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+	case "migrate":
+		if err := commands.RunMigrate(args[1:]); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}

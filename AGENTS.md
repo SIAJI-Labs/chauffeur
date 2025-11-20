@@ -115,6 +115,8 @@ created_at: 2025-10-30T12:00:00+07:00
 | `chauf uninstall` | `--purge` | Remove workspace (and runtimes with `--purge`). |
 | `chauf self-update` | `--dev` | Update binary from git or rebuild from current repo. |
 | `chauf install composer` | — | Fetch verified composer PHAR and shims. |
+| `chauf logs [service] [version]` | `--follow`, `-f`, `--lines`, `-n`, `--level`, `--context`, `-c`, `--verbose`, `-v`, `--quiet`, `-q` | View and follow service logs with interactive version selection. |
+| `chauf clean [target]` | `--dry-run`, `--force`, `--older-than`, `--keep-versions`, `--what` | Clean workspace files with file size display and accurate reporting. |
 | `chauf info` | — | Show workspace paths, installed services, versions, port config. |
 
 ## 7. PHP & Composer Behavior
