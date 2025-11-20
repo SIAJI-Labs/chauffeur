@@ -37,20 +37,20 @@ export const HowItWorks: React.FC = () => {
   }, [activeTab]);
 
   return (
-    <section id="how-it-works" className="py-24 bg-background relative overflow-hidden border-t border-border">
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_bottom,_var(--tw-gradient-stops))] from-primary/10 via-transparent to-transparent pointer-events-none" />
+    <section id="how-it-works" className="py-24 bg-background relative overflow-hidden border-t border-slate-800/50">
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_bottom,_var(--tw-gradient-stops))] from-indigo-900/10 via-transparent to-transparent pointer-events-none" />
 
       <div className="container mx-auto px-4 md:px-6 relative z-10">
         {/* Header */}
         <div className="text-center max-w-3xl mx-auto mb-16">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-primary text-xs font-medium mb-4">
-            <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-xs font-medium mb-4">
+            <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
             System Architecture
           </div>
-          <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-6">
-            Linux Development, <span className="text-primary">Reimagined</span>
+          <h2 className="text-3xl md:text-4xl font-bold text-white mb-6">
+            Linux Development, <span className="text-indigo-400">Reimagined</span>
           </h2>
-          <p className="text-muted-foreground text-lg leading-relaxed">
+          <p className="text-slate-400 text-lg leading-relaxed">
             Built by developers who understand Linux architecture. Chauffeur combines the simplicity
             of Valet with the power of native Linux system design—without the pollution.
           </p>
@@ -65,12 +65,12 @@ export const HowItWorks: React.FC = () => {
               className={`
                 flex flex-col items-center justify-center p-4 rounded-xl border transition-all duration-300
                 ${activeTab === tab.id
-                  ? 'bg-card border-primary shadow-lg shadow-primary/10 scale-105'
-                  : 'bg-card/50 hover:bg-card hover:text-muted-foreground'}
+                  ? 'bg-surface border-indigo-500/50 shadow-lg shadow-indigo-500/10 scale-105'
+                  : 'bg-surface/50 border-slate-800 hover:border-slate-700 hover:bg-surface/80 text-slate-500'}
               `}
             >
-              <tab.icon className={`mb-2 ${activeTab === tab.id ? 'text-primary' : 'text-muted-foreground'}`} size={24} />
-              <span className={`text-sm font-medium ${activeTab === tab.id ? 'text-foreground' : 'text-muted-foreground'}`}>
+              <tab.icon className={`mb-2 ${activeTab === tab.id ? 'text-indigo-400' : 'text-slate-500'}`} size={24} />
+              <span className={`text-sm font-medium ${activeTab === tab.id ? 'text-white' : 'text-slate-500'}`}>
                 {tab.label}
               </span>
             </button>
@@ -78,10 +78,10 @@ export const HowItWorks: React.FC = () => {
         </div>
 
         {/* Visualization Area */}
-        <div className="max-w-5xl mx-auto bg-card border rounded-2xl overflow-hidden shadow-2xl min-h-[500px] flex flex-col md:flex-row">
+        <div className="max-w-5xl mx-auto bg-surface border border-slate-800 rounded-2xl overflow-hidden shadow-2xl min-h-[500px] flex flex-col md:flex-row">
 
           {/* Left: Explanation */}
-          <div className="w-full md:w-1/3 p-8 border-b md:border-b-0 md:border-r bg-muted/50">
+          <div className="w-full md:w-1/3 p-8 border-b md:border-b-0 md:border-r bg-slate-900/50">
             {activeTab === 'isolation' && (
               <div className="space-y-6 animate-fade-in">
                 <h3 className="text-xl font-bold text-white">Complete Isolation</h3>

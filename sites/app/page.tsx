@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Terminal } from '../components/Terminal';
 import { CommandExplorer } from '../components/CommandExplorer';
 import { HowItWorks } from '../components/HowItWorks';
+import { SystemImpactComparison } from '../components/SystemImpactComparison';
 import { Button } from '../components/ui/Button';
 import { FEATURES, HERO_TERMINAL_LINES } from '../constants';
 import { Github, Copy, ChevronRight, Terminal as TerminalIcon, Heart, AlertTriangle, Check } from 'lucide-react';
@@ -130,29 +131,27 @@ const LandingPage: React.FC = () => {
       </section>
 
       {/* Features Grid */}
-      <section id="features" className="py-20 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-4xl font-bold text-slate-900 dark:text-slate-50 mb-4">
+      <section id="features" className="py-24 bg-slate-900 border-y border-slate-800/50">
+        <div className="container mx-auto px-4 md:px-6">
+          <div className="text-center max-w-3xl mx-auto mb-16">
+            <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
               Why Developers Choose Chauffeur
             </h2>
-            <p className="text-xl text-slate-600 dark:text-slate-300 max-w-2xl mx-auto">
-              Built by developers, for developers. Experience the difference of a truly native PHP development environment.
+            <p className="text-slate-400 text-lg">
+              Native performance without the container complexity. Designed for modern PHP workflows.
             </p>
           </div>
 
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {FEATURES.map((feature, index) => (
-              <div key={index} className="group hover:shadow-xl transition-all duration-300 bg-white dark:bg-slate-800 rounded-xl p-6 border border-slate-200 dark:border-slate-700">
-                <div className="flex items-center gap-4 mb-4">
-                  <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center group-hover:bg-primary/20 transition-colors">
-                    <feature.icon className="w-6 h-6 text-primary" />
-                  </div>
-                  <h3 className="text-xl font-semibold text-slate-900 dark:text-slate-50">
-                    {feature.title}
-                  </h3>
+              <div key={index} className="bg-surface p-6 rounded-2xl border border-slate-800 hover:border-primary/30 transition-all hover:shadow-lg hover:shadow-primary/5 group">
+                <div className="w-12 h-12 bg-slate-900 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform border border-slate-800 group-hover:border-primary/30">
+                  <feature.icon className="text-emerald-400" size={24} />
                 </div>
-                <p className="text-slate-600 dark:text-slate-300 leading-relaxed">
+                <h3 className="text-xl font-semibold text-white mb-2">
+                  {feature.title}
+                </h3>
+                <p className="text-slate-400 leading-relaxed">
                   {feature.description}
                 </p>
               </div>
@@ -162,42 +161,37 @@ const LandingPage: React.FC = () => {
       </section>
 
       {/* How It Works */}
-      <section id="how-it-works" className="py-20 px-4 sm:px-6 lg:px-8 bg-slate-50 dark:bg-slate-900">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-4xl font-bold text-slate-900 dark:text-slate-50 mb-4">
-              How It Works
-            </h2>
-            <p className="text-xl text-slate-600 dark:text-slate-300 max-w-2xl mx-auto">
-              Get started in minutes, not hours.
-            </p>
-          </div>
+      <section id="how-it-works" className="py-24 bg-background relative overflow-hidden border-t border-slate-800/50">
+        <div className="container mx-auto px-4 md:px-6">
           <HowItWorks />
         </div>
       </section>
 
       {/* Command Explorer */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto">
+      <section className="py-20">
+        <div className="container mx-auto px-4 md:px-6">
           <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-4xl font-bold text-slate-900 dark:text-slate-50 mb-4">
-              Powerful Commands
+            <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
+              Master the CLI
             </h2>
-            <p className="text-xl text-slate-600 dark:text-slate-300 max-w-2xl mx-auto">
-              Intuitive CLI commands that just work.
+            <p className="text-xl text-slate-400 max-w-2xl mx-auto">
+              A clean, intuitive command-line interface designed for speed.
             </p>
           </div>
           <CommandExplorer />
         </div>
       </section>
 
+      {/* System Impact Comparison */}
+      <SystemImpactComparison />
+
       {/* CTA Section */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8 bg-primary">
+      <section className="py-20 px-4 sm:px-6 lg:px-8 bg-emerald-500">
         <div className="max-w-4xl mx-auto text-center">
-          <h2 className="text-3xl md:text-4xl font-bold text-primary-foreground mb-4">
+          <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
             Ready to Transform Your PHP Development?
           </h2>
-          <p className="text-xl text-primary-foreground/80 mb-8">
+          <p className="text-xl text-white/80 mb-8">
             Join developers who are already building amazing PHP applications with Chauffeur.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
@@ -208,14 +202,14 @@ const LandingPage: React.FC = () => {
               className="flex items-center gap-2"
             >
               <TerminalIcon size={20} />
-              {copied ? 'Copied!' : 'Get Started'}
+              {copied ? 'Copied!' : 'curl -sL chauffeur.dev/get | bash'}
               {copied ? <Check size={16} /> : <Copy size={16} />}
             </Button>
             <Link href="/docs" className="w-full sm:w-auto">
               <Button
                 size="lg"
                 variant="outline"
-                className="flex items-center gap-2 border-primary-foreground text-primary-foreground hover:bg-primary-foreground hover:text-primary"
+                className="flex items-center gap-2 border-white text-white hover:bg-white hover:text-emerald-500"
               >
                 Read the Docs
                 <ChevronRight size={16} />
@@ -229,22 +223,11 @@ const LandingPage: React.FC = () => {
       <footer className="bg-slate-900 dark:bg-slate-950 border-t border-slate-800 dark:border-slate-700">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-12">
           <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                <TerminalIcon size={16} className="text-primary-foreground" />
-              </div>
-              <span className="text-slate-100 font-semibold">Chauffeur</span>
+            <div className="text-sm text-slate-400">
+              © 2024 Chauffeur. Open Source (MIT).
             </div>
-            <div className="flex items-center gap-6 text-slate-400">
-              <a href="https://github.com/siaji/chauffeur" target="_blank" rel="noopener noreferrer" className="hover:text-slate-300 transition-colors">
-                GitHub
-              </a>
-              <Link href="/docs" className="hover:text-slate-300 transition-colors">
-                Documentation
-              </Link>
-              <span className="flex items-center gap-1">
-                Made with <Heart size={14} className="text-red-500 fill-red-500" /> for the Linux Community
-              </span>
+            <div className="flex items-center gap-1 text-sm text-slate-400">
+              Made with <Heart size={14} className="text-red-500 fill-red-500" /> for the Linux Community
             </div>
           </div>
         </div>

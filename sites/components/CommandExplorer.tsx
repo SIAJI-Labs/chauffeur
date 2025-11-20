@@ -6,7 +6,7 @@ export const CommandExplorer: React.FC = () => {
   const [activeIndex, setActiveIndex] = useState(0);
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 bg-surface rounded-2xl border border-slate-700 overflow-hidden shadow-xl">
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 bg-surface rounded-2xl border border-slate-800 overflow-hidden shadow-xl">
       {/* Sidebar */}
       <div className="lg:col-span-4 bg-slate-900/50 border-r border-slate-700 p-4 flex flex-col gap-2">
         <div className="pb-4 mb-2 border-b border-slate-700/50">
@@ -17,8 +17,8 @@ export const CommandExplorer: React.FC = () => {
             key={idx}
             onClick={() => setActiveIndex(idx)}
             className={`w-full text-left px-4 py-3 rounded-lg text-sm font-medium transition-all flex items-center justify-between group ${
-              activeIndex === idx 
-                ? 'bg-primary/10 text-primary border border-primary/20' 
+              activeIndex === idx
+                ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20'
                 : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
             }`}
           >
@@ -35,7 +35,7 @@ export const CommandExplorer: React.FC = () => {
              <TerminalIcon className="text-slate-500" size={18} />
              <span className="text-sm text-slate-500 font-mono">Command Preview</span>
           </div>
-          <div className="bg-slate-950 rounded-lg border border-slate-800 p-6 relative group overflow-x-auto scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
+          <div className="bg-slate-950 rounded-lg border border-slate-800 p-6 relative group overflow-x-auto scrollbar-thin">
             <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
                 <span className="text-xs text-slate-500 bg-slate-900 px-2 py-1 rounded">Click to copy</span>
             </div>
