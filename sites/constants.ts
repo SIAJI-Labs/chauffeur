@@ -87,6 +87,8 @@ export const DOCS_NAVIGATION = [
     items: [
       { title: "Project Linking", slug: "core/linking" },
       { title: "PHP Versions", slug: "core/php-versions" },
+      { title: "Nginx", slug: "core/nginx" },
+      { title: "Composer", slug: "core/composer" },
       { title: "SSL & Domains", slug: "core/ssl-domains" }
     ]
   },

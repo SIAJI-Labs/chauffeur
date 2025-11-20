@@ -132,6 +132,157 @@ export default function ArchitecturePage() {
           </ul>
         </section>
 
+        <section>
+          <h2 className="text-2xl font-bold text-white mb-4 group flex items-center gap-2" id="nginx-architecture">
+            Nginx Architecture
+            <Link href="#nginx-architecture" onClick={(e) => scrollToId(e, 'nginx-architecture')} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-primary cursor-pointer">#</Link>
+          </h2>
+          <p className="text-slate-400 mb-4">
+            Chauffeur manages its own Nginx installation with optimized configurations for local development.
+          </p>
+
+          <h3 className="text-xl font-bold text-white mb-2">Self-Contained Nginx</h3>
+          <ul className="list-disc list-inside text-slate-400 space-y-2">
+            <li><strong>Workspace isolation:</strong> Nginx binary and configurations reside under <code>~/.chauffeur/nginx/</code></li>
+            <li><strong>Non-conflicting service:</strong> Runs as <code>chauf-nginx</code> to avoid conflicts with system nginx</li>
+            <li><strong>Port forwarding:</strong> Default ports 8080 (HTTP) and 8443 (HTTPS) with optional system port forwarding</li>
+            <li><strong>Template-based configs:</strong> Nginx configurations generated from templates for each project</li>
+          </ul>
+
+          <h3 className="text-xl font-bold text-white mb-2 mt-4">Configuration Management</h3>
+          <ul className="list-disc list-inside text-slate-400 space-y-2">
+            <li><strong>sites-available/:</strong> Template configurations for each linked project</li>
+            <li><strong>sites-enabled/:</strong> Active configurations (symlinks to sites-available)</li>
+            <li><strong>Dynamic generation:</strong> Configurations auto-generated from project state</li>
+            <li><strong>SSL integration:</strong> Automatic SSL certificate configuration and reload</li>
+          </ul>
+
+          <h3 className="text-xl font-bold text-white mb-2 mt-4">Port Management</h3>
+          <CodeBlock code={`# Default workspace ports (no sudo required)
+HTTP:  8080  → Nginx serves sites
+HTTPS: 8443  → Nginx serves SSL sites
+
+# Optional system port forwarding (sudo required once)
+80  → 8080  (HTTP)
+443 → 8443  (HTTPS)
+
+# Dynamic port allocation for conflicts
+Range: 8080-8099
+Auto-assigns free port if 8080/8443 occupied`}/>
+
+          <div className="mt-6 p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+            <h4 className="font-semibold text-blue-300 mb-2">🌐 Nginx Benefits</h4>
+            <div className="text-sm text-blue-100/80">
+              <p>• <strong>Zero system impact:</strong> Won't interfere with existing web servers</p>
+              <p>• <strong>Consistent environment:</strong> Same Nginx version and modules across projects</p>
+              <p>• <strong>Easy configuration:</strong> Optimized templates for common frameworks</p>
+              <p>• <strong>SSL handling:</strong> Automatic certificate management and HTTPS redirection</p>
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <h2 className="text-2xl font-bold text-white mb-4 group flex items-center gap-2" id="composer-architecture">
+            Composer Architecture
+            <Link href="#composer-architecture" onClick={(e) => scrollToId(e, 'composer-architecture')} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-primary cursor-pointer">#</Link>
+          </h2>
+          <p className="text-slate-400 mb-4">
+            Chauffeur provides Composer with intelligent PHP version isolation and workspace integration.
+          </p>
+
+          <h3 className="text-xl font-bold text-white mb-2">Version-Isolated Composer</h3>
+          <ul className="list-disc list-inside text-slate-400 space-y-2">
+            <li><strong>Project-aware Composer:</strong> Automatically uses the project's configured PHP version</li>
+            <li><strong>Global availability:</strong> Composer command available system-wide via PATH shims</li>
+            <li><strong>Version switching:</strong> Composer respects per-project PHP version settings</li>
+            <li><strong>Workspace isolation:</strong> Composer installation and cache managed within workspace</li>
+          </ul>
+
+          <h3 className="text-xl font-bold text-white mb-2 mt-4">PHP Version Integration</h3>
+          <CodeBlock code={`# Project with PHP 8.3
+$ composer install
+→ Uses PHP 8.3 runtime from ~/.chauffeur/php/8.3/
+
+# Project with PHP 8.1
+$ composer update
+→ Uses PHP 8.1 runtime from ~/.chauffeur/php/8.1/
+
+# Global default PHP 8.2
+$ composer global require laravel/installer
+→ Uses ~/.chauffeur/php/8.2/ as configured globally`}/>
+
+          <h3 className="text-xl font-bold text-white mb-2 mt-4">Cache and Configuration</h3>
+          <ul className="list-disc list-inside text-slate-400 space-y-2">
+            <li><strong>Workspace cache:</strong> Composer cache isolated under <code>~/.chauffeur/composer/</code></li>
+            <li><strong>Global packages:</strong> Composer global packages managed with workspace PHP version</li>
+            <li><strong>Authentication:</strong> Composer authentication tokens stored in workspace config</li>
+            <li><strong>Performance:</strong> Intelligent caching across projects with same PHP version</li>
+          </ul>
+
+          <h3 className="text-xl font-bold text-white mb-2 mt-4">Shims and PATH Integration</h3>
+          <CodeBlock code={`# PATH shim locations
+~/.chauffeur/bin/composer      # Main Composer shim
+~/.chauffeur/bin/php           # PHP version shim
+~/.chauffeur/bin/php-8.3      # Version-specific shim
+~/.chauffeur/bin/composer-8.3 # PHP 8.3 Composer shim`}/>
+
+          <div className="mt-6 p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
+            <h4 className="font-semibold text-emerald-300 mb-2">🎼 Composer Advantages</h4>
+            <div className="text-sm text-emerald-100/80">
+              <p>• <strong>No PHP conflicts:</strong> Each project uses correct PHP version automatically</p>
+              <p>• <strong>Dependency isolation:</strong> Composer cache isolated from system PHP</p>
+              <p>• <strong>Seamless workflow:</strong> Standard Composer commands work as expected</p>
+              <p>• <strong>Global packages:</strong> Composer global available with workspace isolation</p>
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <h2 className="text-2xl font-bold text-white mb-4 group flex items-center gap-2" id="service-management">
+            Service Management & Lifecycle
+            <Link href="#service-management" onClick={(e) => scrollToId(e, 'service-management')} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-primary cursor-pointer">#</Link>
+          </h2>
+          <p className="text-slate-400 mb-4">
+            Chauffeur manages services with systemd-style naming and comprehensive lifecycle operations.
+          </p>
+
+          <h3 className="text-xl font-bold text-white mb-2">Service Naming Convention</h3>
+          <CodeBlock code={`# Global services
+chauf-nginx              # Main web server
+chauf-dnsmasq           # DNS resolution (if enabled)
+
+# Project-specific services
+chauf-php-fpm-myapp     # PHP-FPM for myapp project
+chauf-php-fpm-blog     # PHP-FPM for blog project`}/>
+
+          <h3 className="text-xl font-bold text-white mb-2 mt-4">Service Operations</h3>
+          <ul className="list-disc list-inside text-slate-400 space-y-2">
+            <li><strong>Start services:</strong> <code>chauf start</code> launches required services for all projects</li>
+            <li><strong>Stop services:</strong> <code>chauf stop</code> gracefully shuts down services</li>
+            <li><strong>Restart services:</strong> <code>chauf restart</code> stops and starts services</li>
+            <li><strong>Service status:</strong> <code>chauf status</code> shows running state and configuration</li>
+            <li><strong>Log access:</strong> <code>chauf logs</code> provides access to service logs</li>
+          </ul>
+
+          <h3 className="text-xl font-bold text-white mb-2 mt-4">System Integration</h3>
+          <ul className="list-disc list-inside text-slate-400 space-y-2">
+            <li><strong>Optional systemd:</strong> Services can be registered with systemd for auto-start</li>
+            <li><strong>Port forwarding:</strong> iptables rules for privileged port access (80/443)</li>
+            <li><strong>DNS integration:</strong> Optional dnsmasq configuration for .test domains</li>
+            <li><strong>SSL certificates:</strong> Integration with system trust stores for mkcert</li>
+          </ul>
+
+          <div className="mt-6 p-4 bg-purple-500/10 border border-purple-500/20 rounded-lg">
+            <h4 className="font-semibold text-purple-300 mb-2">⚙️ Service Design Philosophy</h4>
+            <div className="text-sm text-purple-100/80">
+              <p>• <strong>Non-intrusive:</strong> Services don't conflict with system packages</p>
+              <p>• <strong>Self-contained:</strong> All dependencies managed within workspace</p>
+              <p>• <strong>Portable:</strong> Workspace can be moved between systems</p>
+              <p>• <strong>Observable:</strong> Comprehensive logging and status monitoring</p>
+            </div>
+          </div>
+        </section>
+
         {/* Page Footer Navigation */}
         <div className="mt-16 pt-8 border-t border-slate-800 flex justify-between">
            <div className="text-left">

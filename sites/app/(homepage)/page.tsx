@@ -78,11 +78,15 @@ const LandingPage: React.FC = () => {
             <Link href="/docs" className="hover:text-white transition-colors">Documentation</Link>
           </div>
           <div className="flex items-center gap-3">
-            <Button variant="ghost" size="sm" className="hidden sm:flex gap-2">
-              <Github size={18} />
-              <span className="hidden lg:inline">Star on GitHub</span>
-            </Button>
-            <Button size="sm" className="bg-slate-100 text-slate-900 hover:bg-white">Download</Button>
+            <Link href="https://github.com/SIAJI-Labs/chauffeur" target="_blank" rel="noopener noreferrer">
+              <Button variant="ghost" size="sm" className="hidden sm:flex gap-2 hover:bg-slate-800 transition-colors">
+                <Github size={18} />
+                <span className="hidden lg:inline">Star on GitHub</span>
+              </Button>
+            </Link>
+            <Link href="https://github.com/SIAJI-Labs/chauffeur/releases" target="_blank" rel="noopener noreferrer">
+              <Button size="sm" className="bg-slate-100 text-slate-900 hover:bg-white">Download</Button>
+            </Link>
           </div>
         </div>
       </nav>
@@ -243,8 +247,19 @@ const LandingPage: React.FC = () => {
             <div className="text-sm text-slate-400">
               © 2024 Chauffeur. Open Source (MIT).
             </div>
-            <div className="flex items-center gap-1 text-sm text-slate-400">
-              Made with <Heart size={14} className="text-red-500 fill-red-500" /> for the Linux Community
+            <div className="flex items-center gap-4 text-sm text-slate-400">
+              <Link
+                href="https://github.com/SIAJI-Labs/chauffeur"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1 hover:text-white transition-colors"
+              >
+                <Github size={14} />
+                <span>GitHub</span>
+              </Link>
+              <span className="flex items-center gap-1">
+                Made with <Heart size={14} className="text-red-500 fill-red-500" /> for the Linux Community
+              </span>
             </div>
           </div>
         </div>

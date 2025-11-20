@@ -45,13 +45,65 @@ export default function FirstProjectPage() {
         <div>
           <h1 className="text-4xl font-bold text-white mb-4">Your First Project</h1>
           <p className="text-lg text-slate-400 leading-relaxed">
-            Let's get a simple PHP project running with SSL and a custom domain in under a minute.
+            Let's get Chauffeur set up and running a simple PHP project with SSL and a custom domain in just a few minutes.
           </p>
         </div>
 
         <section>
+          <h2 className="text-2xl font-bold text-white mb-4 group flex items-center gap-2" id="install-services">
+            1. Install Services
+            <Link href="#install-services" onClick={(e) => scrollToId(e, 'install-services')} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-primary cursor-pointer">#</Link>
+          </h2>
+          <p className="text-slate-400 mb-4">Install the core Chauffeur services needed to run your projects. This is a one-time setup.</p>
+
+          <h3 className="text-xl font-semibold text-slate-200 mb-3">Install Core Services</h3>
+          <CodeBlock code={`$ chauf install
+
+🔧 Installing Chauffeur services...
+📦 Installing nginx...
+✓ nginx installed successfully
+📦 Installing PHP 8.3...
+✓ PHP 8.3 installed successfully
+📦 Installing composer...
+✓ composer installed successfully
+
+🎉 All services installed successfully!`} />
+
+          <h3 className="text-xl font-semibold text-slate-200 mb-3 mt-6">Install Specific PHP Version</h3>
+          <p className="text-slate-400 mb-4">You can also install specific PHP versions if needed:</p>
+          <CodeBlock code={`$ chauf install php 8.2
+
+📦 Installing PHP 8.2...
+✓ PHP 8.2 installed successfully
+📦 Setting as global version...
+✓ PHP 8.2 set as global default`} />
+
+          <div className="mt-6 p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+            <h4 className="font-semibold text-blue-300 mb-2">📋 What Gets Installed</h4>
+            <div className="text-sm text-blue-100/80 space-y-1">
+              <p>• <strong>nginx:</strong> Web server for serving your sites</p>
+              <p>• <strong>PHP 8.3:</strong> Default PHP runtime (latest stable)</p>
+              <p>• <strong>composer:</strong> PHP dependency manager</p>
+              <p>• <strong>dnsmasq:</strong> DNS resolution for .test domains</p>
+            </div>
+          </div>
+
+          <div className="mt-4 p-4 bg-amber-500/10 border border-amber-500/20 rounded-lg">
+            <h4 className="font-semibold text-amber-300 mb-2">⚡ Installation Options</h4>
+            <div className="text-sm text-amber-100/80">
+              <p>Use <code className="bg-slate-800 px-2 py-1 rounded text-amber-300">chauf install --help</code> to see all available options:</p>
+              <ul className="mt-2 space-y-1">
+                <li>• <code>--force</code>: Reinstall if already installed</li>
+                <li>• <code>--local</code>: Use local packages instead of downloading</li>
+                <li>• <code>--no-cache</code>: Skip package cache for fresh install</li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        <section>
           <h2 className="text-2xl font-bold text-white mb-4 group flex items-center gap-2" id="create-project">
-            1. Create a Project
+            2. Create a Project
             <Link href="#create-project" onClick={(e) => scrollToId(e, 'create-project')} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-primary cursor-pointer">#</Link>
           </h2>
           <p className="text-slate-400 mb-4">Create a directory for your new project and add an index.php file.</p>
@@ -60,7 +112,7 @@ export default function FirstProjectPage() {
 
         <section>
           <h2 className="text-2xl font-bold text-white mb-4 group flex items-center gap-2" id="link-project">
-            2. Link the Project
+            3. Link the Project
             <Link href="#link-project" onClick={(e) => scrollToId(e, 'link-project')} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-primary cursor-pointer">#</Link>
           </h2>
           <p className="text-slate-400 mb-4">Run the link command to tell Chauffeur to serve this directory.</p>
@@ -72,13 +124,78 @@ export default function FirstProjectPage() {
 
         <section>
           <h2 className="text-2xl font-bold text-white mb-4 group flex items-center gap-2" id="add-ssl">
-            3. Add SSL
+            4. Add SSL
             <Link href="#add-ssl" onClick={(e) => scrollToId(e, 'add-ssl')} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-primary cursor-pointer">#</Link>
           </h2>
-          <p className="text-slate-400 mb-4">Secure your local site with a trusted certificate.</p>
-          <CodeBlock code="chauf secure" />
+          <p className="text-slate-400 mb-4">Secure your local site with SSL certificate.</p>
+          <CodeBlock code="chauf link --ssl" />
           <p className="text-slate-400">
             Now visit <Link href="#" onClick={(e) => e.preventDefault()} className="text-primary hover:underline">https://my-website.test</Link> in your browser.
+          </p>
+
+          <div className="mt-6 p-4 bg-amber-500/10 border border-amber-500/20 rounded-lg">
+            <h4 className="font-semibold text-amber-300 mb-2">🔐 SSL Certificate Options</h4>
+            <div className="text-sm text-amber-100/80 space-y-2">
+              <p>
+                <strong>Option 1 - Self-signed (default):</strong> Automatic without sudo.
+                Browser shows "Not Secure" warning but connection is encrypted.
+              </p>
+              <p>
+                <strong>Option 2 - Trusted certificates:</strong> Install mkcert for browser-trusted certificates.
+              </p>
+              <div className="bg-slate-900/50 p-3 rounded mt-2">
+                <code className="text-amber-300"># Install mkcert for trusted certificates</code><br/>
+                <code>go install -r filippo.io/mkcert@latest</code><br/>
+                <code>mkcert -install  # Prompts for sudo password once</code><br/>
+                <code># Then relink your project with SSL</code><br/>
+                <code>chauf link --ssl --force</code>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <h2 className="text-2xl font-bold text-white mb-4 group flex items-center gap-2" id="start-services">
+            5. Start Services
+            <Link href="#start-services" onClick={(e) => scrollToId(e, 'start-services')} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-primary cursor-pointer">#</Link>
+          </h2>
+          <p className="text-slate-400 mb-4">Start Chauffeur services to serve your project. This needs to be done once after installation or system restart.</p>
+          <CodeBlock code={`chauf start
+
+🚀 Starting Chauffeur services...
+✓ dnsmasq started (DNS resolution enabled)
+✓ nginx started (port 80, 443)
+✓ PHP FPM pool started
+
+🌐 All services running successfully!`} />
+
+          <div className="mt-6 p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+            <h4 className="font-semibold text-blue-300 mb-2">💡 Service Status</h4>
+            <p className="text-sm text-blue-100/80">
+              You can check if services are running with <code className="bg-slate-800 px-2 py-1 rounded text-blue-300">chauf status</code>.
+              Services will automatically start on system boot after the first installation.
+            </p>
+          </div>
+
+          <div className="mt-4 p-4 bg-amber-500/10 border border-amber-500/20 rounded-lg">
+            <h4 className="font-semibold text-amber-300 mb-2">⚠️ First Time Setup</h4>
+            <p className="text-sm text-amber-100/80">
+              If this is your first time using Chauffeur, you may need to install PHP first:
+              <code className="bg-slate-800 px-2 py-1 rounded text-amber-300">chauf php install 8.3</code>
+            </p>
+          </div>
+        </section>
+
+        <section>
+          <h2 className="text-2xl font-bold text-white mb-4 group flex items-center gap-2" id="visit-site">
+            6. Visit Your Site
+            <Link href="#visit-site" onClick={(e) => scrollToId(e, 'visit-site')} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-primary cursor-pointer">#</Link>
+          </h2>
+          <p className="text-slate-400 mb-4">Open your browser and visit your new site with SSL:</p>
+          <CodeBlock code="🌐 https://my-website.test" />
+
+          <p className="text-slate-400 mt-4">
+            You should see the PHP info page, indicating your site is working perfectly with HTTPS!
           </p>
         </section>
 

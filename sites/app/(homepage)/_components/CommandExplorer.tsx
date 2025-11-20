@@ -4,8 +4,13 @@ import React, { useState } from 'react';
 // Third-party libraries
 import {
   ChevronRight,
-  Terminal as TerminalIcon
+  Terminal as TerminalIcon,
+  ArrowRight,
+  BookOpen
 } from 'lucide-react';
+
+// Next.js
+import Link from 'next/link';
 
 // Constants
 import { COMMAND_EXAMPLES } from '@/constants';
@@ -34,6 +39,18 @@ export const CommandExplorer: React.FC = () => {
             {activeIndex === idx && <ChevronRight size={16} />}
           </button>
         ))}
+
+        {/* More Commands Button */}
+        <div className="mt-auto pt-4 border-t border-slate-700/50">
+          <Link
+            href="/docs/reference/commands"
+            className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-primary hover:bg-primary-hover text-white rounded-lg transition-colors group"
+          >
+            <BookOpen size={16} />
+            <span className="text-sm font-medium">More Commands</span>
+            <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
+          </Link>
+        </div>
       </div>
 
       {/* Main Display */}

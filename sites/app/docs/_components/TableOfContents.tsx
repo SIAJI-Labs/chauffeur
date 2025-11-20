@@ -16,8 +16,12 @@ export const TableOfContents: React.FC = () => {
   const [activeId, setActiveId] = useState<string>('');
 
   useEffect(() => {
-    // Find all H2 and H3 elements in the document
-    const elements = Array.from(document.querySelectorAll('h2, h3'));
+    // Find the main content area (the prose div)
+    const contentElement = document.querySelector('.prose.prose-invert');
+    if (!contentElement) return;
+
+    // Find all H2 and H3 elements only within the main content area
+    const elements = Array.from(contentElement.querySelectorAll('h2, h3'));
     const items = elements.map((elem, index) => {
       // Handle empty IDs by creating a unique one
       let id = elem.id;
