@@ -1,9 +1,17 @@
 "use client";
 
+// React & Next.js
 import React, { useEffect } from 'react';
 import Link from 'next/link';
-import { ChevronRight, Terminal as TerminalIcon } from 'lucide-react';
-import { TableOfContents } from '@/components/docs/TableOfContents';
+
+// Third-party libraries
+import {
+  ChevronRight,
+  Terminal as TerminalIcon
+} from 'lucide-react';
+
+// Page-specific components
+import { TableOfContents } from '@/app/docs/_components/TableOfContents';
 
 export default function DocsHomePage() {
   useEffect(() => {
@@ -46,7 +54,7 @@ export default function DocsHomePage() {
            </div>
         </div>
 
-        <section id="getting-started">
+        <section>
           <h2 className="text-2xl font-bold text-white mb-4 group flex items-center gap-2" id="getting-started">
             Getting Started
             <Link href="#getting-started" onClick={(e) => scrollToId(e, 'getting-started')} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-primary cursor-pointer">#</Link>
@@ -71,7 +79,7 @@ export default function DocsHomePage() {
           </ul>
         </section>
 
-        <section id="reference">
+        <section>
           <h2 className="text-2xl font-bold text-white mb-4 group flex items-center gap-2" id="reference">
             Reference
             <Link href="#reference" onClick={(e) => scrollToId(e, 'reference')} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-primary cursor-pointer">#</Link>

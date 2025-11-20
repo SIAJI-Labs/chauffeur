@@ -1,5 +1,6 @@
 "use client";
 
+// React & Next.js
 import React, { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 
@@ -17,12 +18,26 @@ export const TableOfContents: React.FC = () => {
   useEffect(() => {
     // Find all H2 and H3 elements in the document
     const elements = Array.from(document.querySelectorAll('h2, h3'));
-    const items = elements.map((elem) => ({
-      id: elem.id,
-      text: elem.textContent?.replace('#', '').trim() || '', // Remove the anchor symbol text if present
-      level: Number(elem.tagName.charAt(1)),
-    }));
-    setHeadings(items);
+    const items = elements.map((elem, index) => {
+      // Handle empty IDs by creating a unique one
+      let id = elem.id;
+      if (!id) {
+        id = `heading-${index}-${elem.textContent?.slice(0, 20).replace(/\s+/g, '-').toLowerCase() || 'unknown'}`;
+        elem.id = id; // Set the ID on the element for future reference
+      }
+      return {
+        id,
+        text: elem.textContent?.replace('#', '').trim() || '', // Remove the anchor symbol text if present
+        level: Number(elem.tagName.charAt(1)),
+      };
+    });
+
+    // Remove duplicates by keeping only the first occurrence of each ID
+    const uniqueItems = items.filter((item, index, self) =>
+      index === self.findIndex((t) => t.id === item.id)
+    );
+
+    setHeadings(uniqueItems);
 
     const observer = new IntersectionObserver(
       (entries) => {
@@ -35,7 +50,12 @@ export const TableOfContents: React.FC = () => {
       { rootMargin: '-100px 0px -66% 0px' }
     );
 
-    elements.forEach((elem) => observer.observe(elem));
+    // Only observe elements that have unique IDs
+    uniqueItems.forEach((item) => {
+      const elem = document.getElementById(item.id);
+      if (elem) observer.observe(elem);
+    });
+
     return () => observer.disconnect();
   }, [pathname]); // Re-run when path changes (not just hash)
 
@@ -59,15 +79,15 @@ export const TableOfContents: React.FC = () => {
       <nav className="relative">
         <div className="absolute left-0 top-0 bottom-0 w-px bg-slate-800" />
         <ul className="space-y-3 text-sm">
-          {headings.map((heading) => (
-            <li key={heading.id} className={`pl-4 border-l-2 transition-colors ${
-              activeId === heading.id 
-                ? 'border-emerald-500 text-emerald-400' 
+          {headings.map((heading, index) => (
+            <li key={heading.id || `toc-item-${index}`} className={`pl-4 border-l-2 transition-colors ${
+              activeId === heading.id
+                ? 'border-emerald-500 text-emerald-400'
                 : 'border-transparent text-slate-500 hover:text-slate-300'
             }`}>
-              <a 
-                href={`#${heading.id}`} 
-                onClick={(e) => handleClick(e, heading.id)}
+              <a
+                href={`#${heading.id || `toc-item-${index}`}`}
+                onClick={(e) => handleClick(e, heading.id || `toc-item-${index}`)}
                 className="block truncate"
                 style={{ paddingLeft: heading.level === 3 ? '12px' : '0px' }}
               >

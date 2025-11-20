@@ -1,10 +1,18 @@
 "use client";
 
+// React & Next.js
 import React, { useEffect } from 'react';
 import Link from 'next/link';
-import { ChevronRight, AlertTriangle } from 'lucide-react';
-import { TableOfContents } from '@/components/docs/TableOfContents';
-import { CodeBlock } from '@/components/docs/CodeBlock';
+
+// Third-party libraries
+import {
+  ChevronRight,
+  AlertTriangle
+} from 'lucide-react';
+
+// Page-specific components
+import { TableOfContents } from '@/app/docs/_components/TableOfContents';
+import { CodeBlock } from '@/app/docs/_components/CodeBlock';
 
 export default function InstallationPage() {
   const currentSlug = 'getting-started/installation';
@@ -51,7 +59,7 @@ export default function InstallationPage() {
            </div>
         </div>
 
-        <section id="quick-install">
+        <section>
           <h2 className="text-2xl font-bold text-white mb-4 group flex items-center gap-2" id="quick-install">
             Quick Install
             <Link href="#quick-install" onClick={(e) => scrollToId(e, 'quick-install')} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-primary cursor-pointer">#</Link>
@@ -61,7 +69,7 @@ export default function InstallationPage() {
           <p className="text-slate-400 mt-4">Once completed, the installer will ask you to restart your session to add the binary to your path.</p>
         </section>
 
-        <section id="manual-install">
+        <section>
           <h2 className="text-2xl font-bold text-white mb-4 group flex items-center gap-2" id="manual-install">
             Manual Installation (Arch Linux)
             <Link href="#manual-install" onClick={(e) => scrollToId(e, 'manual-install')} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-primary cursor-pointer">#</Link>
@@ -70,7 +78,7 @@ export default function InstallationPage() {
           <CodeBlock code="yay -S chauffeur-bin" />
         </section>
 
-        <section id="verify">
+        <section>
           <h2 className="text-2xl font-bold text-white mb-4 group flex items-center gap-2" id="verify">
             Verification
             <Link href="#verify" onClick={(e) => scrollToId(e, 'verify')} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-primary cursor-pointer">#</Link>

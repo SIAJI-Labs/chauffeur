@@ -1,14 +1,17 @@
+// React
 import React, { useState, useEffect } from 'react';
-import { 
-  FolderTree, 
-  Shield, 
-  Cpu, 
-  Network, 
-  Lock, 
-  FileJson, 
-  CheckCircle2, 
-  XCircle, 
-  Server, 
+
+// Third-party libraries
+import {
+  FolderTree,
+  Shield,
+  Cpu,
+  Network,
+  Lock,
+  FileJson,
+  CheckCircle2,
+  XCircle,
+  Server,
   ArrowRight,
   AlertTriangle
 } from 'lucide-react';

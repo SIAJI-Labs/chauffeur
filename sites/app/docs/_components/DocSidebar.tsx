@@ -1,10 +1,18 @@
 "use client";
 
+// React & Next.js
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { ChevronRight, Search } from 'lucide-react';
-import { DOCS_NAVIGATION } from '../../constants';
+
+// Third-party libraries
+import {
+  ChevronRight,
+  Search
+} from 'lucide-react';
+
+// Constants
+import { DOCS_NAVIGATION } from '@/constants';
 
 interface DocSidebarProps {
   isOpen: boolean;

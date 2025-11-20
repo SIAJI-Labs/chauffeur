@@ -1,10 +1,15 @@
 "use client";
 
+// React & Next.js
 import React, { useEffect } from 'react';
 import Link from 'next/link';
+
+// Third-party libraries
 import { ChevronRight } from 'lucide-react';
-import { TableOfContents } from '@/components/docs/TableOfContents';
-import { CodeBlock } from '@/components/docs/CodeBlock';
+
+// Page-specific components
+import { TableOfContents } from '@/app/docs/_components/TableOfContents';
+import { CodeBlock } from '@/app/docs/_components/CodeBlock';
 
 export default function ArchitecturePage() {
   const currentSlug = 'getting-started/architecture';
@@ -44,7 +49,7 @@ export default function ArchitecturePage() {
           </p>
         </div>
 
-        <section id="core-principles">
+        <section>
           <h2 className="text-2xl font-bold text-white mb-4 group flex items-center gap-2" id="core-principles">
             Core Principles
             <Link href="#core-principles" onClick={(e) => scrollToId(e, 'core-principles')} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-primary cursor-pointer">#</Link>
@@ -64,7 +69,7 @@ export default function ArchitecturePage() {
           </ul>
         </section>
 
-        <section id="workspace-layout">
+        <section>
           <h2 className="text-2xl font-bold text-white mb-4 group flex items-center gap-2" id="workspace-layout">
             Workspace Layout & Config Contracts
             <Link href="#workspace-layout" onClick={(e) => scrollToId(e, 'workspace-layout')} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-primary cursor-pointer">#</Link>
@@ -79,7 +84,7 @@ export default function ArchitecturePage() {
           <CodeBlock code={`version: 1\npath: /absolute/path/to/project\nphp: 8.3\nsite:\n  domain: slug.test\n  ssl: false\ndomains:\n  aliases:\n    - domain: admin.test\n      ssl: true\n    - domain: api.test\n      ssl: false\nruntime:\n  php_fpm_socket: ~/.chauffeur/projects/<slug>/runtime/php-fpm/php-fpm.sock\ncreated_at: 2025-10-30T12:00:00+07:00`}/>
         </section>
 
-        <section id="php-fpm-architecture">
+        <section>
           <h2 className="text-2xl font-bold text-white mb-4 group flex items-center gap-2" id="php-fpm-architecture">
             PHP-FPM Architecture
             <Link href="#php-fpm-architecture" onClick={(e) => scrollToId(e, 'php-fpm-architecture')} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-primary cursor-pointer">#</Link>
@@ -104,7 +109,7 @@ export default function ArchitecturePage() {
           </p>
         </section>
 
-        <section id="multi-domain-architecture">
+        <section>
           <h2 className="text-2xl font-bold text-white mb-4 group flex items-center gap-2" id="multi-domain-architecture">
             Multi-Domain Architecture
             <Link href="#multi-domain-architecture" onClick={(e) => scrollToId(e, 'multi-domain-architecture')} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-primary cursor-pointer">#</Link>

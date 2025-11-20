@@ -1,10 +1,22 @@
 "use client";
 
+// React & Next.js
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { Terminal as TerminalIcon, Menu, X, Github } from 'lucide-react';
-import { DocSidebar } from '@/components/docs/DocSidebar';
+
+// Third-party libraries
+import {
+  Terminal as TerminalIcon,
+  Menu,
+  X,
+  Github
+} from 'lucide-react';
+
+// Internal components
 import { Button } from '@/components/ui/Button';
+
+// Page-specific components
+import { DocSidebar } from '@/app/docs/_components/DocSidebar';
 
 export default function DocsLayout({
   children,
@@ -47,8 +59,8 @@ export default function DocsLayout({
         <DocSidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
         {/* Main Content Area */}
-        <main className="flex-1 min-w-0 lg:pl-[280px] xl:pr-[280px]">
-          <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+        <main className="flex-1 min-w-0 lg:pl-[280px]">
+          <div className="mx-auto px-4 sm:px-6 lg:px-8 py-10">
             {children}
           </div>
         </main>

@@ -1,10 +1,15 @@
 "use client";
 
+// React & Next.js
 import React, { useEffect } from 'react';
 import Link from 'next/link';
+
+// Third-party libraries
 import { ChevronRight } from 'lucide-react';
-import { TableOfContents } from '@/components/docs/TableOfContents';
-import { CodeBlock } from '@/components/docs/CodeBlock';
+
+// Page-specific components
+import { TableOfContents } from '@/app/docs/_components/TableOfContents';
+import { CodeBlock } from '@/app/docs/_components/CodeBlock';
 
 export default function CommandsPage() {
   const currentSlug = 'reference/commands';
@@ -46,7 +51,7 @@ export default function CommandsPage() {
           </p>
         </div>
 
-        <section id="link">
+        <section>
           <h2 className="text-2xl font-bold text-white mb-4 font-mono group flex items-center gap-2" id="link">
             chauf link
             <Link href="#link" onClick={(e) => scrollToId(e, 'link')} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-primary cursor-pointer">#</Link>
@@ -87,7 +92,7 @@ export default function CommandsPage() {
           </div>
         </section>
 
-        <section id="isolate">
+        <section>
           <h2 className="text-2xl font-bold text-white mb-4 font-mono mt-12 group flex items-center gap-2" id="isolate">
             chauf isolate
             <Link href="#isolate" onClick={(e) => scrollToId(e, 'isolate')} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-primary cursor-pointer">#</Link>
@@ -96,7 +101,7 @@ export default function CommandsPage() {
           <CodeBlock code="chauf isolate 7.4" />
         </section>
 
-        <section id="secure">
+        <section>
           <h2 className="text-2xl font-bold text-white mb-4 font-mono mt-12 group flex items-center gap-2" id="secure">
             chauf secure
             <Link href="#secure" onClick={(e) => scrollToId(e, 'secure')} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-primary cursor-pointer">#</Link>
@@ -105,7 +110,7 @@ export default function CommandsPage() {
           <CodeBlock code="chauf secure [site-name]" />
         </section>
 
-        <section id="use">
+        <section>
           <h2 className="text-2xl font-bold text-white mb-4 font-mono mt-12 group flex items-center gap-2" id="use">
             chauf use
             <Link href="#use" onClick={(e) => scrollToId(e, 'use')} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-primary cursor-pointer">#</Link>
@@ -114,7 +119,7 @@ export default function CommandsPage() {
           <CodeBlock code="chauf use 8.2" />
         </section>
 
-        <section id="start">
+        <section>
           <h2 className="text-2xl font-bold text-white mb-4 font-mono mt-12 group flex items-center gap-2" id="start">
             chauf start
             <Link href="#start" onClick={(e) => scrollToId(e, 'start')} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-primary cursor-pointer">#</Link>
@@ -148,7 +153,7 @@ export default function CommandsPage() {
           </div>
         </section>
 
-        <section id="stop">
+        <section>
           <h2 className="text-2xl font-bold text-white mb-4 font-mono mt-12 group flex items-center gap-2" id="stop">
             chauf stop
             <Link href="#stop" onClick={(e) => scrollToId(e, 'stop')} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-primary cursor-pointer">#</Link>
@@ -157,7 +162,7 @@ export default function CommandsPage() {
           <CodeBlock code="chauf stop [--project <path>] [--all] [--dry-run]" />
         </section>
 
-        <section id="restart">
+        <section>
           <h2 className="text-2xl font-bold text-white mb-4 font-mono mt-12 group flex items-center gap-2" id="restart">
             chauf restart
             <Link href="#restart" onClick={(e) => scrollToId(e, 'restart')} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-primary cursor-pointer">#</Link>
@@ -166,7 +171,7 @@ export default function CommandsPage() {
           <CodeBlock code="chauf restart [--project <slug>] [--all] [--dry-run]" />
         </section>
 
-        <section id="status">
+        <section>
           <h2 className="text-2xl font-bold text-white mb-4 font-mono mt-12 group flex items-center gap-2" id="status">
             chauf status
             <Link href="#status" onClick={(e) => scrollToId(e, 'status')} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-primary cursor-pointer">#</Link>
@@ -175,7 +180,7 @@ export default function CommandsPage() {
           <CodeBlock code="chauf status [service-type] [--project] [--detail] [-v]" />
         </section>
 
-        <section id="unlink">
+        <section>
           <h2 className="text-2xl font-bold text-white mb-4 font-mono mt-12 group flex items-center gap-2" id="unlink">
             chauf unlink
             <Link href="#unlink" onClick={(e) => scrollToId(e, 'unlink')} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-primary cursor-pointer">#</Link>
@@ -184,7 +189,7 @@ export default function CommandsPage() {
           <CodeBlock code="chauf unlink [--slug] [--site] [--project] [--alias] [--all] [--force]" />
         </section>
 
-        <section id="php-install">
+        <section>
           <h2 className="text-2xl font-bold text-white mb-4 font-mono mt-12 group flex items-center gap-2" id="php-install">
             chauf php install
             <Link href="#php-install" onClick={(e) => scrollToId(e, 'php-install')} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-primary cursor-pointer">#</Link>
@@ -193,7 +198,7 @@ export default function CommandsPage() {
           <CodeBlock code="chauf php install <version> [--force] [--no-ext] [--from <source>]" />
         </section>
 
-        <section id="logs">
+        <section>
           <h2 className="text-2xl font-bold text-white mb-4 font-mono mt-12 group flex items-center gap-2" id="logs">
             chauf logs
             <Link href="#logs" onClick={(e) => scrollToId(e, 'logs')} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-primary cursor-pointer">#</Link>
@@ -202,7 +207,7 @@ export default function CommandsPage() {
           <CodeBlock code="chauf logs [service] [version] [--follow] [-f] [--lines] [-n] [--level] [--context] [-c]" />
         </section>
 
-        <section id="clean">
+        <section>
           <h2 className="text-2xl font-bold text-white mb-4 font-mono mt-12 group flex items-center gap-2" id="clean">
             chauf clean
             <Link href="#clean" onClick={(e) => scrollToId(e, 'clean')} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-primary cursor-pointer">#</Link>

@@ -1,5 +1,12 @@
+// React
 import React, { useState } from 'react';
-import { Check, Copy, Terminal } from 'lucide-react';
+
+// Third-party libraries
+import {
+  Check,
+  Copy,
+  Terminal
+} from 'lucide-react';
 
 interface CodeBlockProps {
   code: string;

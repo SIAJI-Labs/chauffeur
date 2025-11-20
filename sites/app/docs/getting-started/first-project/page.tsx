@@ -1,10 +1,15 @@
 "use client";
 
+// React & Next.js
 import React, { useEffect } from 'react';
 import Link from 'next/link';
+
+// Third-party libraries
 import { ChevronRight } from 'lucide-react';
-import { TableOfContents } from '@/components/docs/TableOfContents';
-import { CodeBlock } from '@/components/docs/CodeBlock';
+
+// Page-specific components
+import { TableOfContents } from '@/app/docs/_components/TableOfContents';
+import { CodeBlock } from '@/app/docs/_components/CodeBlock';
 
 export default function FirstProjectPage() {
   const currentSlug = 'getting-started/first-project';
@@ -44,7 +49,7 @@ export default function FirstProjectPage() {
           </p>
         </div>
 
-        <section id="create-project">
+        <section>
           <h2 className="text-2xl font-bold text-white mb-4 group flex items-center gap-2" id="create-project">
             1. Create a Project
             <Link href="#create-project" onClick={(e) => scrollToId(e, 'create-project')} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-primary cursor-pointer">#</Link>
@@ -53,7 +58,7 @@ export default function FirstProjectPage() {
           <CodeBlock code={`mkdir my-website\ncd my-website\necho "<?php phpinfo();" > index.php`} />
         </section>
 
-        <section id="link-project">
+        <section>
           <h2 className="text-2xl font-bold text-white mb-4 group flex items-center gap-2" id="link-project">
             2. Link the Project
             <Link href="#link-project" onClick={(e) => scrollToId(e, 'link-project')} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-primary cursor-pointer">#</Link>
@@ -65,7 +70,7 @@ export default function FirstProjectPage() {
           </p>
         </section>
 
-        <section id="add-ssl">
+        <section>
           <h2 className="text-2xl font-bold text-white mb-4 group flex items-center gap-2" id="add-ssl">
             3. Add SSL
             <Link href="#add-ssl" onClick={(e) => scrollToId(e, 'add-ssl')} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-primary cursor-pointer">#</Link>

@@ -1,6 +1,14 @@
+// React
 import React, { useState } from 'react';
-import { COMMAND_EXAMPLES } from '../constants';
-import { ChevronRight, Terminal as TerminalIcon } from 'lucide-react';
+
+// Third-party libraries
+import {
+  ChevronRight,
+  Terminal as TerminalIcon
+} from 'lucide-react';
+
+// Constants
+import { COMMAND_EXAMPLES } from '@/constants';
 
 export const CommandExplorer: React.FC = () => {
   const [activeIndex, setActiveIndex] = useState(0);

@@ -1,6 +1,11 @@
+// React
 import React, { useState, useEffect, useRef } from 'react';
-import { TerminalLine } from '../types';
+
+// Third-party libraries
 import { Copy, Check } from 'lucide-react';
+
+// Internal types
+import { TerminalLine } from '@/types';
 
 interface TerminalProps {
   lines: TerminalLine[];

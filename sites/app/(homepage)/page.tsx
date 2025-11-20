@@ -1,14 +1,31 @@
 "use client";
 
+// React & Next.js
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Terminal } from '../components/Terminal';
-import { CommandExplorer } from '../components/CommandExplorer';
-import { HowItWorks } from '../components/HowItWorks';
-import { SystemImpactComparison } from '../components/SystemImpactComparison';
-import { Button } from '../components/ui/Button';
-import { FEATURES, HERO_TERMINAL_LINES } from '../constants';
-import { Github, Copy, ChevronRight, Terminal as TerminalIcon, Heart, AlertTriangle, Check } from 'lucide-react';
+
+// Third-party libraries
+import {
+  Github,
+  Copy,
+  ChevronRight,
+  Terminal as TerminalIcon,
+  Heart,
+  AlertTriangle,
+  Check
+} from 'lucide-react';
+
+// Internal components
+import { Terminal } from '@/components/Terminal';
+import { Button } from '@/components/ui/Button';
+
+// Page-specific components
+import { CommandExplorer } from '@/app/(homepage)/_components/CommandExplorer';
+import { HowItWorks } from '@/app/(homepage)/_components/HowItWorks';
+import { SystemImpactComparison } from '@/app/(homepage)/_components/SystemImpactComparison';
+
+// Constants
+import { FEATURES, HERO_TERMINAL_LINES } from '@/constants';
 
 const LandingPage: React.FC = () => {
   const [scrolled, setScrolled] = useState(false);
