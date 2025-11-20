@@ -34,10 +34,14 @@ Usage:
   chauf stop             Stop Chauffeur services with chauf- prefix.
   chauf restart          Restart Chauffeur services with chauf- prefix.
   chauf status           Show status of Chauffeur services.
+  chauf logs [service]   View and follow logs from Chauffeur services.
+  chauf clean [target]   Clean up workspace files and free up disk space.
+  chauf migrate <project> <workspace>  Migrate a project to a different workspace.
   chauf hello-world      Print a friendly greeting message.
   chauf link             Register current directory as a project.
   chauf links            List all registered projects.
   chauf unlink           Unlink a registered project (by slug, domain, path, or all).
+  chauf doctor           Perform health checks and diagnose system issues.
   chauf uninstall        Remove the Chauffeur workspace (keeps runtimes by default).
   chauf uninstall --purge
                          Remove the workspace and delete runtimes/caches.
@@ -95,6 +99,11 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
+	case "doctor":
+		if err := commands.RunDoctor(args[1:]); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
 	case "links":
 		if err := commands.RunLinks(args[1:]); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -122,6 +131,21 @@ func main() {
 		}
 	case "status":
 		if err := commands.RunStatus(args[1:]); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+	case "logs":
+		if err := commands.RunLogs(args[1:]); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+	case "clean":
+		if err := commands.RunClean(args[1:]); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+	case "migrate":
+		if err := commands.RunMigrate(args[1:]); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}

@@ -27,6 +27,7 @@ _A living status board for features, debt, and priorities. Keep this in sync wit
 - **Enhanced contributor onboarding documentation** with comprehensive Go basics, AI workflow guidance, and development patterns in `docs/CONTRIBUTING.md`
 - **Release checklist documentation** with comprehensive build, test, and deployment procedures in `docs/RELEASE_CHECKLIST.md`
 - **CLI ergonomics improvement** with `-v` shorthand for `--version` flag in main command
+- **Comprehensive `chauf doctor` command** for dependency validation and health checking across system, PHP build, SSL, network, and DNS dependencies
 
 ### Project-Level PHP-FPM Architecture
 - **Project-specific FPM control**: `--dedicated-fpm` flag for isolated PHP-FPM pools per project
@@ -102,7 +103,7 @@ _A living status board for features, debt, and priorities. Keep this in sync wit
 | Priority | Item | Notes |
 |----------|------|-------|
 | P2 | Enhanced service monitoring and logging | Add `chauf logs <service>` command and improved service health monitoring with historical data |
-| P3 | Project management utilities | Add `chauf doctor` for health checks, `chauf clean` for maintenance, and better project migration tools |
+| P3 | Project management utilities | Add `chauf clean` for maintenance, and better project migration tools (doctor completed) |
 | P4 | Universal service update management | `chauf update <service>` for PHP, Composer, nginx with version checking, backup, and rollback |
 | P4 | CLI command expansion and enhancement | Add new commands and flags for improved user experience and functionality |
 
@@ -111,12 +112,22 @@ _A living status board for features, debt, and priorities. Keep this in sync wit
 **Potential Command Enhancements**:
 - `chauf logs <service>` - View service logs (nginx, PHP-FPM errors)
 - `chauf config <service>` - Edit/view service configuration files
-- `chauf doctor` - Health check and troubleshooting command
 - `chauf clean` - Clean cache, old backups, temporary files
 - `chauf export/import` - Export/import configuration and linked projects
 - Add `--force` flag to `chauf link` for overwriting existing configurations
 - Add `--quiet` flag to reduce verbosity across commands
 - Add `--json` output format for scripting/automation
+
+**Recently Completed Commands**:
+- ✅ `chauf doctor` - Comprehensive health check and troubleshooting command with:
+  - System dependencies validation (git, curl, tar, gcc, make, pkg-config)
+  - PHP build dependencies checking (libzip, libjpeg, libpng, freetype, libxml2, libonig, libsodium, libcurl)
+  - SSL certificate management verification (openssl, mkcert, certbot)
+  - Network and firewall dependencies (iptables, ufw, firewalld, port availability)
+  - DNS configuration validation (dnsmasq, .test domain resolution)
+  - Smart port detection that ignores Chauffeur-managed services
+  - Auto-fix capabilities with guided installation commands
+  - Cross-platform support (Ubuntu/Debian, CentOS/RHEL, Arch, Fedora)
 
 ## 5. Future Plans 🔮
 *Low priority items that will be addressed in future releases - no ETA.*

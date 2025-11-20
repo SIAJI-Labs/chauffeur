@@ -115,6 +115,8 @@ created_at: 2025-10-30T12:00:00+07:00
 | `chauf uninstall` | `--purge` | Remove workspace (and runtimes with `--purge`). |
 | `chauf self-update` | `--dev` | Update binary from git or rebuild from current repo. |
 | `chauf install composer` | — | Fetch verified composer PHAR and shims. |
+| `chauf logs [service] [version]` | `--follow`, `-f`, `--lines`, `-n`, `--level`, `--context`, `-c`, `--verbose`, `-v`, `--quiet`, `-q` | View and follow service logs with interactive version selection. |
+| `chauf clean [target]` | `--dry-run`, `--force`, `--older-than`, `--keep-versions`, `--what` | Clean workspace files with file size display and accurate reporting. |
 | `chauf info` | — | Show workspace paths, installed services, versions, port config. |
 
 ## 7. PHP & Composer Behavior
@@ -282,7 +284,66 @@ Chauffeur provides **project-level PHP-FPM control** to balance resource efficie
 - ✅ **Backward compatibility**: Existing projects continue using shared FPM
 - ✅ **Simple management**: Clear project-level control via flag during linking
 
-## 15. DNS & Port Automation Notes
+## 15. Commit Policy for AI Agents
+
+### 🚫 **NO UNAUTHORIZED COMMITS OR PUSHES**
+
+**AI agents MUST NOT**:
+- Make git commits without explicit user instruction
+- Push changes to remote repositories without explicit user permission
+- Use `git add`, `git commit`, or `git push` commands autonomously
+
+### ✅ **APPROVED WORKFLOW**
+
+**AI agents SHOULD**:
+1. **Stage changes locally** with `git add` for user review
+2. **Present commit messages** for user approval
+3. **Wait for explicit instruction** before committing
+4. **Consolidate related changes** into single commits when requested
+5. **Follow conventional commit format** when user approves
+
+### 📋 **Example Correct Approach**
+
+```
+User: "Let's implement the doctor command"
+AI: *implements functionality, stages changes*
+AI: "I've implemented the doctor command with comprehensive dependency validation.
+     Changes are staged and ready for your review:
+     - cli/commands/doctor.go (1,045+ lines)
+     - cli/main.go (CLI integration)
+     - tests/doctor/ (26 test functions)
+     Would you like me to commit this with the message 'feat(doctor): ...'?"
+User: "Yes, please commit and push"
+AI: *commits with approved message and pushes*
+```
+
+### ❌ **Example Forbidden Behavior**
+
+```
+AI: *automatically runs `git add . && git commit -m "..." && git push`*
+```
+
+### ⚡ **EXCEPTIONS**
+
+The only cases where AI agents may make commits without explicit instruction:
+1. **Critical hotfixes** for production systems (with immediate user notification)
+2. **User-configured automation** where this policy is explicitly overridden
+
+### 🔍 **ENFORCEMENT**
+
+This policy applies to:
+- All AI assistants and agents
+- All automation tools that act on behalf of AI
+- All development workflows involving autonomous code changes
+
+**VIOLATIONS** of this policy must be immediately corrected by:
+1. **Reverting unauthorized commits** if pushed
+2. **Explaining the violation** to the user
+3. **Following proper workflow** going forward
+
+---
+
+## 16. DNS & Port Automation Notes
 - `chauf start` must verify dnsmasq configuration for `.test`. If missing, print the exact `sudo tee /etc/dnsmasq.d/chauffeur.conf` block plus restart commands; never edit system files directly.
 - Port conflicts are resolved per the config's `ports.conflict_resolution`:
   - `prompt`: ask user via logger prompts.
