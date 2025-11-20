@@ -23,7 +23,7 @@ export const Terminal: React.FC<TerminalProps> = ({ lines, className = "", autoP
 
   // Handle Copy
   const handleCopy = () => {
-    navigator.clipboard.writeText("curl -sL https://chauffeur.dev/install | bash");
+    navigator.clipboard.writeText("curl -sL https://chauffeur.siaji.com/install | bash");
     setIsCopied(true);
     setTimeout(() => setIsCopied(false), 2000);
   };
@@ -81,7 +81,7 @@ export const Terminal: React.FC<TerminalProps> = ({ lines, className = "", autoP
           <div className="w-3 h-3 rounded-full bg-green-500/80" />
         </div>
         <div className="text-chauffeur-muted text-xs font-medium">user@linux:~/.chauffeur</div>
-        <button onClick={handleCopy} className="text-muted-foreground hover:text-foreground transition-colors">
+        <button onClick={handleCopy} className="text-muted-foreground hover:text-foreground transition-colors hover:cursor-pointer">
           {isCopied ? <Check size={14} /> : <Copy size={14} />}
         </button>
       </div>

@@ -213,10 +213,49 @@ func createSANConfig(domains []string) string
 Every code change requires immediate updates to:
 1. **README.md** – feature status (✅/🚧/📋/🎯), installation changes, new commands/examples, roadmap tweaks.
 2. **docs/TODO_STATUS.md** – mark tasks as ✅, move items between sections, update release notes/priority queue.
-3. **AGENTS.md** – update command contracts, filesystem rules, or architectural guidance if behavior changed.
+3. **sites/app/docs/**** – update Next.js site documentation to match current CLI behavior and new features.
+4. **sites/constants.ts** – update command examples, feature descriptions, and navigation constants.
+5. **sites/public/install.sh** – verify symlink to latest install script if CLI behavior changed.
+6. **AGENTS.md** – update command contracts, filesystem rules, or architectural guidance if behavior changed.
+
+### 11.1 Site Documentation Specifics
+
+The Next.js documentation site (`sites/`) must be kept in sync with all changes to Chauffeur's implementation:
+
+#### **Command Accuracy Requirements**
+- **CRITICAL**: All CLI commands and flags in site documentation MUST match the actual Go implementation in `cmd/`
+- Before documenting any command, run `chauf --help` and specific command help to verify exact syntax
+- Test all command examples to ensure they work with the current binary version
+- Pay special attention to flag names (e.g., `--ssl` vs `--secure`) and command structure (e.g., `chauf php isolate` vs `chauf isolate`)
+
+#### **Binary Implementation Verification**
+- All documented commands should reflect the actual behavior of the `chauf` binary
+- When documenting features, first verify the implementation in the Go source code
+- Check that command outputs, error messages, and status indicators match what users will see
+- Ensure all command examples in `sites/constants.ts` are tested against the real binary
+
+#### **UI Consistency Standards**
+- Use the `CodeBlock` component for all command examples and outputs
+- Maintain consistent styling for commands, flags, and file paths across all pages
+- Follow established patterns for feature descriptions and badges
+- Use responsive design patterns established in existing components
+
+#### **URL and Script Management**
+- All installation URLs must point to `https://chauffeur.siaji.com/install`
+- Verify the `/install` route serves the install script correctly for both browser viewing and curl execution
+- Ensure `sites/public/install.sh` symlink points to `/install.sh`
+- Test installation process from the documented URLs
+
+#### **Feature Status Reflection**
+- Keep "Updated", "New", "Deprecated" badges current in `sites/constants.ts`
+- Remove or mark deprecated features appropriately
+- Add new features to the site as soon as they're implemented in the CLI
+
 Checklist (do not skip):
 - [ ] README reflects implementation.
 - [ ] docs/TODO_STATUS.md matches current progress.
+- [ ] sites/app/docs/** documentation matches CLI behavior.
+- [ ] sites/constants.ts command examples are accurate.
 - [ ] AGENTS.md matches actual behavior.
 - [ ] Examples and commands have been run/tested.
 

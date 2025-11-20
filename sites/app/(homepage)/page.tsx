@@ -38,7 +38,7 @@ const LandingPage: React.FC = () => {
   }, []);
 
   const handleCopyInstall = () => {
-    navigator.clipboard.writeText("curl -sL chauffeur.dev/get | bash");
+    navigator.clipboard.writeText("curl -sL https://chauffeur.siaji.com/install | bash");
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -73,8 +73,8 @@ const LandingPage: React.FC = () => {
             <span className="text-xl font-bold tracking-tight text-slate-100">Chauffeur</span>
           </div>
           <div className="hidden md:flex items-center gap-8 text-sm font-medium text-slate-400">
-            <button onClick={() => scrollToSection('features')} className="hover:text-white transition-colors focus:outline-none">Features</button>
-            <button onClick={() => scrollToSection('how-it-works')} className="hover:text-white transition-colors focus:outline-none">How it works</button>
+            <button onClick={() => scrollToSection('features')} className="hover:text-white transition-colors focus:outline-none hover:cursor-pointer">Features</button>
+            <button onClick={() => scrollToSection('how-it-works')} className="hover:text-white transition-colors focus:outline-none hover:cursor-pointer">How it works</button>
             <Link href="/docs" className="hover:text-white transition-colors">Documentation</Link>
           </div>
           <div className="flex items-center gap-3">
@@ -114,7 +114,7 @@ const LandingPage: React.FC = () => {
 
               <p className="text-lg md:text-xl text-slate-400 mb-8 max-w-2xl mx-auto lg:mx-0 leading-relaxed">
                 Zero configuration. Isolated PHP versions per project. Automatic SSL and DNS.
-                Stop fighting Docker configurations and start coding in seconds.
+                Stop fighting Laravel Homestead configurations and start coding in seconds.
               </p>
 
               <div className="flex flex-col sm:flex-row items-center gap-4 justify-center lg:justify-start">
@@ -123,7 +123,7 @@ const LandingPage: React.FC = () => {
                    onClick={handleCopyInstall}
                  >
                     <code className="px-4 py-2 font-mono text-sm text-emerald-400 select-all">
-                      curl -sL chauffeur.dev/get | bash
+                      curl -sL https://chauffeur.siaji.com/install | bash
                     </code>
                     <button className="p-2 hover:bg-slate-700 rounded text-slate-400 hover:text-white transition-colors">
                        {copied ? <Check size={16} className="text-emerald-400" /> : <Copy size={16} />}
@@ -223,7 +223,7 @@ const LandingPage: React.FC = () => {
               className="flex items-center gap-2"
             >
               <TerminalIcon size={20} />
-              {copied ? 'Copied!' : 'curl -sL chauffeur.dev/get | bash'}
+              {copied ? 'Copied!' : 'curl -sL https://chauffeur.siaji.com/install | bash'}
               {copied ? <Check size={16} /> : <Copy size={16} />}
             </Button>
             <Link href="/docs" className="w-full sm:w-auto">

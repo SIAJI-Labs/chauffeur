@@ -66,7 +66,7 @@ export const HowItWorks: React.FC = () => {
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={`
-                flex flex-col items-center justify-center p-4 rounded-xl border transition-all duration-300
+                flex flex-col items-center justify-center p-4 rounded-xl border transition-all duration-300 hover:cursor-pointer
                 ${activeTab === tab.id
                   ? 'bg-surface border-indigo-500/50 shadow-lg shadow-indigo-500/10 scale-105'
                   : 'bg-surface/50 border-slate-800 hover:border-slate-700 hover:bg-surface/80 text-slate-500'}
@@ -133,7 +133,7 @@ export const HowItWorks: React.FC = () => {
               <div className="space-y-6 animate-fade-in">
                 <h3 className="text-xl font-bold text-white">Resource Efficiency</h3>
                 <p className="text-slate-400 text-sm leading-relaxed">
-                  Forget the 2GB overhead of Docker. Chauffeur uses native processes with smart shared pools.
+                  Forget the 4GB overhead of Laravel Homestead. Chauffeur uses native processes with smart shared pools.
                 </p>
                 <ul className="space-y-4">
                    <li className="flex gap-3 text-sm text-slate-300">
@@ -287,7 +287,7 @@ export const HowItWorks: React.FC = () => {
                  {/* Docker */}
                  <div>
                     <div className="flex justify-between text-xs mb-1">
-                      <span className="text-slate-400">Docker Compose (5 Projects)</span>
+                      <span className="text-slate-400">Laravel Homestead (5 Projects)</span>
                       <span className="text-red-400">~2.4 GB</span>
                     </div>
                     <div className="h-2 bg-slate-800 rounded-full overflow-hidden">

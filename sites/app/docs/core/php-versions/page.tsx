@@ -64,7 +64,7 @@ export default function PHPVersionsPage() {
         <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg flex gap-3">
           <Layers className="text-blue-400 shrink-0" />
           <div className="text-sm text-blue-100/80">
-            <strong>Key Feature:</strong> Chauffeur ships with its own PHP runtimes, completely isolated from your system PHP. You can have PHP 8.3 globally, 8.2 for one project, and 8.1 for another - all running simultaneously.
+            <strong>Key Feature:</strong> Chauffeur ships with its own PHP runtimes, completely isolated from your system PHP. You can have PHP 8.4 globally, 8.3 for one project, and 7.4 for legacy applications - all running simultaneously.
           </div>
         </div>
 
@@ -75,13 +75,21 @@ export default function PHPVersionsPage() {
           </h2>
           <p className="text-slate-400 mb-4">Chauffeur supports the following PHP versions:</p>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="bg-surface p-4 rounded-lg border border-slate-800">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="font-semibold text-white">PHP 8.4</h3>
+                <span className="text-xs bg-emerald-500/20 text-emerald-300 px-2 py-1 rounded border border-emerald-500/30">Latest</span>
+              </div>
+              <p className="text-slate-400 text-sm">Latest stable release with performance improvements and new features.</p>
+            </div>
+
             <div className="bg-surface p-4 rounded-lg border border-slate-800">
               <div className="flex items-center justify-between mb-2">
                 <h3 className="font-semibold text-white">PHP 8.3</h3>
                 <span className="text-xs bg-emerald-500/20 text-emerald-300 px-2 py-1 rounded border border-emerald-500/30">LTS</span>
               </div>
-              <p className="text-slate-400 text-sm">Latest stable release with performance improvements and new features.</p>
+              <p className="text-slate-400 text-sm">Stable version with performance improvements and modern features.</p>
             </div>
 
             <div className="bg-surface p-4 rounded-lg border border-slate-800">
@@ -95,9 +103,17 @@ export default function PHPVersionsPage() {
             <div className="bg-surface p-4 rounded-lg border border-slate-800">
               <div className="flex items-center justify-between mb-2">
                 <h3 className="font-semibold text-white">PHP 8.1</h3>
-                <span className="text-xs bg-amber-500/20 text-amber-300 px-2 py-1 rounded border border-amber-500/30">Security</span>
+                <span className="text-xs bg-emerald-500/20 text-emerald-300 px-2 py-1 rounded border border-emerald-500/30">LTS</span>
               </div>
-              <p className="text-slate-400 text-sm">Security updates only. Recommended for legacy applications.</p>
+              <p className="text-slate-400 text-sm">Actively supported version with modern language features.</p>
+            </div>
+
+            <div className="bg-surface p-4 rounded-lg border border-slate-800">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="font-semibold text-white">PHP 8.0</h3>
+                <span className="text-xs bg-amber-500/20 text-amber-300 px-2 py-1 rounded border border-amber-500/30">EOL</span>
+              </div>
+              <p className="text-slate-400 text-sm">End of life. Available for compatibility with legacy applications.</p>
             </div>
 
             <div className="bg-surface p-4 rounded-lg border border-slate-800">
@@ -151,7 +167,7 @@ chauf php install 8.3 --from source   # Force compilation from source" />
           <p className="text-slate-400 mb-4">Set the default PHP version for new projects:</p>
 
           <h3 className="text-xl font-semibold text-slate-200 mb-3">Set Global Version</h3>
-          <CodeBlock code="chauf use 8.3" />
+          <CodeBlock code="chauf php isolate 8.3" />
 
           <h3 className="text-xl font-semibold text-slate-200 mb-3">Check Current Global Version</h3>
           <CodeBlock code="$ chauf php current

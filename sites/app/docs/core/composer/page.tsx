@@ -165,7 +165,7 @@ $ composer install
 
           <h3 className="text-xl font-semibold text-slate-200 mb-3 mt-6">Global Composer Commands</h3>
           <CodeBlock code={`# Global Composer uses your global PHP version
-$ chauf use 8.2                    # Set global PHP to 8.2
+$ chauf php use 8.2                    # Set global PHP to 8.2
 
 $ composer global require laravel/installer
 → Uses PHP 8.2 from ~/.chauffeur/php/8.2/

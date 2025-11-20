@@ -25,18 +25,18 @@ export const FEATURES: Feature[] = [
     icon: Zap
   },
   {
-    title: "Automatic SSL",
-    description: "Locally trusted certificates generated instantly for every project. HTTPS out of the box.",
+    title: "Easy SSL",
+    description: "Generate locally trusted SSL certificates with a simple flag. Secure your sites with HTTPS instantly.",
     icon: Shield
   },
   {
     title: "Multi-Version PHP",
-    description: "Run PHP 7.4, 8.1, and 8.3 simultaneously. Project-level isolation means no version conflicts.",
+    description: "Run PHP 7.4 through 8.4 simultaneously. Project-level isolation means no version conflicts.",
     icon: Layers
   },
   {
     title: "Resource Efficient",
-    description: "Smart process management sleeps idle workers. Uses a fraction of the RAM compared to Docker.",
+    description: "Smart process management sleeps idle workers. Uses 98% less RAM than Laravel Homestead.",
     icon: Cpu
   },
   {
@@ -67,9 +67,9 @@ export const COMMAND_EXAMPLES: CommandExample[] = [
   },
   {
     name: "Switch Global",
-    description: "Change default PHP version",
-    command: "chauf use 8.2",
-    output: "Global PHP version switched to 8.2"
+    description: "Pin specific PHP version",
+    command: "chauf php isolate 8.2",
+    output: "PHP 8.2 pinned as global default"
   }
 ];
 

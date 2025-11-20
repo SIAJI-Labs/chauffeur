@@ -29,7 +29,7 @@ export const CommandExplorer: React.FC = () => {
           <button
             key={idx}
             onClick={() => setActiveIndex(idx)}
-            className={`w-full text-left px-4 py-3 rounded-lg text-sm font-medium transition-all flex items-center justify-between group ${
+            className={`w-full text-left px-4 py-3 rounded-lg text-sm font-medium transition-all flex items-center justify-between group hover:cursor-pointer ${
               activeIndex === idx
                 ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20'
                 : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'

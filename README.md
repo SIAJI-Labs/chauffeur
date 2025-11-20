@@ -114,19 +114,35 @@ Chauffeur provides **project-level PHP-FPM control** to balance resource efficie
 
 ## Getting Started
 1. **Install prerequisites**: Go 1.22+, git, curl, build tools (gcc/make/pkg-config), openssl headers.
-2. **Clone & bootstrap** (installs `chauf` under `~/.chauffeur/bin`):
+
+2. **Install Chauffeur** (installs `chauf` under `~/.chauffeur/bin`):
+
+   **Option A: Quick Install (Recommended)**
    ```bash
-   git clone https://github.com/siaji/chauffeur.git
+   curl -sL https://chauffeur.siaji.com/install | bash
+   ```
+
+   **Option B: Manual Clone**
+   ```bash
+   git clone https://github.com/SIAJI-Labs/chauffeur.git
    cd chauffeur
    ./install.sh
    ```
-3. **Install services** (with intelligent caching):
+
+   *Both methods automatically detect if you're in a Chauffeur git repo and build locally, or clone and build from source if needed.*
+
+3. **Initialize workspace**:
+   ```bash
+   chauf init                    # Creates ~/.chauffeur structure and config
+   ```
+
+4. **Install services** (with intelligent caching):
    ```bash
    chauf install php 8.3        # First download - auto-cached for future
    chauf install nginx           # Instant if cached, downloads if not
    chauf install composer        # Reuses cached PHAR when available
    ```
-4. **Link projects** (shared FPM by default, dedicated when needed):
+5. **Link projects** (shared FPM by default, dedicated when needed):
    ```bash
    cd ~/simple-project          # Shared FPM (resource efficient)
    chauf link
@@ -137,7 +153,7 @@ Chauffeur provides **project-level PHP-FPM control** to balance resource efficie
    cd ~/legacy-project         # Dedicated FPM (custom config needs)
    chauf link --dedicated-fpm --php 7.4
    ```
-5. **Start services & browse**:
+6. **Start services & browse**:
    ```bash
    chauf start
    firefox http://project-name.test:8080

@@ -92,7 +92,7 @@ export const TableOfContents: React.FC = () => {
               <a
                 href={`#${heading.id || `toc-item-${index}`}`}
                 onClick={(e) => handleClick(e, heading.id || `toc-item-${index}`)}
-                className="block truncate"
+                className="block truncate hover:cursor-pointer"
                 style={{ paddingLeft: heading.level === 3 ? '12px' : '0px' }}
               >
                 {heading.text}

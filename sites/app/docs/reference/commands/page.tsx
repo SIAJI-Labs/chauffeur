@@ -182,7 +182,7 @@ $ chauf link --php=8.3 --ssl --domain=laravel.test --alias=api.laravel.test --al
                 <Link href="#isolate" onClick={(e) => scrollToId(e, 'isolate')} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-primary cursor-pointer">#</Link>
               </h3>
               <p className="text-slate-400 mb-4">Isolates the current site to a specific PHP version, separate from the global default.</p>
-              <CodeBlock code="chauf isolate <version>" />
+              <CodeBlock code="chauf php isolate <version>" />
 
               <h4 className="text-lg font-semibold text-slate-200 mb-2">Arguments</h4>
               <div className="overflow-x-auto">
@@ -472,7 +472,7 @@ $ chauf restart
                 <Link href="#use" onClick={(e) => scrollToId(e, 'use')} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-primary cursor-pointer">#</Link>
               </h3>
               <p className="text-slate-400 mb-4">Set the global default PHP version for new sites.</p>
-              <CodeBlock code="chauf use <version>" />
+              <CodeBlock code="chauf php isolate <version>" />
 
               <h4 className="text-lg font-semibold text-slate-200 mb-2">Arguments</h4>
               <div className="overflow-x-auto">
@@ -506,6 +506,71 @@ New projects will use PHP 8.3 unless specified otherwise
 $ php -v
 PHP 8.3.15 (cli) (built: Dec 15 2024 10:30:00)
 Copyright (c) The PHP Group`} />
+            </div>
+
+            <div>
+              <h3 className="text-2xl font-bold text-white mb-4 font-mono group flex items-center gap-2" id="init">
+                chauf init
+                <Link href="#init" onClick={(e) => scrollToId(e, 'init')} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-primary cursor-pointer">#</Link>
+              </h3>
+              <p className="text-slate-400 mb-4">Initialize Chauffeur workspace with default configuration and directory structure.</p>
+              <CodeBlock code="chauf init [--force] [--quiet]" />
+
+              <h4 className="text-lg font-semibold text-slate-200 mb-2">Flags</h4>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-700 bg-slate-800/50">
+                      <th className="p-3 font-mono text-emerald-400">Flag</th>
+                      <th className="p-3 text-slate-300">Description</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800">
+                    <tr>
+                      <td className="p-3 font-mono text-slate-300">--force</td>
+                      <td className="p-3 text-slate-400">Overwrite existing configuration files</td>
+                    </tr>
+                    <tr>
+                      <td className="p-3 font-mono text-slate-300">--quiet, -q</td>
+                      <td className="p-3 text-slate-400">Suppress verbose output</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <h4 className="text-lg font-semibold text-slate-200 mb-2 mt-4">What It Creates</h4>
+              <div className="bg-slate-900 p-4 rounded-lg border border-slate-800">
+                <pre className="text-sm text-slate-300 font-mono">
+{`~/.chauffeur/
+├── config/chauffeur.yaml     # Main configuration file
+├── projects/                 # Project storage
+├── logs/                     # Service logs
+├── cache/                    # Download cache
+├── php/                      # PHP installations
+├── nginx/                    # nginx configurations
+└── bin/                      # Chauffeur binaries and shims`}
+                </pre>
+              </div>
+
+              <h4 className="text-lg font-semibold text-slate-200 mb-2 mt-4">Examples</h4>
+              <CodeBlock code={`$ chauf init
+
+[init] Initializing Chauffeur workspace...
+[init] Workspace directory: /home/user/.chauffeur
+[init] Creating directory: /home/user/.chauffeur/config
+[init] Creating directory: /home/user/.chauffeur/projects
+[init] Creating default configuration file...
+✓ Configuration file created: /home/user/.chauffeur/config/chauffeur.yaml
+[init] Creating .gitignore file
+[init] Checking PATH configuration...
+[init] Chauffeur bin directory: /home/user/.chauffeur/bin
+[init] Add this to your shell profile (~/.bashrc or ~/.zshrc):
+[init]   export PATH="/home/user/.chauffeur/bin:$PATH"
+[init] Then restart your shell or run: source ~/.bashrc
+✓ Chauffeur workspace initialized successfully at /home/user/.chauffeur
+
+$ chauf init --force --quiet
+✓ Workspace initialized /home/user/.chauffeur`} />
             </div>
 
             <div>

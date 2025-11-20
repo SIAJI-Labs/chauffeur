@@ -23,7 +23,7 @@ export const SystemImpactComparison: React.FC = () => {
                 <tr className="bg-slate-900/50 border-b border-slate-700">
                   <th className="text-left px-6 py-4 text-sm font-semibold text-slate-200">Aspect</th>
                   <th className="text-center px-6 py-4 text-sm font-semibold text-emerald-400">Chauffeur</th>
-                  <th className="text-center px-6 py-4 text-sm font-semibold text-slate-400">Docker</th>
+                  <th className="text-center px-6 py-4 text-sm font-semibold text-slate-400">Laravel Homestead</th>
                   <th className="text-center px-6 py-4 text-sm font-semibold text-slate-400">Manual Setup</th>
                 </tr>
               </thead>
@@ -45,7 +45,7 @@ export const SystemImpactComparison: React.FC = () => {
                   </td>
                   <td className="px-6 py-4 text-center">
                     <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-red-500/10 text-red-400 border border-red-500/20">
-                      ~2.4 GB
+                      ~4 GB
                     </span>
                   </td>
                   <td className="px-6 py-4 text-center">
@@ -72,7 +72,7 @@ export const SystemImpactComparison: React.FC = () => {
                   </td>
                   <td className="px-6 py-4 text-center">
                     <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-red-500/10 text-red-400 border border-red-500/20">
-                      10-30s
+                      90-180s
                     </span>
                   </td>
                   <td className="px-6 py-4 text-center">

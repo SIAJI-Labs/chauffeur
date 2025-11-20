@@ -115,10 +115,10 @@ source ~/.zshrc`} />
               </h3>
               <p className="text-slate-400 text-sm mb-2">Installer fails due to insufficient permissions.</p>
               <CodeBlock code="# Run installer with proper permissions
-curl -sL chauffeur.dev/get | sudo bash
+curl -sL https://chauffeur.siaji.com/install | sudo bash
 
 # Or ensure your user has proper permissions
-sudo usermod -aG docker $USER  # If using Docker features
+sudo usermod -aG docker $USER  # If using Docker features (not Chauffeur)
 sudo usermod -aG www-data $USER  # For web server access" />
             </div>
 
