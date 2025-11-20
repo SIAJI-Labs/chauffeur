@@ -41,9 +41,12 @@ Design themes borrowed from Valet/Herd:
 | PHP runtimes (`chauf php install/use/isolate`) | ✅ | Full PHP 7.4-8.4 support with smart caching; GD extension infrastructure in place (modern PHP ✅, legacy PHP 🚧); additional harness tests coming soon. |
 | Service orchestration (`chauf start/stop/status/restart`) | ✅ | Full process management with service-specific and project-specific restarts; dnsmasq integration working. |
 | Composer integration | ✅ | Installs Composer PHAR tied to Chauffeur's PHP shim. |
-| Logging revamp | ✅ | All user-facing commands now route output through `lib.Logger`; only help/usage text stays raw. |
+| Logging system | ✅ | Enhanced `chauf logs` command for viewing and following service logs; all user-facing commands route output through `lib.Logger`. |
+| Workspace maintenance | ✅ | Comprehensive `chauf clean` command for logs, cache, temp files, old PHP versions, stale SSL certificates, and unlinked projects. |
+| Project migration | ✅ | `chauf migrate` command for moving projects between workspaces with backup and validation. |
+| Health checking | ✅ | `chauf doctor` command for system dependency validation and auto-fix suggestions. |
 | Smart caching system | ✅ | Universal download cache with auto-detection and user control. |
-| Testing | ✅ | Comprehensive test coverage across all packages including unit tests for installers, logging, projects, services, system, templates, and nginx templates; integration tests cover CLI workflows; CI enforces `go test ./...` on PRs to `main`. |
+| Testing | ✅ | Comprehensive test coverage across all packages including unit tests for installers, logging, projects, services, system, templates, nginx templates, and new commands; integration tests cover CLI workflows; CI enforces `go test ./...` on PRs to `main`. |
 
 ## Architecture at a Glance
 ```
@@ -98,6 +101,10 @@ Chauffeur provides **project-level PHP-FPM control** to balance resource efficie
 | `chauf install <service> [ver]` | `--force`, `--local`, `--no-cache` | Install services with intelligent caching (php, composer, nginx). |
 | `chauf php install <ver>` | `--force`, `--no-ext`, `--from` | Install PHP runtimes into the workspace. |
 | `chauf php use <ver>` | — | Set global default PHP version. |
+| `chauf logs [service]` | `--follow`, `--lines`, `--level`, `--context`, `--verbose` | View and follow logs from nginx, PHP-FPM, and other services. |
+| `chauf clean [target]` | `--dry-run`, `--force`, `--older-than`, `--keep-versions` | Clean workspace files (logs, cache, temp, old versions, SSL certs, projects). |
+| `chauf migrate <project> <workspace>` | `--backup`, `--no-backup`, `--dry-run`, `--force` | Migrate projects between workspaces with safety validation. |
+| `chauf doctor` | `--check-*`, `--fix`, `--verbose` | System health checks with auto-fix suggestions for dependencies. |
 | `chauf php isolate <ver>` | — | Pin the current linked project to a version. |
 | `chauf remove <service> [ver]` | `--force` | Remove installed runtimes with cache management (php/nginx/composer). |
 | `chauf install composer` | — | Download Composer PHAR + shim. |
@@ -328,6 +335,70 @@ du -sh ~/.chauffeur/cache/    # See cache size usage
 - Same caching logic works across all services (PHP, Composer, Nginx)
 - Automatic version detection with API + fallback system
 - Consistent user experience for cache management
+
+### Enhanced Logging & Workspace Management
+
+#### **Improved Logs Command (`chauf logs`)**
+
+The logs command now supports intelligent service discovery and interactive selection:
+
+```bash
+# Direct version specification
+chauf logs php-fpm 7.4          # Shows PHP 7.4 FPM logs directly
+chauf logs nginx                 # Shows nginx logs
+
+# Interactive service selection (when multiple versions exist)
+chauf logs php-fpm               # Interactive menu: [1] php-fpm-7.4, [2] php-fpm-8.3
+
+# Follow logs in real-time
+chauf logs php-fpm --follow
+
+# Filter by log level and limit lines
+chauf logs nginx --level error --lines 50
+
+# Show file context
+chauf logs php-fpm --context
+```
+
+**Features:**
+- **Version Specification**: `chauf logs php 7.4` automatically targets `php-7.4` services
+- **Interactive Selection**: Shows menu when multiple services match (e.g., multiple PHP versions)
+- **Service Status**: Shows running/stopped status with 🟢/🔴 indicators
+- **Deduplication**: Removes duplicate service entries from global and project sources
+- **Real-time Following**: `--follow` flag for tailing logs live
+
+#### **Enhanced Clean Command (`chauf clean`)**
+
+The clean command now provides detailed file information and accurate reporting:
+
+```bash
+# Interactive cleanup with file sizes
+chauf clean logs                 # Shows: Delete log file: access.log (178 B)? [y/N]
+chauf clean cache                # Shows: Delete file: composer.phar (3.1 MB)? [y/N]
+
+# Dry-run mode to preview what would be cleaned
+chauf clean --dry-run           # Shows potential deletions without actually deleting
+
+# Target specific cleanup areas
+chauf clean temp                 # Clean temporary files only
+chauf clean ssl-certs           # Clean stale SSL certificates only
+chauf clean old-versions        # Remove old PHP versions
+chauf clean projects            # Remove unlinked project directories
+
+# Force cleanup without prompts
+chauf clean --force             # Skip all confirmation prompts
+
+# Clean files older than specified time
+chauf clean --older-than 7d      # Clean files older than 7 days
+```
+
+**Features:**
+- **File Size Display**: Shows human-readable sizes in prompts (B, KB, MB)
+- **Accurate Reporting**: Only counts actually deleted files in summaries
+- **Clear Feedback**: "No files found to clean" messages for empty categories
+- **Selective Cleanup**: Target specific types of files or services
+- **Dry-run Mode**: Preview changes without executing
+- **Age-based Filtering**: Clean files based on modification time
 
 ### GD Extension Support for Legacy PHP
 
