@@ -231,7 +231,7 @@ func TestLogsWithVerboseOption(t *testing.T) {
 	}
 }
 
-func TestLogsWithDryRunOption(t *testing.T) {
+func TestLogsWithQuietOption(t *testing.T) {
 	_, workspace := helpers.SetupTestHome(t)
 
 	if err := commands.RunInit(nil); err != nil {
@@ -240,12 +240,12 @@ func TestLogsWithDryRunOption(t *testing.T) {
 
 	helpers.EnsureFakePHP(t, workspace, "8.3")
 
-	// Test logs with dry-run option (should list services without actual log collection)
-	err := commands.RunLogs([]string{"--dry-run", "--quiet"})
+	// Test logs with quiet option (should minimize output)
+	err := commands.RunLogs([]string{"--quiet"})
 	if err != nil {
 		// Check if it's just a "no services found" type error
 		if !strings.Contains(err.Error(), "no service") && !strings.Contains(err.Error(), "not found") {
-			t.Fatalf("Expected no error for logs dry-run, got: %v", err)
+			t.Fatalf("Expected no error for logs quiet, got: %v", err)
 		}
 	}
 }

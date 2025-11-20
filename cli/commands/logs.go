@@ -601,8 +601,7 @@ Examples:
 
 Log Locations:
   Nginx:     ~/.chauffeur/nginx/logs/
-  PHP-FPM:   ~/.chauffeur/php/*/logs/ or ~/.chauffeur/projects/*/logs/
-`)
+  PHP-FPM:   ~/.chauffeur/php/*/logs/ or ~/.chauffeur/projects/*/logs/`)
 }
 
 // selectService provides interactive service selection when multiple services match

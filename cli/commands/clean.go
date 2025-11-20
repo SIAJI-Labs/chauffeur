@@ -755,6 +755,5 @@ Safety:
   - Always runs in dry-run mode first unless --force is used
   - Never removes active SSL certificates or linked projects
   - Keeps a specified number of recent PHP versions
-  - Shows size of files to be deleted before confirmation
-`)
+  - Shows size of files to be deleted before confirmation`)
 }

@@ -47,6 +47,11 @@ func RunMigrate(args []string) error {
 		return err
 	}
 
+	// If options is nil (help was printed), return without doing anything
+	if options == nil {
+		return nil
+	}
+
 	if options.DryRun {
 		migrator.logger.Info("DRY RUN MODE - No files will be moved")
 	}
@@ -434,6 +439,5 @@ Safety:
   - Always creates backups by default
   - Validates both source and destination before migration
   - Preserves SSL certificates and configurations
-  - Can be run in dry-run mode to preview changes
-`)
+  - Can be run in dry-run mode to preview changes`)
 }

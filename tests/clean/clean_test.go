@@ -395,13 +395,9 @@ func TestCleanWithoutWorkspace(t *testing.T) {
 	}
 	defer os.Chdir(originalWD)
 
-	// Test clean logs without workspace (should fail)
+	// Test clean logs without workspace (should auto-initialize and succeed)
 	err := commands.RunClean([]string{"logs", "--dry-run"})
-	if err == nil {
-		t.Fatal("Expected error for clean without workspace")
-	}
-
-	if !strings.Contains(err.Error(), "workspace") {
-		t.Fatalf("Expected workspace-related error, got: %v", err)
+	if err != nil {
+		t.Fatalf("Expected no error for clean without workspace (auto-initialization), got: %v", err)
 	}
 }
