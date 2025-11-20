@@ -1,179 +1,139 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { Terminal as TerminalIcon, Menu, X, ChevronRight, AlertTriangle, Github, ArrowLeft } from 'lucide-react';
-import { DocSidebar } from '../../components/docs/DocSidebar';
-import { TableOfContents } from '../../components/docs/TableOfContents';
-import { CodeBlock } from '../../components/docs/CodeBlock';
-import { Button } from '../../components/ui/Button';
+import { Terminal as TerminalIcon, Menu, X, ChevronRight, AlertTriangle, Github } from 'lucide-react';
+import { DocSidebar } from '@/components/docs/DocSidebar';
+import { TableOfContents } from '@/components/docs/TableOfContents';
+import { CodeBlock } from '@/components/docs/CodeBlock';
+import { Button } from '@/components/ui/Button';
 
-const DocsPage: React.FC = () => {
+const DocsHomePage: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const pathname = usePathname();
-  const currentSlug = pathname.replace('/docs/', '') || 'getting-started/installation';
+  const currentSlug = 'docs';
 
-  // Scroll to top on route change
   useEffect(() => {
     window.scrollTo(0, 0);
-  }, [pathname]);
+  }, []);
 
-  // Content Renderer (Simulated based on slug)
-  const renderContent = () => {
-    switch (true) {
-      case currentSlug.includes('installation'):
-        return (
-          <div>
-            <h1 className="text-4xl font-bold mb-4">Installation</h1>
-            <p className="text-lg mb-6">Install Chauffeur on your Linux system with a single command:</p>
-            <CodeBlock code="curl -sL https://chauffeur.dev/get | bash" />
-            <p className="text-lg mt-6 mb-6">After installation, initialize the workspace:</p>
-            <CodeBlock code="chauf init" />
-          </div>
-        );
-      case currentSlug.includes('first-project'):
-        return (
-          <div>
-            <h1 className="text-4xl font-bold mb-4">First Project</h1>
-            <p className="text-lg mb-6">Create your first Chauffeur project:</p>
-            <CodeBlock code="chauf link --ssl" />
-            <p className="text-lg mt-6 mb-6">Start the development services:</p>
-            <CodeBlock code="chauf start" />
-          </div>
-        );
-      case currentSlug.includes('link'):
-        return (
-          <div>
-            <h1 className="text-4xl font-bold mb-4">chauf link</h1>
-            <p className="text-lg mb-6">Registers the current working directory as a Chauffeur site with automatic .test domain routing.</p>
-
-            <h2 className="text-2xl font-semibold mb-3">Usage</h2>
-            <CodeBlock code="chauf link [name] [flags]" />
-
-            <h2 className="text-2xl font-semibold mb-3">Common Flags</h2>
-            <div className="bg-card rounded-lg p-4 overflow-x-auto">
-              <table className="w-full text-left">
-                <thead>
-                  <tr className="border-b">
-                    <th className="p-2 text-left font-mono">Flag</th>
-                    <th className="p-2 text-left">Description</th>
-                    <th className="p-2 text-left">Default</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr className="border-b">
-                    <td className="p-2 font-mono">--ssl</td>
-                    <td className="p-2">Generate SSL certificate</td>
-                    <td className="p-2">false</td>
-                  </tr>
-                  <tr className="border-b">
-                    <td className="p-2 font-mono">--php</td>
-                    <td className="p-2">Specify PHP version (e.g. 8.1)</td>
-                    <td className="p-2">global</td>
-                  </tr>
-                  <tr className="border-b">
-                    <td className="p-2 font-mono">--force</td>
-                    <td className="p-2">Overwrite existing config</td>
-                    <td className="p-2">false</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        );
-      default:
-        return (
-          <div>
-            <h1 className="text-4xl font-bold mb-4">Documentation</h1>
-            <p className="text-lg mb-6">Select a section from the sidebar to get started.</p>
-          </div>
-        );
+  // Helper for safe scrolling
+  const scrollToId = (e: React.MouseEvent, id: string) => {
+    e.preventDefault();
+    const element = document.getElementById(id);
+    if (element) {
+      const yOffset = -100;
+      const y = element.getBoundingClientRect().top + window.pageYOffset + yOffset;
+      window.scrollTo({ top: y, behavior: 'smooth' });
     }
   };
 
   return (
-    <div className="min-h-screen bg-background flex">
-      {/* Mobile Menu Button */}
-      <button
-        onClick={() => setSidebarOpen(!sidebarOpen)}
-        className="md:hidden fixed top-4 left-4 z-50 p-2 bg-card rounded-lg border"
-      >
-        {sidebarOpen ? <X size={24} /> : <Menu size={24} />}
-      </button>
-
-      {/* Sidebar */}
-      <div className={`
-        fixed top-0 left-0 h-full w-72 bg-card border-r transform transition-transform duration-300 ease-in-out z-40
-        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-        md:translate-x-0
-      `}>
-        <div className="h-full overflow-y-auto">
-          <div className="p-6">
-            <div className="flex items-center justify-between mb-6">
-              <Link href="/" className="flex items-center gap-2 text-foreground hover:text-primary">
-                <ArrowLeft size={16} />
-                <span className="font-bold">Chauffeur</span>
-              </Link>
-              <button
-                onClick={() => setSidebarOpen(false)}
-                className="md:hidden p-1 text-muted-foreground hover:text-foreground"
-              >
-                <X size={20} />
-              </button>
-            </div>
+    <div className="min-h-screen bg-background text-slate-300">
+      {/* Docs Navbar */}
+      <nav className="sticky top-0 z-50 w-full bg-slate-900/95 backdrop-blur border-b border-slate-800">
+        <div className="w-full px-4 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              className="lg:hidden p-2 text-slate-400 hover:text-white"
+            >
+              {sidebarOpen ? <X /> : <Menu />}
+            </button>
+            <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+               <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+                 <TerminalIcon className="text-slate-900" size={20} />
+               </div>
+               <span className="text-xl font-bold tracking-tight text-slate-100 hidden sm:inline">Chauffeur</span>
+               <span className="text-xs bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full ml-2 border border-slate-700">Docs</span>
+            </Link>
           </div>
-
-          <div className="px-6 pb-6">
-            <DocSidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-          </div>
-        </div>
-      </div>
-
-      {/* Main Content */}
-      <div className="flex-1 md:ml-72">
-        {/* Top Bar */}
-        <div className="sticky top-0 z-30 bg-card border-b px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <TerminalIcon className="w-5 h-5 text-muted-foreground" />
-              <h1 className="text-lg font-semibold text-foreground">
-                Documentation
-              </h1>
-            </div>
-            <div className="flex items-center gap-4">
-              <a
-                href="https://github.com/siaji/chauffeur"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-muted-foreground hover:text-foreground"
-              >
+          <div className="flex items-center gap-3">
+             <a href="https://github.com" target="_blank" rel="noreferrer" className="text-slate-400 hover:text-white transition-colors">
                 <Github size={20} />
-              </a>
-            </div>
+             </a>
+             <Button size="sm" variant="outline" className="hidden sm:flex">v0.1.0-beta</Button>
           </div>
         </div>
+      </nav>
 
-        {/* Content */}
-        <main className="px-6 py-8">
-          <div className="max-w-4xl mx-auto">
-            {renderContent()}
+      <div className="flex max-w-[1440px] mx-auto">
+        {/* Left Sidebar */}
+        <DocSidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+
+        {/* Main Content Area */}
+        <main className="flex-1 min-w-0 lg:pl-[280px] xl:pr-[280px]">
+          <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+            {/* Breadcrumbs */}
+            <div className="flex items-center gap-2 text-sm text-slate-500 mb-8 overflow-x-auto whitespace-nowrap pb-2">
+              <Link href="/" className="hover:text-primary transition-colors">Home</Link>
+              <ChevronRight size={14} />
+              <span>Documentation</span>
+            </div>
+
+            {/* Content */}
+            <div className="prose prose-invert prose-slate max-w-none space-y-8 animate-fade-in">
+              <div>
+                <h1 className="text-4xl font-bold text-white mb-4">Documentation</h1>
+                <p className="text-lg text-slate-400 leading-relaxed">
+                  Welcome to the Chauffeur documentation. Here you'll find comprehensive guides to get you started with Chauffeur, from installation to advanced configuration.
+                </p>
+              </div>
+
+              <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg flex gap-3">
+                 <TerminalIcon className="text-blue-400 shrink-0" />
+                 <div className="text-sm text-blue-100/80">
+                   <strong>Quick Start:</strong> New to Chauffeur? Start with the <Link href="/docs/getting-started/installation" className="text-primary hover:underline">Installation guide</Link> and then create your <Link href="/docs/getting-started/first-project" className="text-primary hover:underline">First Project</Link>.
+                 </div>
+              </div>
+
+              <section id="getting-started">
+                <h2 className="text-2xl font-bold text-white mb-4 group flex items-center gap-2" id="getting-started">
+                  Getting Started
+                  <Link href="#getting-started" onClick={(e) => scrollToId(e, 'getting-started')} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-primary cursor-pointer">#</Link>
+                </h2>
+                <p className="text-slate-400 mb-4">Everything you need to know to get Chauffeur up and running on your system.</p>
+                <ul className="space-y-3">
+                  <li className="flex items-center gap-3">
+                    <ChevronRight size={16} className="text-slate-500" />
+                    <Link href="/docs/getting-started/installation" className="text-primary hover:underline">Installation</Link>
+                    <span className="text-slate-500">- Install Chauffeur on your Linux system</span>
+                  </li>
+                  <li className="flex items-center gap-3">
+                    <ChevronRight size={16} className="text-slate-500" />
+                    <Link href="/docs/getting-started/first-project" className="text-primary hover:underline">First Project</Link>
+                    <span className="text-slate-500">- Create and serve your first PHP project</span>
+                  </li>
+                  <li className="flex items-center gap-3">
+                    <ChevronRight size={16} className="text-slate-500" />
+                    <Link href="/docs/getting-started/architecture" className="text-primary hover:underline">Architecture</Link>
+                    <span className="text-slate-500">- Understand how Chauffeur works</span>
+                  </li>
+                </ul>
+              </section>
+
+              <section id="reference">
+                <h2 className="text-2xl font-bold text-white mb-4 group flex items-center gap-2" id="reference">
+                  Reference
+                  <Link href="#reference" onClick={(e) => scrollToId(e, 'reference')} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-primary cursor-pointer">#</Link>
+                </h2>
+                <p className="text-slate-400 mb-4">Comprehensive reference material for all Chauffeur features.</p>
+                <ul className="space-y-3">
+                  <li className="flex items-center gap-3">
+                    <ChevronRight size={16} className="text-slate-500" />
+                    <Link href="/docs/reference/commands" className="text-primary hover:underline">Command Reference</Link>
+                    <span className="text-slate-500">- Complete CLI command documentation</span>
+                  </li>
+                </ul>
+              </section>
+            </div>
           </div>
         </main>
+
+        {/* Right TOC (Desktop Only) */}
+        <TableOfContents />
       </div>
-
-      {/* Table of Contents */}
-      <TableOfContents />
-
-      {/* Sidebar Overlay */}
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black/50 z-30 md:hidden"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
     </div>
   );
 };
 
-export default DocsPage;
+export default DocsHomePage;
