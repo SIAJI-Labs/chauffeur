@@ -69,15 +69,7 @@ export default function InstallationPage() {
           <p className="text-slate-400 mt-4">Once completed, the installer will ask you to restart your session to add the binary to your path.</p>
         </section>
 
-        <section>
-          <h2 className="text-2xl font-bold text-white mb-4 group flex items-center gap-2" id="manual-install">
-            Manual Installation (Arch Linux)
-            <Link href="#manual-install" onClick={(e) => scrollToId(e, 'manual-install')} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-primary cursor-pointer">#</Link>
-          </h2>
-          <p className="text-slate-400 mb-4">For Arch users, you can install Chauffeur directly from the AUR.</p>
-          <CodeBlock code="yay -S chauffeur-bin" />
-        </section>
-
+  
         <section>
           <h2 className="text-2xl font-bold text-white mb-4 group flex items-center gap-2" id="verify">
             Verification

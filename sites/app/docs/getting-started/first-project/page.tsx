@@ -11,12 +11,35 @@ import { ChevronRight } from 'lucide-react';
 import { TableOfContents } from '@/app/docs/_components/TableOfContents';
 import { CodeBlock } from '@/app/docs/_components/CodeBlock';
 
+// Import command constants
+import { findCommand } from '@/constants';
+
 export default function FirstProjectPage() {
   const currentSlug = 'getting-started/first-project';
 
   useEffect(() => {
     window.scrollTo(0, 0);
   }, []);
+
+  // Helper to get command information
+  const getCommandInfo = (commandName: string) => {
+    const command = findCommand(commandName);
+    if (command && command.examples.length > 0) {
+      return command.examples[0];
+    }
+    return null;
+  };
+
+  // Get command examples
+  const installCmd = getCommandInfo('chauf install');
+  const installNginxCmd = findCommand('chauf install nginx');
+  const installComposerCmd = findCommand('chauf install composer');
+  const installPHPCmd = getCommandInfo('chauf install php');
+  const linkCmd = getCommandInfo('chauf link');
+  const linkSSLCmd = getCommandInfo('chauf link');
+  const startCmd = getCommandInfo('chauf start');
+  const statusCmd = getCommandInfo('chauf status');
+  const phpInstallCmd = findCommand('chauf php install');
 
   // Helper for safe scrolling
   const scrollToId = (e: React.MouseEvent, id: string) => {
@@ -57,26 +80,52 @@ export default function FirstProjectPage() {
           <p className="text-slate-400 mb-4">Install the core Chauffeur services needed to run your projects. This is a one-time setup.</p>
 
           <h3 className="text-xl font-semibold text-slate-200 mb-3">Install Core Services</h3>
-          <CodeBlock code={`$ chauf install
+          <p className="text-slate-400 mb-4">Install each service individually. This is a one-time setup.</p>
 
-🔧 Installing Chauffeur services...
+          <div className="space-y-4">
+            <div>
+              <h4 className="text-lg font-semibold text-slate-300 mb-2">Install nginx</h4>
+              <CodeBlock code={`$ ${installNginxCmd?.command || 'chauf install nginx'}
+
 📦 Installing nginx...
 ✓ nginx installed successfully
+
+${installNginxCmd?.examples?.[0]?.output || '✓ nginx installed successfully'}`} />
+            </div>
+
+            <div>
+              <h4 className="text-lg font-semibold text-slate-300 mb-2">Install PHP</h4>
+              <CodeBlock code={`$ ${installPHPCmd?.command || 'chauf install php 8.3'}
+
 📦 Installing PHP 8.3...
 ✓ PHP 8.3 installed successfully
+📦 Setting as global version...
+✓ PHP 8.3 set as global default
+
+${installPHPCmd?.output || '✓ PHP 8.3 installed successfully'}`} />
+            </div>
+
+            <div>
+              <h4 className="text-lg font-semibold text-slate-300 mb-2">Install composer</h4>
+              <CodeBlock code={`$ ${installComposerCmd?.command || 'chauf install composer'}
+
 📦 Installing composer...
 ✓ composer installed successfully
 
-🎉 All services installed successfully!`} />
+${installComposerCmd?.examples?.[1]?.output || '✓ composer installed successfully'}`} />
+            </div>
+          </div>
 
           <h3 className="text-xl font-semibold text-slate-200 mb-3 mt-6">Install Specific PHP Version</h3>
           <p className="text-slate-400 mb-4">You can also install specific PHP versions if needed:</p>
-          <CodeBlock code={`$ chauf install php 8.2
+          <CodeBlock code={`$ ${installPHPCmd?.command || 'chauf install php 8.2'}
 
 📦 Installing PHP 8.2...
 ✓ PHP 8.2 installed successfully
 📦 Setting as global version...
-✓ PHP 8.2 set as global default`} />
+✓ PHP 8.2 set as global default
+
+${installPHPCmd?.output || '✓ PHP 8.2 installed successfully'}`} />
 
           <div className="mt-6 p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
             <h4 className="font-semibold text-blue-300 mb-2">📋 What Gets Installed</h4>
@@ -85,6 +134,15 @@ export default function FirstProjectPage() {
               <p>• <strong>PHP 8.3:</strong> Default PHP runtime (latest stable)</p>
               <p>• <strong>composer:</strong> PHP dependency manager</p>
               <p>• <strong>dnsmasq:</strong> DNS resolution for .test domains</p>
+            </div>
+          </div>
+
+          <div className="mt-6 p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+            <h4 className="font-semibold text-blue-300 mb-2">📋 Available Services</h4>
+            <div className="text-sm text-blue-100/80 space-y-1">
+              <p><strong>Services:</strong> nginx, php, composer</p>
+              <p><strong>Usage:</strong> <code className="bg-slate-800 px-2 py-1 rounded text-blue-300">chauf install &lt;service&gt;</code></p>
+              <p><strong>Example:</strong> <code className="bg-slate-800 px-2 py-1 rounded text-blue-300">chauf install nginx</code></p>
             </div>
           </div>
 
