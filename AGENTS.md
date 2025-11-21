@@ -108,9 +108,12 @@ created_at: 2025-10-30T12:00:00+07:00
 | `chauf link` | `--site`, `--ssl`, `--php`, `--http-port`, `--https-port`, `--alias`, `--add-alias`, `--force` | Register current directory, detect template (Laravel/WordPress/general), generate configs with multi-domain support. |
 | `chauf links` | — | List all registered projects in a formatted table. |
 | `chauf unlink` | `--slug`, `--site`, `--project`, `--alias`, `--all`, `--force` | Remove registrations or specific aliases. Defaults to current dir. |
+| `chauf secure` | — | Add SSL certificate to current linked project. Must be run from linked project directory. |
+| `chauf unsecure` | — | Remove SSL certificate from current linked project. Must be run from linked project directory. |
 | `chauf php install <ver>` | `--force`, `--no-ext`, `--from` | Build/install PHP runtime under workspace. |
 | `chauf php use <ver>` | — | Set global default PHP. |
 | `chauf php isolate <ver>` | — | Pin current linked project to a version. |
+| `chauf php current` | — | Show current PHP version for directory or global default. |
 | `chauf remove <service> [version]` | `--force` | Remove installed runtimes (php, nginx, composer). |
 | `chauf uninstall` | `--purge` | Remove workspace (and runtimes with `--purge`). |
 | `chauf self-update` | `--dev` | Update binary from git or rebuild from current repo. |
@@ -218,7 +221,39 @@ Every code change requires immediate updates to:
 5. **sites/public/install.sh** – verify symlink to latest install script if CLI behavior changed.
 6. **AGENTS.md** – update command contracts, filesystem rules, or architectural guidance if behavior changed.
 
-### 11.1 Site Documentation Specifics
+### 11.1 Critical: Constants.ts Maintenance Requirement
+
+**When CLI commands change, AI models MUST update `sites/constants.ts` immediately.**
+
+The `sites/constants.ts` file serves as the **single source of truth** for:
+- All CLI command definitions and examples
+- Command flags, usage patterns, and expected outputs
+- Feature descriptions and navigation constants
+- Documentation site command reference generation
+
+#### **Required Workflow for Command Changes:**
+1. **CLI Implementation**: Modify Go commands in `cli/commands/`
+2. **Immediate Constants Update**: Update corresponding command definitions in `sites/constants.ts`
+3. **Example Verification**: Test all command examples against the actual binary
+4. **Documentation Sync**: Ensure site documentation reflects changes
+
+#### **Constants.ts Structure:**
+- `CLI_COMMANDS[]`: Array of all command definitions with examples
+- `COMMAND_CATEGORIES[]`: Category definitions with icons and descriptions
+- `findCommand()`: Helper to locate command definitions
+- Feature constants and navigation data
+
+#### **Verification Checklist:**
+- [ ] All new commands added to `CLI_COMMANDS[]`
+- [ ] Command examples match actual binary output
+- [ ] Flag descriptions match Go implementation
+- [ ] Usage patterns are accurate
+- [ ] Categories assigned correctly
+- [ ] Examples tested with real binary
+
+**Failure to update `sites/constants.ts` when commands change creates documentation divergence and user confusion.**
+
+### 11.2 Site Documentation Specifics
 
 The Next.js documentation site (`sites/`) must be kept in sync with all changes to Chauffeur's implementation:
 
@@ -259,19 +294,19 @@ Checklist (do not skip):
 - [ ] AGENTS.md matches actual behavior.
 - [ ] Examples and commands have been run/tested.
 
-## 12. Testing Standards
+## 13. Testing Standards
 - **Location**: Place tests in `tests/` or alongside packages as `*_test.go`, but external tests may not import `cli/internal/**`. Use exported seams instead.
 - **Execution**: `go test ./...` must pass before you push. Tests must isolate HOME/workspace via `t.TempDir()` and `t.Setenv` so they never touch the real user state.
 - **Coverage**: Aim ≥80% on new packages. Use table-driven tests for commands, and capture output via helpers (see existing tests) instead of relying on global state.
 - **Integration hooks**: Provide fakes/mocks for network and filesystem interactions so tests stay deterministic.
 
-## 12. Dependency & Release Hygiene
+## 14. Dependency & Release Hygiene
 - Do not build binaries directly inside the repo (e.g., `go build -o chauf`). Use `chauf self-update --dev` from the repo root to rebuild the CLI for debugging, which places artifacts under the workspace.
 - Do not commit compiled binaries, build artifacts, or caches. Keep the repo source-only.
 - Generated files (templates, configs) must be reproducible. If a command generates files, include instructions/tests to verify them.
 - Releases should be performed by building from clean git state and tagging. Document the steps in README when they change.
 
-## 13. Implementation Workflow for Agents
+## 15. Implementation Workflow for Agents
 1. **Read docs first**: Before coding, skim README and docs/TODO_STATUS to understand current state.
 2. **Plan**: Break work into verifiable steps. Call out doc updates early.
 3. **Work inside workspace**: Respect Host Impact Policy and workspace layout.
@@ -283,7 +318,7 @@ Checklist (do not skip):
 9. **Review output**: Ensure logs look clean, colors degrade gracefully, and errors cite log file locations.
 10. **Final verification**: Re-run key commands (e.g., `chauf link --dry-run`) to validate the new behavior shown in docs.
 
-## 14. PHP-FPM Architecture
+## 16. PHP-FPM Architecture
 
 ### Project-Level PHP-FPM Control
 Chauffeur provides **project-level PHP-FPM control** to balance resource efficiency and isolation needs:
@@ -323,7 +358,7 @@ Chauffeur provides **project-level PHP-FPM control** to balance resource efficie
 - ✅ **Backward compatibility**: Existing projects continue using shared FPM
 - ✅ **Simple management**: Clear project-level control via flag during linking
 
-## 15. Commit Policy for AI Agents
+## 17. Commit Policy for AI Agents
 
 ### 🚫 **NO UNAUTHORIZED COMMITS OR PUSHES**
 
@@ -382,7 +417,7 @@ This policy applies to:
 
 ---
 
-## 16. DNS & Port Automation Notes
+## 18. DNS & Port Automation Notes
 - `chauf start` must verify dnsmasq configuration for `.test`. If missing, print the exact `sudo tee /etc/dnsmasq.d/chauffeur.conf` block plus restart commands; never edit system files directly.
 - Port conflicts are resolved per the config's `ports.conflict_resolution`:
   - `prompt`: ask user via logger prompts.

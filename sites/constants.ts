@@ -87,6 +87,59 @@ export const CLI_COMMANDS: CommandDefinition[] = [
       { name: 'Unlink current project', description: 'Unlink current directory', command: 'chauf unlink', output: '✓ Unlinked my-app.test' }
     ]
   },
+  {
+    command: 'chauf secure',
+    category: 'projects',
+    description: 'Add SSL certificate to current linked project',
+    usage: 'chauf secure',
+    keyFlags: [],
+    examples: [
+      {
+        name: 'Add SSL to current project',
+        description: 'Generate and install SSL certificate for the current project',
+        command: 'chauf secure',
+        output: `[ secure ] Checking for mkcert availability...
+[ secure ] mkcert found - will generate trusted certificates
+[ secure ] Generating SSL certificates ⠋[ secure ] Generating multi-domain certificate for:
+[ secure ]   - my-project.test (HTTPS)
+[ secure ] Generating templates ⠙100.8ms[ secure ] Generating trusted multi-domain SSL certificate using mkcert
+[ secure ] Generating SSL certificates ⠇801.2ms...[ secure ] ✓ Multi-domain SSL certificate generated successfully with mkcert (domains: my-project.test)
+[ secure ] Generating SSL certificates ✓ (891.2ms)
+  └── ✓ Multi-domain SSL certificates generated
+[ secure ] ✓ SSL certificate added successfully
+[ secure ] ✓ Trusted SSL certificate generated (mkcert certificate is automatically trusted by browsers)
+[ secure ]   Secure access: https://my-project.test`
+      }
+    ],
+    notes: [
+      'Must be run from a linked project directory',
+      'Uses mkcert for trusted certificates if available',
+      'Falls back to self-signed certificates if mkcert not available',
+      'Automatically reloads nginx configuration'
+    ]
+  },
+  {
+    command: 'chauf unsecure',
+    category: 'projects',
+    description: 'Remove SSL certificate from current linked project',
+    usage: 'chauf unsecure',
+    keyFlags: [],
+    examples: [
+      {
+        name: 'Remove SSL from current project',
+        description: 'Remove SSL certificate from the current project',
+        command: 'chauf unsecure',
+        output: `[ unsecure ] Removing SSL certificate...
+[ unsecure ] ✓ SSL certificate removed successfully
+[ unsecure ]   HTTP access: http://my-project.test`
+      }
+    ],
+    notes: [
+      'Must be run from a linked project directory',
+      'Removes SSL certificate files and configuration',
+      'Automatically reloads nginx configuration'
+    ]
+  },
 
   // SERVICES - Service management commands
   {
@@ -197,6 +250,37 @@ export const CLI_COMMANDS: CommandDefinition[] = [
     keyFlags: [],
     examples: [
       { name: 'Isolate project PHP', description: 'Pin project to PHP version', command: 'chauf php isolate 8.1', output: '✓ Project isolated to PHP 8.1' }
+    ]
+  },
+  {
+    command: 'chauf php current',
+    category: 'php',
+    description: 'Show current PHP version for directory or global default',
+    usage: 'chauf php current',
+    keyFlags: [],
+    examples: [
+      {
+        name: 'Show current PHP version',
+        description: 'Display PHP version for current directory and global default',
+        command: 'chauf php current',
+        output: `[ php current ] Project: /home/user/my-project
+[ php current ] Project PHP: 8.3 (isolated)
+[ php current ] Global PHP: 8.2 (default)
+[ php current ] PHP binary: /home/user/.chauffeur/runtimes/php/8.3/bin/php`
+      },
+      {
+        name: 'Show current PHP outside project',
+        description: 'Display global PHP when not in a project directory',
+        command: 'chauf php current',
+        output: `[ php current ] No project detected in current directory
+[ php current ] Global PHP: 8.2 (default)
+[ php current ] PHP binary: /home/user/.chauffeur/runtimes/php/8.2/bin/php`
+      }
+    ],
+    notes: [
+      'Shows project-specific PHP if directory is linked to Chauffeur',
+      'Shows global PHP default when not in a project directory',
+      'Displays PHP binary path for reference'
     ]
   },
   {
