@@ -187,7 +187,7 @@ chauf restart" />
           <h3 className="text-xl font-semibold text-slate-200 mb-3">Custom Nginx Directives</h3>
           <CodeBlock code={`nginx:
   custom_directives:
-    - "add_header X-Powered-By \"Chauffeur\""
+    - 'add_header X-Powered-By "Chauffeur"'
     - "add_header X-Frame-Options DENY"
     - "client_max_body_size 100M"`} />
         </section>

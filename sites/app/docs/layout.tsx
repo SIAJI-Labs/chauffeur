@@ -1,7 +1,7 @@
 "use client";
 
 // React & Next.js
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 
 // Third-party libraries
@@ -17,6 +17,8 @@ import { Button } from '@/components/ui/Button';
 
 // Page-specific components
 import { DocSidebar } from '@/app/docs/_components/DocSidebar';
+import { SearchModal } from '@/app/docs/_components/SearchModal';
+import { SearchInitializer } from '@/app/docs/_components/SearchInitializer';
 
 export default function DocsLayout({
   children,
@@ -24,11 +26,27 @@ export default function DocsLayout({
   children: React.ReactNode;
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+
+  // Handle global keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Open search on Cmd/Ctrl + K
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setSearchOpen(true);
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   return (
-    <div className="min-h-screen bg-background text-slate-300">
-      {/* Docs Navbar */}
-      <nav className="sticky top-0 z-50 w-full bg-slate-900/95 backdrop-blur border-b border-slate-800">
+    <SearchInitializer>
+      <div className="min-h-screen bg-background text-slate-300">
+        {/* Docs Navbar */}
+        <nav className="sticky top-0 z-50 w-full bg-slate-900/95 backdrop-blur border-b border-slate-800">
         <div className="w-full px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <button
@@ -46,7 +64,7 @@ export default function DocsLayout({
             </Link>
           </div>
           <div className="flex items-center gap-3">
-             <a href="https://github.com" target="_blank" rel="noreferrer" className="text-slate-400 hover:text-white transition-colors">
+             <a href="https://github.com/SIAJI-Labs/chauffeur" target="_blank" rel="noreferrer" className="text-slate-400 hover:text-white transition-colors">
                 <Github size={20} />
              </a>
              <Button size="sm" variant="outline" className="hidden sm:flex">v0.1.0-beta</Button>
@@ -56,7 +74,11 @@ export default function DocsLayout({
 
       <div className="flex max-w-[1440px] mx-auto">
         {/* Left Sidebar */}
-        <DocSidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+        <DocSidebar
+          isOpen={sidebarOpen}
+          onClose={() => setSidebarOpen(false)}
+          onSearchOpen={() => setSearchOpen(true)}
+        />
 
         {/* Main Content Area */}
         <main className="flex-1 min-w-0 lg:pl-[280px]">
@@ -69,13 +91,17 @@ export default function DocsLayout({
         <div id="toc-container" className="hidden xl:block w-64 sticky top-20 h-[calc(100vh-5rem)] overflow-y-auto py-8" />
       </div>
 
-      {/* Sidebar Overlay */}
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black/50 z-30 lg:hidden"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
-    </div>
+        {/* Sidebar Overlay */}
+        {sidebarOpen && (
+          <div
+            className="fixed inset-0 bg-black/50 z-30 lg:hidden"
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
+      </div>
+
+      {/* Search Modal */}
+      <SearchModal isOpen={searchOpen} onClose={() => setSearchOpen(false)} />
+    </SearchInitializer>
   );
 }

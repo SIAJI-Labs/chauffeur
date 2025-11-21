@@ -1,5 +1,0 @@
-{
-  "name": "Chauffeur - Linux PHP Environment",
-  "description": "A high-performance, zero-config PHP development environment for Linux. Isolate projects, manage SSL, and eliminate Docker overhead.",
-  "requestFramePermissions": []
-}

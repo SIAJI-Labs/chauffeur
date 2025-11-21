@@ -194,9 +194,8 @@ sudo lsof -i :443
 # Option 1: Stop conflicting services
 sudo systemctl stop nginx apache2
 
-# Option 2: Change Chauffeur ports
-chauf config edit
-# Set nginx.http_port and nginx.https_port to different values
+# Option 2: Use custom ports when linking
+chauf link --http-port=8080 --https-port=8443
 
 # Option 3: Use automatic port resolution
 # Chauffeur will automatically find available ports in range 8080-8099
@@ -261,7 +260,8 @@ chauf php install 8.3 --force --from source
               </h3>
               <p className="text-slate-400 text-sm mb-2">PHP application shows errors or blank pages.</p>
               <CodeBlock code="# Enable PHP error reporting
-chauf config edit --project=my-app
+# Edit project configuration manually
+# ~/.chauffeur/projects/my-app/project.yaml
 # Add to php_values section:
 # php_values:
 #   display_errors: on
@@ -287,7 +287,8 @@ chauf logs fpm --project=my-app
 ~/.chauffeur/php/8.3/bin/php -m | grep opcache
 
 # Enable OPcache if not enabled
-chauf config edit
+# Edit configuration manually
+# ~/.chauffeur/projects/project-slug/project.yaml
 # Set opcache.enable: true
 
 # Check PHP-FPM process status
@@ -297,7 +298,8 @@ ps aux | grep php-fpm
 ps aux --sort=-%mem | head
 
 # Tune PHP-FPM settings
-chauf config edit --project=my-app
+# Edit project configuration manually
+# ~/.chauffeur/projects/my-app/project.yaml
 # Adjust max_children, start_servers, etc." />
             </div>
           </div>
@@ -326,7 +328,10 @@ sudo apt-get update && sudo apt-get install mkcert
 mkcert -install
 
 # Regenerate certificates
-chauf ssl regenerate --force my-app`} />
+# SSL is handled via the --secure flag during project linking
+# For existing projects, you may need to re-link with --secure flag
+chauf unlink project-name
+chauf link --secure regenerate --force my-app`} />
             </div>
 
             <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-4">
@@ -355,16 +360,23 @@ curl -I https://my-app.test" />
               </h3>
               <p className="text-slate-400 text-sm mb-2">SSL certificate has expired.</p>
               <CodeBlock code="# Check certificate expiration
-chauf ssl info my-app.test
+# SSL is handled via the --secure flag during project linking
+# For existing projects, you may need to re-link with --secure flag
+chauf unlink project-name
+chauf link --secure info my-app.test
 
 # Auto-renewal is enabled by default
 # Certificates renew 30 days before expiration
 
 # Force renewal
-chauf ssl regenerate my-app --force
+# SSL is handled via the --secure flag during project linking
+# For existing projects, you may need to re-link with --secure flag
+chauf unlink project-name
+chauf link --secure regenerate my-app --force
 
 # Enable auto-renewal if disabled
-chauf config edit
+# Edit configuration manually
+# ~/.chauffeur/projects/project-slug/project.yaml
 # Set ssl.auto_renewal: true" />
             </div>
           </div>
@@ -442,11 +454,13 @@ chauf status --detail
 ps aux --sort=-%mem | head
 
 # Enable memory optimization
-chauf config edit
+# Edit configuration manually
+# ~/.chauffeur/projects/project-slug/project.yaml
 # Set performance.memory_optimization: true
 
 # Tune PHP-FPM
-chauf config edit --project=my-app
+# Edit project configuration manually
+# ~/.chauffeur/projects/my-app/project.yaml
 # Adjust max_children based on available memory
 # Rule: max_children × memory_limit_per_process < 80% of available RAM
 
@@ -461,15 +475,18 @@ chauf restart" />
               </h3>
               <p className="text-slate-400 text-sm mb-2">Websites are loading slowly.</p>
               <CodeBlock code="# Enable gzip compression
-chauf config edit
+# Edit configuration manually
+# ~/.chauffeur/projects/project-slug/project.yaml
 # Set nginx.gzip: true
 
 # Enable caching
-chauf config edit
+# Edit configuration manually
+# ~/.chauffeur/projects/project-slug/project.yaml
 # Set nginx.cache.enabled: true
 
 # Optimize PHP
-chauf config edit --project=my-app
+# Edit project configuration manually
+# ~/.chauffeur/projects/my-app/project.yaml
 # Enable opcache and tune settings
 
 # Monitor performance

@@ -120,12 +120,12 @@ export default function CommandsPage() {
                       <td className="p-3 text-slate-500">global</td>
                     </tr>
                     <tr>
-                      <td className="p-3 font-mono text-slate-300">--ssl</td>
+                      <td className="p-3 font-mono text-slate-300">--secure</td>
                       <td className="p-3 text-slate-400">Generate SSL certificate for the site</td>
                       <td className="p-3 text-slate-500">false</td>
                     </tr>
                     <tr>
-                      <td className="p-3 font-mono text-slate-300">--domain</td>
+                      <td className="p-3 font-mono text-slate-300">--site</td>
                       <td className="p-3 text-slate-400">Set custom domain (e.g. myapp.test)</td>
                       <td className="p-3 text-slate-500">directory-name</td>
                     </tr>
@@ -139,13 +139,28 @@ export default function CommandsPage() {
                       <td className="p-3 text-slate-400">Overwrite existing project configuration</td>
                       <td className="p-3 text-slate-500">false</td>
                     </tr>
+                    <tr>
+                      <td className="p-3 font-mono text-slate-300">--dedicated-fpm</td>
+                      <td className="p-3 text-slate-400">Use dedicated PHP-FPM pool for this project</td>
+                      <td className="p-3 text-slate-500">false</td>
+                    </tr>
+                    <tr>
+                      <td className="p-3 font-mono text-slate-300">--http-port</td>
+                      <td className="p-3 text-slate-400">Set custom HTTP port (1-65535)</td>
+                      <td className="p-3 text-slate-500">80</td>
+                    </tr>
+                    <tr>
+                      <td className="p-3 font-mono text-slate-300">--https-port</td>
+                      <td className="p-3 text-slate-400">Set custom HTTPS port (1-65535)</td>
+                      <td className="p-3 text-slate-500">443</td>
+                    </tr>
                   </tbody>
                 </table>
               </div>
 
               <h4 className="text-lg font-semibold text-slate-200 mb-2">Example</h4>
               <CodeBlock code={`$ cd ~/projects/my-laravel-app
-$ chauf link --php=8.3 --ssl --domain=laravel.test --alias=api.laravel.test --alias=admin.laravel.test
+$ chauf link --php=8.3 --secure --site=laravel.test --alias=api.laravel.test --alias=admin.laravel.test
 
 ✓ Linking project: my-laravel-app
 ✓ PHP 8.3 runtime configured
@@ -467,12 +482,12 @@ $ chauf restart
 
           <div className="space-y-12">
             <div>
-              <h3 className="text-2xl font-bold text-white mb-4 font-mono group flex items-center gap-2" id="use">
-                chauf use
-                <Link href="#use" onClick={(e) => scrollToId(e, 'use')} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-primary cursor-pointer">#</Link>
+              <h3 className="text-2xl font-bold text-white mb-4 font-mono group flex items-center gap-2" id="php-use">
+                chauf php use
+                <Link href="#php-use" onClick={(e) => scrollToId(e, 'php-use')} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-primary cursor-pointer">#</Link>
               </h3>
               <p className="text-slate-400 mb-4">Set the global default PHP version for new sites.</p>
-              <CodeBlock code="chauf php isolate <version>" />
+              <CodeBlock code="chauf php use <version>" />
 
               <h4 className="text-lg font-semibold text-slate-200 mb-2">Arguments</h4>
               <div className="overflow-x-auto">
@@ -492,20 +507,96 @@ $ chauf restart
                 </table>
               </div>
 
-              <h4 className="text-lg font-semibold text-slate-200 mb-2">Example</h4>
-              <CodeBlock code={`$ chauf use 8.3
+              <h4 className="text-lg font-semibold text-slate-200 mb-2">Arguments</h4>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-700 bg-slate-800/50">
+                      <th className="p-3 font-mono text-emerald-400">Argument</th>
+                      <th className="p-3 text-slate-300">Description</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800">
+                    <tr>
+                      <td className="p-3 font-mono text-slate-300">&lt;version&gt;</td>
+                      <td className="p-3 text-slate-400">PHP version to set as global default (e.g. 7.4, 8.0, 8.1, 8.2, 8.3, 8.4)</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
 
-🔄 Setting global PHP version to 8.3
-✓ PHP 8.3 runtime already installed
+              <h4 className="text-lg font-semibold text-slate-200 mb-2">Example</h4>
+              <CodeBlock code={`$ chauf php use 8.4
+
+🔄 Setting global PHP version to 8.4
+✓ PHP 8.4 runtime already installed
 ✓ Global PHP version updated
 ✓ CLI PATH updated
 
-✅ PHP 8.3 is now the global default
-New projects will use PHP 8.3 unless specified otherwise
+✅ PHP 8.4 is now the global default
+New projects will use PHP 8.4 unless specified otherwise
 
 $ php -v
-PHP 8.3.15 (cli) (built: Dec 15 2024 10:30:00)
+PHP 8.4.14 (cli) (built: Dec 15 2024 10:30:00)
 Copyright (c) The PHP Group`} />
+            </div>
+
+            <div>
+              <h3 className="text-2xl font-bold text-white mb-4 font-mono group flex items-center gap-2" id="php-isolate">
+                chauf php isolate
+                <Link href="#php-isolate" onClick={(e) => scrollToId(e, 'php-isolate')} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-primary cursor-pointer">#</Link>
+              </h3>
+              <p className="text-slate-400 mb-4">Pin the current project to a specific PHP version.</p>
+              <CodeBlock code="chauf php isolate <version>" />
+
+              <h4 className="text-lg font-semibold text-slate-200 mb-2">Arguments</h4>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-700 bg-slate-800/50">
+                      <th className="p-3 font-mono text-emerald-400">Argument</th>
+                      <th className="p-3 text-slate-300">Description</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800">
+                    <tr>
+                      <td className="p-3 font-mono text-slate-300">&lt;version&gt;</td>
+                      <td className="p-3 text-slate-400">PHP version to pin to current project (e.g. 7.4, 8.0, 8.1, 8.2, 8.3, 8.4)</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <h4 className="text-lg font-semibold text-slate-200 mb-2">Example</h4>
+              <CodeBlock code={`$ cd ~/projects/legacy-app
+$ chauf php isolate 7.4
+
+🔧 Pinning project to PHP 7.4
+✓ PHP 7.4 runtime already installed
+✓ Project configuration updated
+✓ FPM pool restarted
+
+✅ legacy-app pinned to PHP 7.4
+This project will use PHP 7.4 regardless of global settings`} />
+            </div>
+
+            <div>
+              <h3 className="text-2xl font-bold text-white mb-4 font-mono group flex items-center gap-2" id="php-list">
+                chauf php list
+                <Link href="#php-list" onClick={(e) => scrollToId(e, 'php-list')} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-primary cursor-pointer">#</Link>
+              </h3>
+              <p className="text-slate-400 mb-4">List all supported PHP versions and their installation status.</p>
+              <CodeBlock code="chauf php list" />
+
+              <h4 className="text-lg font-semibold text-slate-200 mb-2">Example</h4>
+              <CodeBlock code={`$ chauf php list
+✅ Supported PHP versions:
+  PHP 8.4 ❌
+  PHP 8.3 ✅ (active)
+  PHP 8.2 ✅
+  PHP 8.1 ✅
+  PHP 8.0 ❌
+  PHP 7.4 ❌`} />
             </div>
 
             <div>

@@ -7,19 +7,22 @@ import { usePathname } from 'next/navigation';
 
 // Third-party libraries
 import {
-  ChevronRight,
-  Search
+  ChevronRight
 } from 'lucide-react';
 
 // Constants
 import { DOCS_NAVIGATION } from '@/constants';
 
+// Internal components
+import { SearchTrigger } from './SearchTrigger';
+
 interface DocSidebarProps {
   isOpen: boolean;
   onClose: () => void;
+  onSearchOpen: () => void;
 }
 
-export const DocSidebar: React.FC<DocSidebarProps> = ({ isOpen, onClose }) => {
+export const DocSidebar: React.FC<DocSidebarProps> = ({ isOpen, onClose, onSearchOpen }) => {
   const pathname = usePathname();
   const currentPath = pathname.replace('/docs/', '') || 'getting-started/installation';
 
@@ -41,15 +44,7 @@ export const DocSidebar: React.FC<DocSidebarProps> = ({ isOpen, onClose }) => {
         lg:translate-x-0 lg:top-16 lg:h-[calc(100vh-4rem)]
       `}>
         <div className="p-4 sticky top-0 bg-slate-900 z-10">
-           <div className="relative">
-             <Search className="absolute left-3 top-2.5 text-slate-500" size={16} />
-             <input 
-               type="text" 
-               placeholder="Search docs..." 
-               className="w-full bg-slate-800 border border-slate-700 text-slate-200 text-sm rounded-lg pl-9 pr-4 py-2 focus:outline-none focus:ring-2 focus:ring-primary/50"
-             />
-             <div className="absolute right-2 top-2.5 px-1.5 py-0.5 rounded bg-slate-700 text-[10px] text-slate-400 font-medium">⌘K</div>
-           </div>
+           <SearchTrigger onClick={onSearchOpen} />
         </div>
 
         <nav className="px-4 pb-8">

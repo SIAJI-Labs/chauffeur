@@ -150,13 +150,13 @@ chauf php install 8.3 --from source   # Force compilation from source" />
 
           <h3 className="text-xl font-semibold text-slate-200 mb-3">List Installed Versions</h3>
           <CodeBlock code="$ chauf php list
-┌─────────────┬─────────────────┬───────────┬─────────────┐
-│ Version     │ Path            │ Status    │ Size        │
-├─────────────┼─────────────────┼───────────┼─────────────┤
-│ 8.3         │ ~/.chauffeur/... │ active    │ 145 MB      │
-│ 8.2         │ ~/.chauffeur/... │ active    │ 138 MB      │
-│ 8.1         │ ~/.chauffeur/... │ active    │ 132 MB      │
-└─────────────┴─────────────────┴───────────┴─────────────┘" />
+✅ Supported PHP versions:
+  PHP 8.4 ❌
+  PHP 8.3 ✅ (active)
+  PHP 8.2 ✅
+  PHP 8.1 ✅
+  PHP 8.0 ❌
+  PHP 7.4 ❌" />
         </section>
 
         <section id="global-version">

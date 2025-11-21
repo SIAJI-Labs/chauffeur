@@ -50,26 +50,26 @@ export const COMMAND_EXAMPLES: CommandExample[] = [
   {
     name: "Link Project",
     description: "Serve the current directory",
-    command: "chauf link --name=shop --secure",
-    output: "Linking ./ to https://shop.test [PHP 8.3]"
+    command: "chauf link --secure",
+    output: "Linking ./ to https://my-project.test [PHP 8.4]"
   },
   {
-    name: "Isolate Version",
-    description: "Pin a specific PHP version",
-    command: "chauf isolate 8.1",
+    name: "Project PHP Version",
+    description: "Set project-specific PHP version",
+    command: "chauf link --php=8.1",
     output: "Project pinned to PHP 8.1. FPM pool restarted."
   },
   {
-    name: "Secure Site",
-    description: "Add SSL to existing site",
-    command: "chauf secure my-site",
-    output: "Certificate created and trusted for my-site.test"
+    name: "Global PHP Version",
+    description: "Set global default PHP version",
+    command: "chauf php use 8.3",
+    output: "PHP 8.3 set as global default"
   },
   {
-    name: "Switch Global",
-    description: "Pin specific PHP version",
-    command: "chauf php isolate 8.2",
-    output: "PHP 8.2 pinned as global default"
+    name: "List Projects",
+    description: "Show all linked projects",
+    command: "chauf links",
+    output: "📋 Found 2 linked projects"
   }
 ];
 

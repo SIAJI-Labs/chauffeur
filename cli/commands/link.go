@@ -151,6 +151,11 @@ func RunLink(args []string) error {
 			phpVer = args[i+1]
 			i += 2
 		case "--ssl":
+			// Deprecated: Use --secure instead
+			fmt.Fprintf(os.Stderr, "Warning: --ssl is deprecated, use --secure instead\n")
+			ssl = true
+			i++
+		case "--secure":
 			ssl = true
 			i++
 		case "--force":
