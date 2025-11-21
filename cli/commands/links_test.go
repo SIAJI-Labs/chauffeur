@@ -5,6 +5,7 @@ import (
 	"fmt" // Added for fmt.Sprintf
 	"os"
 	"path/filepath"
+	"strings" // Added for strings.Split and strings.TrimSpace
 	"testing"
 	"time"
 
@@ -130,14 +131,24 @@ func TestRunLinks_DefaultOutput(t *testing.T) {
 	assert.NoError(t, err)
 
 	output := buf.String()
-	// Using individual Contains for robustness against whitespace/newline
-	assert.Contains(t, output, "\n[ links ] Linked Projects (3)\n") // Check for leading newline and project count
-	assert.Contains(t, output, "[ links ] SLUG                PATH                    DOMAIN                   ALIASES  SSL  PHP   CREATED")
-	assert.Contains(t, output, "[ links ] ------------------  ----------------------  -----------------------  --------  ---  ----  -------------------")
-	assert.Contains(t, output, "[ links ] test-project-one    /path/to/project-one    one.test                 2         *    8.3   2023-01-01 10:00")
-	assert.Contains(t, output, "[ links ] test-project-three  /path/to/project-three  three.test               0         *    8.1   2023-03-01 12:00")
-	assert.Contains(t, output, "[ links ] test-project-two    /path/to/project-two    two.test                 1         *    7.4   2023-02-01 11:00")
-	assert.Contains(t, output, "\n") // Check for trailing newline
+	// t.Logf("Raw Output for Default Links:\n%q", output) // Debug logging
+
+	expectedLines := []string{
+		"[ links ] Linked Projects (3)",
+		"[ links ] SLUG                PATH                    DOMAIN                   ALIASES   SSL  PHP   CREATED",
+		"[ links ] ------------------  ----------------------  -----------------------  --------  ---  ----  -------------------",
+		"[ links ] test-project-one    /path/to/project-one    one.test                 2         *    8.3   2023-01-01 10:00",
+		"[ links ] test-project-three  /path/to/project-three  three.test               0         *    8.1   2023-03-01 12:00",
+		"[ links ] test-project-two    /path/to/project-two    two.test                 1         *    7.4   2023-02-01 11:00",
+	}
+
+	actualLines := strings.Split(strings.TrimSpace(output), "\n")
+
+	assert.Len(t, actualLines, len(expectedLines), "Expected number of lines in output mismatch")
+
+	for i, expected := range expectedLines {
+		assert.Equal(t, expected, actualLines[i], "Line %d mismatch", i)
+	}
 }
 
 // TestRunLinks_DetailOutput_Slug tests detailed output using --slug

@@ -170,14 +170,14 @@ func RunLinks(args []string) error {
 		}
 
 		row := fmt.Sprintf("%-*s  %-*s  %-*s  %-*d  %-3s  %-4s  %s",
-			maxSlug, project.Slug,
-			maxPath, project.Path,
-			maxSlug+5, domainDisplay,
-			maxAliasCount, project.AliasCount,
-			ssl,
-			project.PHP,
-			created)
-		logger.Info(row)
+		maxSlug, project.Slug,
+		maxPath, project.Path,
+		maxSlug+5, domainDisplay,
+		maxAliasCount, project.AliasCount,
+		ssl,
+		project.PHP,
+		created)
+	logger.Info(row)
 	}
 
 	return nil

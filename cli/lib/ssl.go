@@ -23,7 +23,7 @@ func CheckMkcertAvailable() (bool, string) {
 	for _, path := range mkcertPaths {
 		if _, err := exec.LookPath(path); err == nil {
 			// Check if mkcert CA is installed
-			cmd := exec.Command(path, "-install")
+			cmd := MkcertCommandExecutor(path, "-install")
 			if err := cmd.Run(); err != nil {
 				// mkcert exists but CA not installed - still usable
 				return true, path
@@ -117,7 +117,7 @@ func RemoveSSLCertificate(certPath, keyPath, domain string) (bool, bool, error) 
 // CleanupMkcertTrustStore removes mkcert certificates from the system trust store
 func CleanupMkcertTrustStore(logger *Logger) error {
 	if mkcertAvailable, mkcertCmd := CheckMkcertAvailable(); mkcertAvailable {
-		cmd := exec.Command(mkcertCmd, "-uninstall")
+		cmd := MkcertCommandExecutor(mkcertCmd, "-uninstall")
 		if output, err := cmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("failed to remove mkcert certificates from trust store: %v, output: %s", err, string(output))
 		}

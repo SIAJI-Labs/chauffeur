@@ -9,6 +9,8 @@ import (
 )
 
 func TestLinkWithCustomDomainAndSSL(t *testing.T) {
+	helpers.MockAllExecutors(t) // Setup all necessary mocks
+
 	home, workspace := helpers.SetupTestHome(t)
 
 	if err := commands.RunInit(nil); err != nil {
@@ -29,3 +31,5 @@ func TestLinkWithCustomDomainAndSSL(t *testing.T) {
 	helpers.AssertFileContains(t, configPath, "domain: example.test")
 	helpers.AssertFileContains(t, configPath, "ssl: true")
 }
+
+

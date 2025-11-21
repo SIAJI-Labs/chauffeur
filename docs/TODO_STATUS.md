@@ -97,7 +97,8 @@ _A living status board for features, debt, and priorities. Keep this in sync wit
 - Build infrastructure successfully initiates GD extension compilation for legacy PHP versions
 
 ## 3. In Progress 🚧
-3. **Documentation sync discipline** – ongoing effort to keep README, AGENTS, and this tracker aligned
+1. **Documentation sync discipline** – ongoing effort to keep README, AGENTS, and this tracker aligned
+2. **Command documentation updates** – updating sites/constants.ts and site documentation to match current CLI implementation
 
 ## 4. Planned 📋
 | Priority | Item | Notes |

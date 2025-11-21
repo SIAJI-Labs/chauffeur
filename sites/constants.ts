@@ -63,12 +63,17 @@ export const CLI_COMMANDS: CommandDefinition[] = [
   {
     command: 'chauf links',
     category: 'projects',
-    description: 'List all registered projects in a formatted table.',
-    usage: 'chauf links',
-    keyFlags: [],
+    description: 'List all registered projects in a formatted table with detailed view support.',
+    usage: 'chauf links [--slug <slug>] [--site <domain>]',
+    keyFlags: [
+      { flag: '--slug <slug>', description: 'Display detailed information for a specific project by slug', required: false },
+      { flag: '--site <domain>', description: 'Display detailed information for a specific project by site domain', required: false }
+    ],
     examples: [
-      { name: 'List projects', description: 'Show all linked projects', command: 'chauf links', output: '📋 Found 3 linked projects' }
-    ]
+      { name: 'List projects', description: 'Show all linked projects', command: 'chauf links', output: '📋 Found 3 linked projects' },
+      { name: 'View project details', description: 'Show detailed project information', command: 'chauf links --slug my-project', output: '📋 Project Details: my-project' }
+    ],
+    notes: ['--slug and --site flags are mutually exclusive']
   },
   {
     command: 'chauf unlink',
@@ -347,6 +352,29 @@ export const CLI_COMMANDS: CommandDefinition[] = [
   },
 
   // UTILITIES - Finally utilities
+  {
+    command: 'chauf doctor',
+    category: 'utilities',
+    description: 'Perform health checks and diagnose system issues.',
+    usage: 'chauf doctor [options]',
+    keyFlags: [
+      { flag: '--check-all, -a', description: 'Run all dependency checks (default)', required: false },
+      { flag: '--check-deps, -d', description: 'Check system dependencies (git, curl, tar, etc.)', required: false },
+      { flag: '--check-php, -p', description: 'Check PHP build dependencies and headers', required: false },
+      { flag: '--check-ssl, -s', description: 'Check SSL certificate dependencies', required: false },
+      { flag: '--check-network, -n', description: 'Check network and port availability', required: false },
+      { flag: '--check-dns', description: 'Check DNS resolution for .test domains', required: false },
+      { flag: '--verbose, -v', description: 'Show detailed diagnostic information', required: false },
+      { flag: '--fix, -f', description: 'Show fix suggestions for issues found', required: false },
+      { flag: '--auto-fix', description: 'Attempt to automatically fix issues where safe', required: false },
+      { flag: '--quiet, -q', description: 'Suppress non-error output', required: false }
+    ],
+    examples: [
+      { name: 'Full health check', description: 'Run all health checks', command: 'chauf doctor', output: '✓ System health check completed' },
+      { name: 'Check dependencies only', description: 'Check only system dependencies', command: 'chauf doctor --check-deps', output: '✓ System dependencies OK' }
+    ],
+    notes: ['Provides comprehensive validation and guidance for resolving issues']
+  },
   {
     command: 'chauf info',
     category: 'utilities',

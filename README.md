@@ -96,8 +96,11 @@ Chauffeur provides **project-level PHP-FPM control** to balance resource efficie
 | `chauf restart` | `[service-type]`, `--project <path>`, `--all`, `--dry-run` | Restart specific services, projects, or all services. |
 | `chauf status` | `[service-type]`, `--project`, `--detail`, `-v` | Inspect global or per-project services. |
 | `chauf link` | `--site`, `--ssl`, `--php`, `--dedicated-fpm`, `--http-port`, `--https-port`, `--alias`, `--force` | Register project with multi-domain support (shared FPM by default). |
-| `chauf links` | — | Table of all registered projects with SSL indicators for aliases. |
+| `chauf links` | `--slug`, `--site` | Table of all registered projects with SSL indicators for aliases; supports detailed view. |
 | `chauf unlink` | `--alias`, `--slug`, `--site`, `--project`, `--all`, `--force` | Remove registrations or specific aliases; defaults to current directory. |
+| `chauf secure` | — | Add SSL certificate to current linked project. |
+| `chauf unsecure` | — | Remove SSL certificate from current linked project. |
+| `chauf doctor` | `--check-deps`, `--check-php`, `--check-ssl`, `--check-network`, `--verbose`, `--fix` | Perform health checks and diagnose system issues. |
 | `chauf install <service> [ver]` | `--force`, `--local`, `--no-cache` | Install services with intelligent caching (php, composer, nginx). |
 | `chauf php install <ver>` | `--force`, `--no-ext`, `--from` | Install PHP runtimes into the workspace. |
 | `chauf php use <ver>` | — | Set global default PHP version. |

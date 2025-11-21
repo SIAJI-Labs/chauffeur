@@ -7,10 +7,12 @@ import (
 	"testing"
 
 	"github.com/siaji/chauffeur/cli/commands"
-	"github.com/siaji/chauffeur/tests/internal/helpers"
+	"github.com/siaji/chauffeur/tests/internal/helpers" // Add this import
 )
 
 func TestUnlinkShowsMultiDomainConfirmation(t *testing.T) {
+	helpers.MockAllExecutors(t) // Setup all necessary mocks
+
 	home, workspace := helpers.SetupTestHome(t)
 
 	if err := commands.RunInit(nil); err != nil {
@@ -73,6 +75,8 @@ func TestUnlinkShowsMultiDomainConfirmation(t *testing.T) {
 }
 
 func TestUnlinkWithAliasOption(t *testing.T) {
+	helpers.MockAllExecutors(t) // Setup all necessary mocks
+
 	home, workspace := helpers.SetupTestHome(t)
 
 	if err := commands.RunInit(nil); err != nil {
@@ -141,6 +145,8 @@ func TestUnlinkWithAliasOption(t *testing.T) {
 }
 
 func TestUnlinkSingleDomainBackwardCompatibility(t *testing.T) {
+	helpers.MockAllExecutors(t) // Setup all necessary mocks
+
 	home, workspace := helpers.SetupTestHome(t)
 
 	if err := commands.RunInit(nil); err != nil {
@@ -198,6 +204,8 @@ func TestUnlinkSingleDomainBackwardCompatibility(t *testing.T) {
 }
 
 func TestUnlinkAllRemovesMultiDomainProjects(t *testing.T) {
+	helpers.MockAllExecutors(t) // Setup all necessary mocks
+
 	home, workspace := helpers.SetupTestHome(t)
 
 	if err := commands.RunInit(nil); err != nil {
@@ -253,7 +261,7 @@ func TestUnlinkAllRemovesMultiDomainProjects(t *testing.T) {
 
 	// Capture unlink all output
 	output := helpers.CaptureOutput(t, func() {
-		// Use --force and --all to avoid interactive confirmation
+		// Use --all to avoid interactive confirmation
 		unlinkArgs := []string{"--all", "--force"}
 		if err := commands.RunUnlink(unlinkArgs); err != nil {
 			t.Fatalf("RunUnlink failed: %v", err)
