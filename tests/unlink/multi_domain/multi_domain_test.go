@@ -31,7 +31,7 @@ func TestUnlinkShowsMultiDomainConfirmation(t *testing.T) {
 
 	args := []string{
 		"--site", "main.test",
-		"--ssl",
+		"--secure",
 		"--alias", "admin.test",
 		"--alias", "api.test",
 	}
@@ -95,7 +95,7 @@ func TestUnlinkWithAliasOption(t *testing.T) {
 
 	args := []string{
 		"--site", "primary.test",
-		"--ssl",
+		"--secure",
 		"--alias", "alias1.test",
 		"--alias", "alias2.test",
 		"--alias", "alias3.test",
@@ -165,7 +165,7 @@ func TestUnlinkSingleDomainBackwardCompatibility(t *testing.T) {
 
 	args := []string{
 		"--site", "legacy.test",
-		"--ssl",
+		"--secure",
 	}
 
 	if err := commands.RunLink(args); err != nil {
@@ -236,7 +236,7 @@ func TestUnlinkAllRemovesMultiDomainProjects(t *testing.T) {
 
 		args := []string{"--site", proj.domain}
 		if proj.ssl {
-			args = append(args, "--ssl")
+			args = append(args, "--secure")
 		}
 		for _, alias := range proj.aliases {
 			args = append(args, "--alias", alias)

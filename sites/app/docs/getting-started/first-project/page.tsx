@@ -186,7 +186,7 @@ ${installPHPCmd?.output || '✓ PHP 8.2 installed successfully'}`} />
             <Link href="#add-ssl" onClick={(e) => scrollToId(e, 'add-ssl')} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-primary cursor-pointer">#</Link>
           </h2>
           <p className="text-slate-400 mb-4">Secure your local site with SSL certificate.</p>
-          <CodeBlock code="chauf link --ssl" />
+          <CodeBlock code="chauf link --secure" />
           <p className="text-slate-400">
             Now visit <Link href="#" onClick={(e) => e.preventDefault()} className="text-primary hover:underline">https://my-website.test</Link> in your browser.
           </p>
@@ -206,7 +206,7 @@ ${installPHPCmd?.output || '✓ PHP 8.2 installed successfully'}`} />
                 <code>go install -r filippo.io/mkcert@latest</code><br/>
                 <code>mkcert -install  # Prompts for sudo password once</code><br/>
                 <code># Then relink your project with SSL</code><br/>
-                <code>chauf link --ssl --force</code>
+                <code>chauf link --secure --force</code>
               </div>
             </div>
           </div>

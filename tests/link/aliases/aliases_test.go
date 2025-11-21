@@ -90,7 +90,7 @@ func TestLinkWithAliasesAndSSL(t *testing.T) {
 	// Test linking with aliases and SSL
 	args := []string{
 		"--site", "app.test",
-		"--ssl", // This should enable SSL for primary domain
+		"--secure", // This should enable SSL for primary domain
 		"--alias", "admin.test",
 		"--alias", "api.test",
 	}
@@ -154,7 +154,7 @@ func TestLinkSingleDomainBackwardCompatibility(t *testing.T) {
 	// Test single domain linking (backward compatibility)
 	args := []string{
 		"--site", "legacy.test",
-		"--ssl",
+		"--secure",
 	}
 
 	if err := commands.RunLink(args); err != nil {

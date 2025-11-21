@@ -22,7 +22,7 @@ func TestLinkWithCustomDomainAndSSL(t *testing.T) {
 	projectDir := helpers.NewProjectDir(t, home, "secure-site")
 	helpers.Chdir(t, projectDir)
 
-	args := []string{"--site", "example.test", "--ssl"}
+	args := []string{"--site", "example.test", "--secure"}
 	if err := commands.RunLink(args); err != nil {
 		t.Fatalf("RunLink failed: %v", err)
 	}

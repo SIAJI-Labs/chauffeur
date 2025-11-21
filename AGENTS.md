@@ -105,7 +105,7 @@ created_at: 2025-10-30T12:00:00+07:00
 | `chauf stop` | same flags as start | Stop services and clean port-forward rules. |
 | `chauf restart` | `--project <slug>`, `--all`, `--dry-run` | Restart services (equivalent to stop then start, preserves configuration). |
 | `chauf status` | `[service-type]`, `--project`, `--detail`, `-v` | Show status for global or per-project services. |
-| `chauf link` | `--site`, `--ssl`, `--php`, `--http-port`, `--https-port`, `--alias`, `--add-alias`, `--force` | Register current directory, detect template (Laravel/WordPress/general), generate configs with multi-domain support. |
+| `chauf link` | `--site`, `--secure`, `--php`, `--http-port`, `--https-port`, `--alias`, `--add-alias`, `--force` | Register current directory, detect template (Laravel/WordPress/general), generate configs with multi-domain support. |
 | `chauf links` | — | List all registered projects in a formatted table. |
 | `chauf unlink` | `--slug`, `--site`, `--project`, `--alias`, `--all`, `--force` | Remove registrations or specific aliases. Defaults to current dir. |
 | `chauf secure` | — | Add SSL certificate to current linked project. Must be run from linked project directory. |
@@ -189,7 +189,7 @@ func createSANConfig(domains []string) string
 ### User Experience
 - **Links display**: `(*)` indicators show SSL-enabled aliases
 - **Unlink confirmation**: Shows all domains (primary + aliases) with SSL status
-- **Command interface**: `--alias` flag for adding domains, `--ssl` for per-alias SSL control
+- **Command interface**: `--alias` flag for adding domains, `--secure` for per-alias SSL control
 
 ### Backward Compatibility
 - Existing single-domain configurations unchanged
@@ -261,7 +261,7 @@ The Next.js documentation site (`sites/`) must be kept in sync with all changes 
 - **CRITICAL**: All CLI commands and flags in site documentation MUST match the actual Go implementation in `cmd/`
 - Before documenting any command, run `chauf --help` and specific command help to verify exact syntax
 - Test all command examples to ensure they work with the current binary version
-- Pay special attention to flag names (e.g., `--ssl` vs `--secure`) and command structure (e.g., `chauf php isolate` vs `chauf isolate`)
+- Pay special attention to flag names (e.g., `--secure` vs `--secure`) and command structure (e.g., `chauf php isolate` vs `chauf isolate`)
 
 #### **Binary Implementation Verification**
 - All documented commands should reflect the actual behavior of the `chauf` binary

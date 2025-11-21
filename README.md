@@ -95,7 +95,7 @@ Chauffeur provides **project-level PHP-FPM control** to balance resource efficie
 | `chauf stop` | `--project <path>`, `--all`, `--dry-run` | Stop services and clean redirects. |
 | `chauf restart` | `[service-type]`, `--project <path>`, `--all`, `--dry-run` | Restart specific services, projects, or all services. |
 | `chauf status` | `[service-type]`, `--project`, `--detail`, `-v` | Inspect global or per-project services. |
-| `chauf link` | `--site`, `--ssl`, `--php`, `--dedicated-fpm`, `--http-port`, `--https-port`, `--alias`, `--force` | Register project with multi-domain support (shared FPM by default). |
+| `chauf link` | `--site`, `--secure`, `--php`, `--dedicated-fpm`, `--http-port`, `--https-port`, `--alias`, `--force` | Register project with multi-domain support (shared FPM by default). |
 | `chauf links` | `--slug`, `--site` | Table of all registered projects with SSL indicators for aliases; supports detailed view. |
 | `chauf unlink` | `--alias`, `--slug`, `--site`, `--project`, `--all`, `--force` | Remove registrations or specific aliases; defaults to current directory. |
 | `chauf secure` | — | Add SSL certificate to current linked project. |
@@ -173,10 +173,10 @@ Chauffeur supports multiple domains pointing to the same project directory, perf
 **Link with multiple domains:**
 ```bash
 # Link project with primary domain and aliases
-chauf link --site myapp.test --alias admin.myapp.test --alias api.myapp.test --ssl
+chauf link --site myapp.test --alias admin.myapp.test --alias api.myapp.test --secure
 
 # Add aliases to existing projects
-chauf link --alias www.myapp.test --ssl
+chauf link --alias www.myapp.test --secure
 chauf link --alias staging.myapp.test    # HTTP only
 ```
 
@@ -223,10 +223,10 @@ curl http://staging.myapp.test:8080
 **Add aliases to existing projects:**
 ```bash
 # Add SSL-enabled alias
-chauf link --alias new.domain.test --ssl
+chauf link --alias new.domain.test --secure
 
 # Add multiple aliases
-chauf link --alias www.domain.test --alias api.domain.test --ssl
+chauf link --alias www.domain.test --alias api.domain.test --secure
 ```
 
 **Remove specific aliases:**
