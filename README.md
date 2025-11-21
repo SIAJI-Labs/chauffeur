@@ -38,7 +38,7 @@ Design themes borrowed from Valet/Herd:
 |------|--------|-------|
 | Workspace bootstrap (`chauf init`) | ✅ | Creates `~/.chauffeur` directories, default config, PATH guidance. |
 | Project linking (`chauf link/links/unlink`) | ✅ | Multi-domain support with SSL certificates, alias management, enhanced UI. |
-| PHP runtimes (`chauf php install/use/isolate`) | ✅ | Full PHP 7.4-8.4 support with smart caching; GD extension infrastructure in place (modern PHP ✅, legacy PHP 🚧); additional harness tests coming soon. |
+| PHP runtimes (`chauf php install/use/isolate`) | ✅ | Full PHP 7.4-8.4 support with smart caching; sodium extension support for legacy PHP 7.4/8.0 (resolves composer ext-sodium requirements); enhanced upload limits (256MB); modern library compatibility (libxml2 2.15+, libcurl 8.0+, ImageMagick 7.1+); GD extension infrastructure in place (modern PHP ✅, legacy PHP 🚧). |
 | Service orchestration (`chauf start/stop/status/restart`) | ✅ | Full process management with service-specific and project-specific restarts; dnsmasq integration working. |
 | Composer integration | ✅ | Installs Composer PHAR tied to Chauffeur's PHP shim. |
 | Logging system | ✅ | Enhanced `chauf logs` command for viewing and following service logs; all user-facing commands route output through `lib.Logger`. |
@@ -457,12 +457,14 @@ Chauffeur compiles PHP from source and expects the common image/zip libraries to
 
 | Distro | Command |
 |--------|---------|
-| Debian / Ubuntu | `sudo apt-get install build-essential pkg-config autoconf bison re2c libzip-dev libjpeg-dev libpng-dev libfreetype6-dev libxml2-dev libcurl4-openssl-dev libbz2-dev zlib1g-dev libxslt1-dev libreadline-dev libmagickwand-dev libgmp-dev` |
-| Arch Linux | `sudo pacman -S base-devel pkgconf libzip libjpeg-turbo libpng freetype2 libxml2 curl bzip2 zlib libxslt readline imagemagick gmp` |
+| Debian / Ubuntu | `sudo apt-get install build-essential pkg-config autoconf bison re2c libzip-dev libjpeg-dev libpng-dev libfreetype6-dev libxml2-dev libcurl4-openssl-dev libbz2-dev zlib1g-dev libxslt1-dev libreadline-dev libmagickwand-dev libgmp-dev libsodium-dev` |
+| Arch Linux | `sudo pacman -S base-devel pkgconf libzip libjpeg-turbo libpng freetype2 libxml2 curl bzip2 zlib libxslt readline imagemagick gmp libsodium` |
 
-If your distribution splits libraries differently, install the equivalent dev packages providing `libzip`, `libjpeg`, `libpng`, `freetype`, `zlib`, `curl`, `libxml2`, `libxslt`, `readline`, `MagickWand` (ImageMagick), and `gmp`. Once they're in place, `chauf install php <version>` will produce runtimes with GD, ZIP, Exif, freetype, jpeg, readline, imagick, GMP, BCMath, and mysqlnd-backed database extensions for Laravel apps (so `php -a`/`artisan tinker` keep arrow keys and history while `php artisan migrate`, image manipulation, and mathematics-intensive code work without extra modules). Chauffeur automatically fetches the latest stable Imagick release from PECL for every build (override via `CHAUFFEUR_IMAGICK_VERSION` or `CHAUFFEUR_IMAGICK_TARBALL` when you need a specific tarball).
+If your distribution splits libraries differently, install the equivalent dev packages providing `libzip`, `libjpeg`, `libpng`, `freetype`, `zlib`, `curl`, `libxml2`, `libxslt`, `readline`, `MagickWand` (ImageMagick), `gmp`, and `libsodium`. Once they're in place, `chauf install php <version>` will produce runtimes with GD, ZIP, Exif, freetype, jpeg, readline, imagick, GMP, BCMath, sodium, and mysqlnd-backed database extensions for Laravel apps (so `php -a`/`artisan tinker` keep arrow keys and history while `php artisan migrate`, image manipulation, mathematics-intensive code, and modern cryptography work without extra modules). Chauffeur automatically fetches the latest stable Imagick release from PECL for every build (override via `CHAUFFEUR_IMAGICK_VERSION` or `CHAUFFEUR_IMAGICK_TARBALL` when you need a specific tarball).
 
-`chauf install php` now preflights `pkg-config` plus all of the required libraries (`libzip`, `libjpeg`, `libpng`, `freetype`, `libxml2`, `libcurl`, `zlib`, `libxslt`, `readline`, `MagickWand`, `gmp`) via `pkg-config --modversion …` before downloading or compiling so you get actionable guidance instead of waiting for `./configure` to fail.
+**Enhanced Modern System Compatibility**: Chauffeur now supports the latest library versions including libxml2 2.15+, libcurl 8.0+, and ImageMagick 7.1+, ensuring compatibility with modern Linux distributions while maintaining support for legacy PHP versions.
+
+`chauf install php` now preflights `pkg-config` plus all of the required libraries (`libzip`, `libjpeg`, `libpng`, `freetype`, `libxml2`, `libcurl`, `zlib`, `libxslt`, `readline`, `MagickWand`, `gmp`, `libsodium`) via `pkg-config --modversion …` before downloading or compiling so you get actionable guidance instead of waiting for `./configure` to fail.
 
 All compiled runtimes include GNU Readline via `--with-readline`, which fixes cursor navigation inside PsySH/`php artisan tinker` and provides persistent line editing in `php -a`. Chauffeur also enables `mysqli`, `PDO_MySQL`, `mysqlnd`, the PECL `imagick` extension, and math extensions `gmp` and `bcmath` by default so database-heavy, image-processing, and mathematics-intensive apps work immediately after `chauf install php`.
 

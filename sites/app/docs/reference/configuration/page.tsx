@@ -204,8 +204,8 @@ chauf restart" />
   default: 8.3                    # Default PHP version
   memory_limit: 256M             # Memory limit per process
   max_execution_time: 300        # Max execution time (seconds)
-  upload_max_filesize: 64M       # Max upload file size
-  post_max_size: 64M             # Max POST request size
+  upload_max_filesize: 256M      # Max upload file size (matches nginx client_max_body_size)
+  post_max_size: 256M            # Max POST request size
   max_input_vars: 3000           # Max input variables
   expose_php: off                # Hide PHP version in headers
 
@@ -320,7 +320,7 @@ php_fpm:
   php_values:
     memory_limit: 512M
     max_execution_time: 600
-    upload_max_filesize: 128M
+    upload_max_filesize: 256M
 
 # Environment Variables
 environment:
