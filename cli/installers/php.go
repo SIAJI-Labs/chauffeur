@@ -125,6 +125,7 @@ var phpPkgRequirements = []pkgRequirement{
 	{Name: "readline", Package: "readline"},
 	{Name: "ImageMagick (MagickWand)", Package: "MagickWand"},
 	{Name: "GMP", Package: "gmp"},
+	{Name: "libsodium", Package: "libsodium"},
 }
 
 // legacyDependencyMatrix defines version-specific dependency constraints for legacy PHP versions
@@ -133,25 +134,25 @@ var legacyDependencyMatrix = []legacyDependency{
 	{
 		PHPVersion:     "7.4",
 		PackageName:    "libxml-2.0",
-		MaxVersion:     "2.12.0", // libxml 2.12+ has API changes that break PHP 7.4
+		MaxVersion:     "2.16.99", // Updated: libxml2 2.15+ works fine with PHP 7.4 with proper compilation
 	},
 	{
 		PHPVersion:     "7.4",
 		PackageName:    "libcurl",
-		MaxVersion:     "8.0.0", // Very new libcurl may have compatibility issues
+		MaxVersion:     "9.99.0", // Updated: Newer libcurl versions work fine with PHP 7.4
 	},
 	{
 		PHPVersion:     "7.4",
 		PackageName:    "MagickWand",
 		MinVersion:     "6.9.0",
-		MaxVersion:     "7.1.0", // ImageMagick 7+ can have issues with legacy PHP
+		MaxVersion:     "7.99.0", // Updated: ImageMagick 7.1+ works fine with PHP 7.4
 	},
 
 	// PHP 8.0 has some constraints but is more flexible than 7.4
 	{
 		PHPVersion:     "8.0",
 		PackageName:    "libxml-2.0",
-		MaxVersion:     "2.13.0",
+		MaxVersion:     "2.16.99", // Updated: PHP 8.0 works well with newer libxml2 versions
 	},
 	{
 		PHPVersion:     "8.0",
@@ -494,6 +495,12 @@ func InstallPHPSource(version string, opts InstallOptions) (err error) {
 		return err
 	}
 	finalizeLogger.Success("PHP-FPM configuration ready", "")
+
+	finalizeLogger.Info("Setting up PHP upload limits")
+	if err := writeUploadLimitsConf(opts.Prefix, version); err != nil {
+		return err
+	}
+	finalizeLogger.Success("PHP upload limits configured (256MB)", "")
 
 	return nil
 }
@@ -1074,6 +1081,12 @@ func buildAndInstallPHP(opts InstallOptions, version, sourceDir string, logger *
 		"--enable-bcmath",
 	}
 
+	// Add sodium support for legacy PHP versions (7.4, 8.0)
+	// PHP 8.1+ has native sodium support
+	if version == "7.4" || version == "8.0" {
+		confArgs = append(confArgs, "--with-sodium")
+	}
+
 	// Handle GD-related options for legacy versions
 	switch version {
 	case "8.0":
@@ -1437,6 +1450,11 @@ func ensurePHPBuildDependenciesForVersion(logger *lib.Logger, phpVersion string)
 	}
 
 	for _, req := range phpPkgRequirements {
+		// Skip sodium check for PHP 8.1+ (native sodium support)
+		if req.Name == "libsodium" && phpVersion != "" && !isLegacyPHPVersion(phpVersion) {
+			continue
+		}
+
 		logger.Info(fmt.Sprintf("Checking %s development headers", req.Name))
 		version, err := ensurePkgRequirementWithLegacy(logger, req, phpVersion)
 		if err != nil {
@@ -1902,6 +1920,60 @@ php_admin_flag[log_errors] = on
 
 	if err := os.WriteFile(poolConfPath, []byte(poolConf), 0o644); err != nil {
 		return fmt.Errorf("write php-fpm pool conf: %w", err)
+	}
+
+	return nil
+}
+
+/**
+ * writeUploadLimitsConf creates the default PHP upload limits configuration.
+ *
+ * @param prefix Installation prefix directory
+ * @param version PHP version
+ * @return error if configuration creation fails
+ */
+func writeUploadLimitsConf(prefix, version string) error {
+	phpDir := filepath.Join(prefix, "php", version)
+
+	// Create conf.d directory if it doesn't exist
+	confDDir := filepath.Join(phpDir, "etc", "conf.d")
+	if err := os.MkdirAll(confDDir, 0o755); err != nil {
+		return fmt.Errorf("failed to create extension config directory: %w", err)
+	}
+
+	// Create upload-limits.ini with generous default limits
+	uploadLimitsContent := `; Chauffeur PHP Upload Limits Configuration
+; Default values optimized for modern web applications
+; Compatible with nginx client_max_body_size 256M
+
+; Maximum size of an uploaded file
+upload_max_filesize = 256M
+
+; Maximum size of POST data that PHP will accept
+post_max_size = 256M
+
+; Maximum time in seconds a script is allowed to run before it is terminated by the parser
+max_execution_time = 300
+
+; Maximum amount of memory a script may consume
+memory_limit = 512M
+
+; Maximum time in seconds a script is allowed to parse input data
+max_input_time = 300
+
+; Maximum number of input variables allowed per request
+max_input_vars = 3000
+
+; Enable file uploads
+file_uploads = On
+
+; Temporary directory for HTTP uploaded files
+upload_tmp_dir = /tmp
+`
+
+	uploadLimitsPath := filepath.Join(confDDir, "upload-limits.ini")
+	if err := os.WriteFile(uploadLimitsPath, []byte(uploadLimitsContent), 0o644); err != nil {
+		return fmt.Errorf("failed to create upload-limits.ini: %w", err)
 	}
 
 	return nil

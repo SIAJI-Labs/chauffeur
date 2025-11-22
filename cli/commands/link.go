@@ -150,7 +150,7 @@ func RunLink(args []string) error {
 			}
 			phpVer = args[i+1]
 			i += 2
-		case "--ssl":
+		case "--secure":
 			ssl = true
 			i++
 		case "--force":
@@ -496,12 +496,12 @@ func printLinkUsage() {
 	fmt.Print(`Chauffeur Project Linking
 
 Usage:
-  chauf link [--site <domain>] [--ssl] [--php <version>] [--dedicated-fpm] [--http-port <port>] [--https-port <port>] [--alias <domain>]... [--force]
+  chauf link [--site <domain>] [--secure] [--php <version>] [--dedicated-fpm] [--http-port <port>] [--https-port <port>] [--alias <domain>]... [--force]
   chauf link --add-alias --alias <domain> [--alias <domain>]...    # Add aliases to existing project
 
 Flags:
   --site <domain>           Register a local domain for the project (default: <slug>.test).
-  --ssl                     Enable internal TLS for the domain.
+  --secure                  Enable internal TLS for the domain.
   --php <version>           Override the PHP version for this project (default: global default).
   --dedicated-fpm           Create a dedicated PHP-FPM pool for this project (instead of shared).
   --http-port <port>        Override Nginx HTTP port for this project (default: from config).
@@ -522,7 +522,7 @@ FPM Strategy:
 
 Multi-domain Examples:
   # Link with multiple aliases
-  chauf link --site myapp.test --alias admin.test --alias api.test --ssl
+  chauf link --site myapp.test --alias admin.test --alias api.test --secure
 
   # Add aliases for white-label scenarios
   chauf link --site brand-a.test --alias brand-b.test --alias landing.test
@@ -586,7 +586,7 @@ func handleAddAlias(args []string, aliases []string) error {
 	// Check if SSL is requested in args
 	sslRequested := false
 	for _, arg := range args {
-		if arg == "--ssl" {
+		if arg == "--secure" {
 			sslRequested = true
 			break
 		}

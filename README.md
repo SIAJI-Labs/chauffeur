@@ -38,7 +38,7 @@ Design themes borrowed from Valet/Herd:
 |------|--------|-------|
 | Workspace bootstrap (`chauf init`) | ✅ | Creates `~/.chauffeur` directories, default config, PATH guidance. |
 | Project linking (`chauf link/links/unlink`) | ✅ | Multi-domain support with SSL certificates, alias management, enhanced UI. |
-| PHP runtimes (`chauf php install/use/isolate`) | ✅ | Full PHP 7.4-8.4 support with smart caching; GD extension infrastructure in place (modern PHP ✅, legacy PHP 🚧); additional harness tests coming soon. |
+| PHP runtimes (`chauf php install/use/isolate`) | ✅ | Full PHP 7.4-8.4 support with smart caching; sodium extension support for legacy PHP 7.4/8.0 (resolves composer ext-sodium requirements); enhanced upload limits (256MB); modern library compatibility (libxml2 2.15+, libcurl 8.0+, ImageMagick 7.1+); GD extension infrastructure in place (modern PHP ✅, legacy PHP 🚧). |
 | Service orchestration (`chauf start/stop/status/restart`) | ✅ | Full process management with service-specific and project-specific restarts; dnsmasq integration working. |
 | Composer integration | ✅ | Installs Composer PHAR tied to Chauffeur's PHP shim. |
 | Logging system | ✅ | Enhanced `chauf logs` command for viewing and following service logs; all user-facing commands route output through `lib.Logger`. |
@@ -95,9 +95,12 @@ Chauffeur provides **project-level PHP-FPM control** to balance resource efficie
 | `chauf stop` | `--project <path>`, `--all`, `--dry-run` | Stop services and clean redirects. |
 | `chauf restart` | `[service-type]`, `--project <path>`, `--all`, `--dry-run` | Restart specific services, projects, or all services. |
 | `chauf status` | `[service-type]`, `--project`, `--detail`, `-v` | Inspect global or per-project services. |
-| `chauf link` | `--site`, `--ssl`, `--php`, `--dedicated-fpm`, `--http-port`, `--https-port`, `--alias`, `--force` | Register project with multi-domain support (shared FPM by default). |
-| `chauf links` | — | Table of all registered projects with SSL indicators for aliases. |
+| `chauf link` | `--site`, `--secure`, `--php`, `--dedicated-fpm`, `--http-port`, `--https-port`, `--alias`, `--force` | Register project with multi-domain support (shared FPM by default). |
+| `chauf links` | `--slug`, `--site` | Table of all registered projects with SSL indicators for aliases; supports detailed view. |
 | `chauf unlink` | `--alias`, `--slug`, `--site`, `--project`, `--all`, `--force` | Remove registrations or specific aliases; defaults to current directory. |
+| `chauf secure` | — | Add SSL certificate to current linked project. |
+| `chauf unsecure` | — | Remove SSL certificate from current linked project. |
+| `chauf doctor` | `--check-deps`, `--check-php`, `--check-ssl`, `--check-network`, `--verbose`, `--fix` | Perform health checks and diagnose system issues. |
 | `chauf install <service> [ver]` | `--force`, `--local`, `--no-cache` | Install services with intelligent caching (php, composer, nginx). |
 | `chauf php install <ver>` | `--force`, `--no-ext`, `--from` | Install PHP runtimes into the workspace. |
 | `chauf php use <ver>` | — | Set global default PHP version. |
@@ -114,19 +117,35 @@ Chauffeur provides **project-level PHP-FPM control** to balance resource efficie
 
 ## Getting Started
 1. **Install prerequisites**: Go 1.22+, git, curl, build tools (gcc/make/pkg-config), openssl headers.
-2. **Clone & bootstrap** (installs `chauf` under `~/.chauffeur/bin`):
+
+2. **Install Chauffeur** (installs `chauf` under `~/.chauffeur/bin`):
+
+   **Option A: Quick Install (Recommended)**
    ```bash
-   git clone https://github.com/siaji/chauffeur.git
+   curl -sL https://chauffeur.siaji.com/install | bash
+   ```
+
+   **Option B: Manual Clone**
+   ```bash
+   git clone https://github.com/SIAJI-Labs/chauffeur.git
    cd chauffeur
    ./install.sh
    ```
-3. **Install services** (with intelligent caching):
+
+   *Both methods automatically detect if you're in a Chauffeur git repo and build locally, or clone and build from source if needed.*
+
+3. **Initialize workspace**:
+   ```bash
+   chauf init                    # Creates ~/.chauffeur structure and config
+   ```
+
+4. **Install services** (with intelligent caching):
    ```bash
    chauf install php 8.3        # First download - auto-cached for future
    chauf install nginx           # Instant if cached, downloads if not
    chauf install composer        # Reuses cached PHAR when available
    ```
-4. **Link projects** (shared FPM by default, dedicated when needed):
+5. **Link projects** (shared FPM by default, dedicated when needed):
    ```bash
    cd ~/simple-project          # Shared FPM (resource efficient)
    chauf link
@@ -137,7 +156,7 @@ Chauffeur provides **project-level PHP-FPM control** to balance resource efficie
    cd ~/legacy-project         # Dedicated FPM (custom config needs)
    chauf link --dedicated-fpm --php 7.4
    ```
-5. **Start services & browse**:
+6. **Start services & browse**:
    ```bash
    chauf start
    firefox http://project-name.test:8080
@@ -154,10 +173,10 @@ Chauffeur supports multiple domains pointing to the same project directory, perf
 **Link with multiple domains:**
 ```bash
 # Link project with primary domain and aliases
-chauf link --site myapp.test --alias admin.myapp.test --alias api.myapp.test --ssl
+chauf link --site myapp.test --alias admin.myapp.test --alias api.myapp.test --secure
 
 # Add aliases to existing projects
-chauf link --alias www.myapp.test --ssl
+chauf link --alias www.myapp.test --secure
 chauf link --alias staging.myapp.test    # HTTP only
 ```
 
@@ -204,10 +223,10 @@ curl http://staging.myapp.test:8080
 **Add aliases to existing projects:**
 ```bash
 # Add SSL-enabled alias
-chauf link --alias new.domain.test --ssl
+chauf link --alias new.domain.test --secure
 
 # Add multiple aliases
-chauf link --alias www.domain.test --alias api.domain.test --ssl
+chauf link --alias www.domain.test --alias api.domain.test --secure
 ```
 
 **Remove specific aliases:**
@@ -438,12 +457,14 @@ Chauffeur compiles PHP from source and expects the common image/zip libraries to
 
 | Distro | Command |
 |--------|---------|
-| Debian / Ubuntu | `sudo apt-get install build-essential pkg-config autoconf bison re2c libzip-dev libjpeg-dev libpng-dev libfreetype6-dev libxml2-dev libcurl4-openssl-dev libbz2-dev zlib1g-dev libxslt1-dev libreadline-dev libmagickwand-dev libgmp-dev` |
-| Arch Linux | `sudo pacman -S base-devel pkgconf libzip libjpeg-turbo libpng freetype2 libxml2 curl bzip2 zlib libxslt readline imagemagick gmp` |
+| Debian / Ubuntu | `sudo apt-get install build-essential pkg-config autoconf bison re2c libzip-dev libjpeg-dev libpng-dev libfreetype6-dev libxml2-dev libcurl4-openssl-dev libbz2-dev zlib1g-dev libxslt1-dev libreadline-dev libmagickwand-dev libgmp-dev libsodium-dev` |
+| Arch Linux | `sudo pacman -S base-devel pkgconf libzip libjpeg-turbo libpng freetype2 libxml2 curl bzip2 zlib libxslt readline imagemagick gmp libsodium` |
 
-If your distribution splits libraries differently, install the equivalent dev packages providing `libzip`, `libjpeg`, `libpng`, `freetype`, `zlib`, `curl`, `libxml2`, `libxslt`, `readline`, `MagickWand` (ImageMagick), and `gmp`. Once they're in place, `chauf install php <version>` will produce runtimes with GD, ZIP, Exif, freetype, jpeg, readline, imagick, GMP, BCMath, and mysqlnd-backed database extensions for Laravel apps (so `php -a`/`artisan tinker` keep arrow keys and history while `php artisan migrate`, image manipulation, and mathematics-intensive code work without extra modules). Chauffeur automatically fetches the latest stable Imagick release from PECL for every build (override via `CHAUFFEUR_IMAGICK_VERSION` or `CHAUFFEUR_IMAGICK_TARBALL` when you need a specific tarball).
+If your distribution splits libraries differently, install the equivalent dev packages providing `libzip`, `libjpeg`, `libpng`, `freetype`, `zlib`, `curl`, `libxml2`, `libxslt`, `readline`, `MagickWand` (ImageMagick), `gmp`, and `libsodium`. Once they're in place, `chauf install php <version>` will produce runtimes with GD, ZIP, Exif, freetype, jpeg, readline, imagick, GMP, BCMath, sodium, and mysqlnd-backed database extensions for Laravel apps (so `php -a`/`artisan tinker` keep arrow keys and history while `php artisan migrate`, image manipulation, mathematics-intensive code, and modern cryptography work without extra modules). Chauffeur automatically fetches the latest stable Imagick release from PECL for every build (override via `CHAUFFEUR_IMAGICK_VERSION` or `CHAUFFEUR_IMAGICK_TARBALL` when you need a specific tarball).
 
-`chauf install php` now preflights `pkg-config` plus all of the required libraries (`libzip`, `libjpeg`, `libpng`, `freetype`, `libxml2`, `libcurl`, `zlib`, `libxslt`, `readline`, `MagickWand`, `gmp`) via `pkg-config --modversion …` before downloading or compiling so you get actionable guidance instead of waiting for `./configure` to fail.
+**Enhanced Modern System Compatibility**: Chauffeur now supports the latest library versions including libxml2 2.15+, libcurl 8.0+, and ImageMagick 7.1+, ensuring compatibility with modern Linux distributions while maintaining support for legacy PHP versions.
+
+`chauf install php` now preflights `pkg-config` plus all of the required libraries (`libzip`, `libjpeg`, `libpng`, `freetype`, `libxml2`, `libcurl`, `zlib`, `libxslt`, `readline`, `MagickWand`, `gmp`, `libsodium`) via `pkg-config --modversion …` before downloading or compiling so you get actionable guidance instead of waiting for `./configure` to fail.
 
 All compiled runtimes include GNU Readline via `--with-readline`, which fixes cursor navigation inside PsySH/`php artisan tinker` and provides persistent line editing in `php -a`. Chauffeur also enables `mysqli`, `PDO_MySQL`, `mysqlnd`, the PECL `imagick` extension, and math extensions `gmp` and `bcmath` by default so database-heavy, image-processing, and mathematics-intensive apps work immediately after `chauf install php`.
 

@@ -105,12 +105,15 @@ created_at: 2025-10-30T12:00:00+07:00
 | `chauf stop` | same flags as start | Stop services and clean port-forward rules. |
 | `chauf restart` | `--project <slug>`, `--all`, `--dry-run` | Restart services (equivalent to stop then start, preserves configuration). |
 | `chauf status` | `[service-type]`, `--project`, `--detail`, `-v` | Show status for global or per-project services. |
-| `chauf link` | `--site`, `--ssl`, `--php`, `--http-port`, `--https-port`, `--alias`, `--add-alias`, `--force` | Register current directory, detect template (Laravel/WordPress/general), generate configs with multi-domain support. |
+| `chauf link` | `--site`, `--secure`, `--php`, `--http-port`, `--https-port`, `--alias`, `--add-alias`, `--force` | Register current directory, detect template (Laravel/WordPress/general), generate configs with multi-domain support. |
 | `chauf links` | — | List all registered projects in a formatted table. |
 | `chauf unlink` | `--slug`, `--site`, `--project`, `--alias`, `--all`, `--force` | Remove registrations or specific aliases. Defaults to current dir. |
+| `chauf secure` | — | Add SSL certificate to current linked project. Must be run from linked project directory. |
+| `chauf unsecure` | — | Remove SSL certificate from current linked project. Must be run from linked project directory. |
 | `chauf php install <ver>` | `--force`, `--no-ext`, `--from` | Build/install PHP runtime under workspace. |
 | `chauf php use <ver>` | — | Set global default PHP. |
 | `chauf php isolate <ver>` | — | Pin current linked project to a version. |
+| `chauf php current` | — | Show current PHP version for directory or global default. |
 | `chauf remove <service> [version]` | `--force` | Remove installed runtimes (php, nginx, composer). |
 | `chauf uninstall` | `--purge` | Remove workspace (and runtimes with `--purge`). |
 | `chauf self-update` | `--dev` | Update binary from git or rebuild from current repo. |
@@ -186,7 +189,7 @@ func createSANConfig(domains []string) string
 ### User Experience
 - **Links display**: `(*)` indicators show SSL-enabled aliases
 - **Unlink confirmation**: Shows all domains (primary + aliases) with SSL status
-- **Command interface**: `--alias` flag for adding domains, `--ssl` for per-alias SSL control
+- **Command interface**: `--alias` flag for adding domains, `--secure` for per-alias SSL control
 
 ### Backward Compatibility
 - Existing single-domain configurations unchanged
@@ -213,26 +216,97 @@ func createSANConfig(domains []string) string
 Every code change requires immediate updates to:
 1. **README.md** – feature status (✅/🚧/📋/🎯), installation changes, new commands/examples, roadmap tweaks.
 2. **docs/TODO_STATUS.md** – mark tasks as ✅, move items between sections, update release notes/priority queue.
-3. **AGENTS.md** – update command contracts, filesystem rules, or architectural guidance if behavior changed.
+3. **sites/app/docs/**** – update Next.js site documentation to match current CLI behavior and new features.
+4. **sites/constants.ts** – update command examples, feature descriptions, and navigation constants.
+5. **sites/public/install.sh** – verify symlink to latest install script if CLI behavior changed.
+6. **AGENTS.md** – update command contracts, filesystem rules, or architectural guidance if behavior changed.
+
+### 11.1 Critical: Constants.ts Maintenance Requirement
+
+**When CLI commands change, AI models MUST update `sites/constants.ts` immediately.**
+
+The `sites/constants.ts` file serves as the **single source of truth** for:
+- All CLI command definitions and examples
+- Command flags, usage patterns, and expected outputs
+- Feature descriptions and navigation constants
+- Documentation site command reference generation
+
+#### **Required Workflow for Command Changes:**
+1. **CLI Implementation**: Modify Go commands in `cli/commands/`
+2. **Immediate Constants Update**: Update corresponding command definitions in `sites/constants.ts`
+3. **Example Verification**: Test all command examples against the actual binary
+4. **Documentation Sync**: Ensure site documentation reflects changes
+
+#### **Constants.ts Structure:**
+- `CLI_COMMANDS[]`: Array of all command definitions with examples
+- `COMMAND_CATEGORIES[]`: Category definitions with icons and descriptions
+- `findCommand()`: Helper to locate command definitions
+- Feature constants and navigation data
+
+#### **Verification Checklist:**
+- [ ] All new commands added to `CLI_COMMANDS[]`
+- [ ] Command examples match actual binary output
+- [ ] Flag descriptions match Go implementation
+- [ ] Usage patterns are accurate
+- [ ] Categories assigned correctly
+- [ ] Examples tested with real binary
+
+**Failure to update `sites/constants.ts` when commands change creates documentation divergence and user confusion.**
+
+### 11.2 Site Documentation Specifics
+
+The Next.js documentation site (`sites/`) must be kept in sync with all changes to Chauffeur's implementation:
+
+#### **Command Accuracy Requirements**
+- **CRITICAL**: All CLI commands and flags in site documentation MUST match the actual Go implementation in `cmd/`
+- Before documenting any command, run `chauf --help` and specific command help to verify exact syntax
+- Test all command examples to ensure they work with the current binary version
+- Pay special attention to flag names (e.g., `--secure` vs `--secure`) and command structure (e.g., `chauf php isolate` vs `chauf isolate`)
+
+#### **Binary Implementation Verification**
+- All documented commands should reflect the actual behavior of the `chauf` binary
+- When documenting features, first verify the implementation in the Go source code
+- Check that command outputs, error messages, and status indicators match what users will see
+- Ensure all command examples in `sites/constants.ts` are tested against the real binary
+
+#### **UI Consistency Standards**
+- Use the `CodeBlock` component for all command examples and outputs
+- Maintain consistent styling for commands, flags, and file paths across all pages
+- Follow established patterns for feature descriptions and badges
+- Use responsive design patterns established in existing components
+
+#### **URL and Script Management**
+- All installation URLs must point to `https://chauffeur.siaji.com/install`
+- Verify the `/install` route serves the install script correctly for both browser viewing and curl execution
+- Ensure `sites/public/install.sh` symlink points to `/install.sh`
+- Test installation process from the documented URLs
+
+#### **Feature Status Reflection**
+- Keep "Updated", "New", "Deprecated" badges current in `sites/constants.ts`
+- Remove or mark deprecated features appropriately
+- Add new features to the site as soon as they're implemented in the CLI
+
 Checklist (do not skip):
 - [ ] README reflects implementation.
 - [ ] docs/TODO_STATUS.md matches current progress.
+- [ ] sites/app/docs/** documentation matches CLI behavior.
+- [ ] sites/constants.ts command examples are accurate.
 - [ ] AGENTS.md matches actual behavior.
 - [ ] Examples and commands have been run/tested.
 
-## 12. Testing Standards
+## 13. Testing Standards
 - **Location**: Place tests in `tests/` or alongside packages as `*_test.go`, but external tests may not import `cli/internal/**`. Use exported seams instead.
 - **Execution**: `go test ./...` must pass before you push. Tests must isolate HOME/workspace via `t.TempDir()` and `t.Setenv` so they never touch the real user state.
 - **Coverage**: Aim ≥80% on new packages. Use table-driven tests for commands, and capture output via helpers (see existing tests) instead of relying on global state.
 - **Integration hooks**: Provide fakes/mocks for network and filesystem interactions so tests stay deterministic.
 
-## 12. Dependency & Release Hygiene
+## 14. Dependency & Release Hygiene
 - Do not build binaries directly inside the repo (e.g., `go build -o chauf`). Use `chauf self-update --dev` from the repo root to rebuild the CLI for debugging, which places artifacts under the workspace.
 - Do not commit compiled binaries, build artifacts, or caches. Keep the repo source-only.
 - Generated files (templates, configs) must be reproducible. If a command generates files, include instructions/tests to verify them.
 - Releases should be performed by building from clean git state and tagging. Document the steps in README when they change.
 
-## 13. Implementation Workflow for Agents
+## 15. Implementation Workflow for Agents
 1. **Read docs first**: Before coding, skim README and docs/TODO_STATUS to understand current state.
 2. **Plan**: Break work into verifiable steps. Call out doc updates early.
 3. **Work inside workspace**: Respect Host Impact Policy and workspace layout.
@@ -244,7 +318,7 @@ Checklist (do not skip):
 9. **Review output**: Ensure logs look clean, colors degrade gracefully, and errors cite log file locations.
 10. **Final verification**: Re-run key commands (e.g., `chauf link --dry-run`) to validate the new behavior shown in docs.
 
-## 14. PHP-FPM Architecture
+## 16. PHP-FPM Architecture
 
 ### Project-Level PHP-FPM Control
 Chauffeur provides **project-level PHP-FPM control** to balance resource efficiency and isolation needs:
@@ -284,7 +358,7 @@ Chauffeur provides **project-level PHP-FPM control** to balance resource efficie
 - ✅ **Backward compatibility**: Existing projects continue using shared FPM
 - ✅ **Simple management**: Clear project-level control via flag during linking
 
-## 15. Commit Policy for AI Agents
+## 17. Commit Policy for AI Agents
 
 ### 🚫 **NO UNAUTHORIZED COMMITS OR PUSHES**
 
@@ -343,7 +417,7 @@ This policy applies to:
 
 ---
 
-## 16. DNS & Port Automation Notes
+## 18. DNS & Port Automation Notes
 - `chauf start` must verify dnsmasq configuration for `.test`. If missing, print the exact `sudo tee /etc/dnsmasq.d/chauffeur.conf` block plus restart commands; never edit system files directly.
 - Port conflicts are resolved per the config's `ports.conflict_resolution`:
   - `prompt`: ask user via logger prompts.

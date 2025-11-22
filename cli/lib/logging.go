@@ -2,6 +2,7 @@ package lib
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"time"
@@ -252,12 +253,20 @@ func (l *Logger) shouldLog(level LogLevel) bool {
 	return level >= l.level
 }
 
+var CurrentStdout io.Writer = os.Stdout
+
+// SetOutput redirects the standard output to the specified writer.
+// This is primarily for testing purposes.
+func SetOutput(w io.Writer) {
+	CurrentStdout = w
+}
+
 // Info prints an informational message
 func (l *Logger) Info(message string) {
 	if !l.shouldLog(InfoLevel) {
 		return
 	}
-	fmt.Printf("%s\n", l.formatMessage(message))
+	fmt.Fprintf(CurrentStdout, "%s\n", l.formatMessage(message))
 }
 
 // Debug prints a debug message (only shown when log level is Debug)
@@ -269,7 +278,7 @@ func (l *Logger) Debug(message string) {
 	if l.parent {
 		debugPrefix = "      └──"
 	}
-	fmt.Printf("%s Debug: %s\n", debugPrefix, l.gray(message))
+	fmt.Fprintf(CurrentStdout, "%s Debug: %s\n", debugPrefix, l.gray(message))
 }
 
 // Success prints a success message with optional context
@@ -281,7 +290,7 @@ func (l *Logger) Success(message, context string) {
 	if context != "" {
 		baseMessage += fmt.Sprintf(" (%s)", context)
 	}
-	fmt.Printf("%s\n", l.formatMessage(baseMessage))
+	fmt.Fprintf(CurrentStdout, "%s\n", l.formatMessage(baseMessage))
 }
 
 // Error prints an error message with details and returns an error
@@ -295,9 +304,9 @@ func (l *Logger) Error(message, details string) error {
 		errorIndent = "      └──"
 	}
 
-	fmt.Printf("%s %s %s\n", l.prefix(), l.red("✗"), message)
+	fmt.Fprintf(CurrentStdout, "%s %s %s\n", l.prefix(), l.red("✗"), message)
 	if details != "" {
-		fmt.Printf("%s Error: %s\n", errorIndent, l.gray(details))
+		fmt.Fprintf(CurrentStdout, "%s Error: %s\n", errorIndent, l.gray(details))
 	}
 	return fmt.Errorf("%s: %s", message, details)
 }
@@ -315,9 +324,9 @@ func (l *Logger) Warn(message, context string) {
 		contextIndent = "      └──"
 	}
 
-	fmt.Printf("%s Warning: %s\n", warnIndent, l.yellow(message))
+	fmt.Fprintf(CurrentStdout, "%s Warning: %s\n", warnIndent, l.yellow(message))
 	if context != "" {
-		fmt.Printf("%s %s\n", contextIndent, l.gray(context))
+		fmt.Fprintf(CurrentStdout, "%s %s\n", contextIndent, l.gray(context))
 	}
 }
 
@@ -328,16 +337,16 @@ func (l *Logger) Fail(message, error string) error {
 
 // PrintSection prints a section header
 func (l *Logger) PrintSection(title string) {
-	fmt.Printf("\n%s %s\n", l.prefix(), l.bold(title))
+	fmt.Fprintf(CurrentStdout, "\n%s %s\n", l.prefix(), l.bold(title))
 }
 
 // PrintSummary prints a summary section with items
 func (l *Logger) PrintSummary(items []SummaryItem) {
-	fmt.Printf("\n%s Summary:\n", l.prefix())
+	fmt.Fprintf(CurrentStdout, "\n%s Summary:\n", l.prefix())
 	for _, item := range items {
-		fmt.Printf("  └── %s: %s\n", l.bold(item.Label), item.Value)
+		fmt.Fprintf(CurrentStdout, "  └── %s: %s\n", l.bold(item.Label), item.Value)
 	}
-	fmt.Printf("\n%s %s\n", l.prefix(), l.green("Complete"))
+	fmt.Fprintf(CurrentStdout, "\n%s %s\n", l.prefix(), l.green("Complete"))
 }
 
 // PrintList prints a list of items with optional bullets
@@ -346,7 +355,7 @@ func (l *Logger) PrintList(items []string, bullet string) {
 		bullet = "•"
 	}
 	for _, item := range items {
-		fmt.Printf("  %s %s\n", bullet, item)
+		fmt.Fprintf(CurrentStdout, "  %s %s\n", bullet, item)
 	}
 }
 
@@ -354,11 +363,11 @@ func (l *Logger) PrintList(items []string, bullet string) {
 func (l *Logger) PrintTable(headers []string, rows [][]string) {
 	// Simple table printing - could be enhanced for column alignment
 	if len(headers) > 0 {
-		fmt.Printf("%s %s\n", l.prefix(), l.bold(strings.Join(headers, " | ")))
-		fmt.Printf("%s %s\n", l.prefix(), strings.Repeat("-", len(headers[0]+headers[1])+7))
+		fmt.Fprintf(CurrentStdout, "%s %s\n", l.prefix(), l.bold(strings.Join(headers, " | ")))
+		fmt.Fprintf(CurrentStdout, "%s %s\n", l.prefix(), strings.Repeat("-", len(headers[0]+headers[1])+7))
 	}
 	for _, row := range rows {
-		fmt.Printf("%s %s | %s\n", l.prefix(), row[0], row[1])
+		fmt.Fprintf(CurrentStdout, "%s %s | %s\n", l.prefix(), row[0], row[1])
 	}
 }
 
@@ -392,14 +401,14 @@ func (l *Logger) PrintEnhancedTable(headers []string, rows [][]string, alignment
 			headerCells[i] = header
 		}
 	}
-	fmt.Printf("%s %s\n", l.prefix(), l.bold(strings.Join(headerCells, "  ")))
+	fmt.Fprintf(CurrentStdout, "%s %s\n", l.prefix(), l.bold(strings.Join(headerCells, "  ")))
 
 	// Print divider
 	dividerCells := make([]string, len(colWidths))
 	for i, width := range colWidths {
 		dividerCells[i] = strings.Repeat("-", width)
 	}
-	fmt.Printf("%s %s\n", l.prefix(), strings.Join(dividerCells, "  "))
+	fmt.Fprintf(CurrentStdout, "%s %s\n", l.prefix(), strings.Join(dividerCells, "  "))
 
 	// Print rows
 	for _, row := range rows {
@@ -423,7 +432,7 @@ func (l *Logger) PrintEnhancedTable(headers []string, rows [][]string, alignment
 				rowCells[i] = strings.Repeat(" ", colWidths[i])
 			}
 		}
-		fmt.Printf("%s %s\n", l.prefix(), strings.Join(rowCells, "  "))
+		fmt.Fprintf(CurrentStdout, "%s %s\n", l.prefix(), strings.Join(rowCells, "  "))
 	}
 }
 
@@ -470,14 +479,14 @@ func (l *Logger) PrintServiceTable(headers []string, rows [][]string) {
 		}
 	}
 	// Print header
-	fmt.Printf("%s %s\n", l.prefix(), strings.Join(headerLine, ""))
+	fmt.Fprintf(CurrentStdout, "%s %s\n", l.prefix(), strings.Join(headerLine, ""))
 
 	// Print divider
 	dividerLine := make([]string, len(colWidths))
 	for i, width := range colWidths {
 		dividerLine[i] = strings.Repeat("─", width)
 	}
-	fmt.Printf("%s %s\n", l.prefix(), strings.Join(dividerLine, ""))
+	fmt.Fprintf(CurrentStdout, "%s %s\n", l.prefix(), strings.Join(dividerLine, ""))
 
 	// Print rows
 	for _, row := range rows {
@@ -511,7 +520,7 @@ func (l *Logger) PrintServiceTable(headers []string, rows [][]string) {
 				rowLine[i] = strings.Repeat(" ", width)
 			}
 		}
-		fmt.Printf("%s %s\n", l.prefix(), strings.Join(rowLine, ""))
+		fmt.Fprintf(CurrentStdout, "%s %s\n", l.prefix(), strings.Join(rowLine, ""))
 	}
 }
 
@@ -525,10 +534,10 @@ func (l *Logger) Prompt(message, context string) {
 	}
 
 	if context != "" {
-		fmt.Printf("%s %s\n", promptIndent, l.cyan(message))
-		fmt.Printf("%s %s\n", contextIndent, l.white(context))
+		fmt.Fprintf(CurrentStdout, "%s %s\n", promptIndent, l.cyan(message))
+		fmt.Fprintf(CurrentStdout, "%s %s\n", contextIndent, l.white(context))
 	} else {
-		fmt.Printf("%s %s\n", promptIndent, l.cyan(message))
+		fmt.Fprintf(CurrentStdout, "%s %s\n", promptIndent, l.cyan(message))
 	}
 }
 

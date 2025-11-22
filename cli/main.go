@@ -27,7 +27,7 @@ Usage:
                          Install Chauffeur-managed services (nginx, php, composer).
   chauf remove <service> [version]
                          Remove installed Chauffeur-managed services.
-  chauf php <command>    Manage PHP runtimes (use <version>, ...).
+  chauf php <command>    Manage PHP runtimes (use <version>, isolate <version>, current, ...).
   chauf self-update      Update the Chauffeur CLI to the latest release.
   chauf nginx [args...]  Run the managed nginx binary with passthrough args.
   chauf start            Start Chauffeur services with chauf- prefix.
@@ -41,6 +41,8 @@ Usage:
   chauf link             Register current directory as a project.
   chauf links            List all registered projects.
   chauf unlink           Unlink a registered project (by slug, domain, path, or all).
+  chauf secure           Add SSL certificate to current linked project.
+  chauf unsecure         Remove SSL certificate from current linked project.
   chauf doctor           Perform health checks and diagnose system issues.
   chauf uninstall        Remove the Chauffeur workspace (keeps runtimes by default).
   chauf uninstall --purge
@@ -111,6 +113,16 @@ func main() {
 		}
 	case "unlink":
 		if err := commands.RunUnlink(args[1:]); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+	case "secure":
+		if err := commands.RunSecure(args[1:]); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+	case "unsecure":
+		if err := commands.RunUnsecure(args[1:]); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
