@@ -12,7 +12,8 @@ import {
   Terminal as TerminalIcon,
   Heart,
   AlertTriangle,
-  Check
+  Check,
+  ExternalLink
 } from 'lucide-react';
 
 // Internal components
@@ -105,7 +106,19 @@ const LandingPage: React.FC = () => {
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
                 </span>
-                v0.1.0-beta: Native Linux Support
+                {process.env.NEXT_PUBLIC_RELEASE_URL ? (
+                  <Link
+                    href={process.env.NEXT_PUBLIC_RELEASE_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hover:text-emerald-300 transition-colors flex items-center gap-1 hover:underline"
+                  >
+                    {process.env.NEXT_PUBLIC_VERSION || 'v0.1.0-beta'}: Native Linux Support
+                    <ExternalLink size={12} className="opacity-70" />
+                  </Link>
+                ) : (
+                  <span>{process.env.NEXT_PUBLIC_VERSION || 'v0.1.0-beta'}: Native Linux Support</span>
+                )}
               </div>
 
               <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold tracking-tight text-white mb-6 leading-[1.1]">
@@ -245,7 +258,7 @@ const LandingPage: React.FC = () => {
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-12">
           <div className="flex flex-col md:flex-row justify-between items-center gap-4">
             <div className="text-sm text-slate-400">
-              © 2024 Chauffeur. Open Source (MIT).
+              © 2025 Chauffeur. Open Source (MIT).
             </div>
             <div className="flex items-center gap-4 text-sm text-slate-400">
               <Link
