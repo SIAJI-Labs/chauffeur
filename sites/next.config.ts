@@ -3,6 +3,8 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   /* config options here */
   reactCompiler: true,
+  // Custom output directory for GitHub Actions artifacts
+  distDir: 'out',
   // Add empty turbopack config to silence the warning
   turbopack: {},
   webpack: (config, { isServer, dev }) => {
