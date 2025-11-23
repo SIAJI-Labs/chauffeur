@@ -19,7 +19,7 @@ on:
         type: string
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   # Extract version information from the triggering workflow
@@ -139,6 +139,25 @@ jobs:
           echo "📁 Output directory contents:"
           ls -la sites/out/
 
+      - name: Package site for release
+        if: needs.extract-release-info.outputs.trigger_source == 'goreleaser'
+        run: |
+          cd sites
+          # Create a compressed archive of the site
+          tar -czf chauffeur-site-${{ needs.extract-release-info.outputs.version }}.tar.gz out/
+          echo "📦 Created site archive: chauffeur-site-${{ needs.extract-release-info.outputs.version }}.tar.gz"
+          ls -lh chauffeur-site-${{ needs.extract-release-info.outputs.version }}.tar.gz
+
+      - name: Upload site to release
+        if: needs.extract-release-info.outputs.trigger_source == 'goreleaser'
+        run: |
+          cd sites
+          # Upload the site as a release asset
+          gh release upload ${{ needs.extract-release-info.outputs.version }} \
+            chauffeur-site-${{ needs.extract-release-info.outputs.version }}.tar.gz \
+            --clobber
+          echo "🚀 Site uploaded to release ${{ needs.extract-release-info.outputs.version }}"
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -164,3 +183,9 @@ jobs:
           echo "✅ **Release URL**: ${{ needs.extract-release-info.outputs.release_url }}" >> $GITHUB_STEP_SUMMARY
           echo "✅ **Artifact**: \`site-build-${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
           echo "✅ **Build Size**: $(du -sh sites/out/ | cut -f1)" >> $GITHUB_STEP_SUMMARY
+
+          if [[ "${{ needs.extract-release-info.outputs.trigger_source }}" == "goreleaser" ]]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "📦 **Release Asset**: \`chauffeur-site-${{ needs.extract-release-info.outputs.version }}.tar.gz\`" >> $GITHUB_STEP_SUMMARY
+            echo "🔗 **Download from**: ${{ needs.extract-release-info.outputs.release_url }}" >> $GITHUB_STEP_SUMMARY
+          fi
