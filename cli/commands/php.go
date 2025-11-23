@@ -126,7 +126,7 @@ func runPHPIsolate(version string) error {
 	if err != nil {
 		return fmt.Errorf("resolve project path: %w", err)
 	}
-
+	
 	projectCfg, layout, err := projects.FindByPath(cfg.ProjectsDir, cwd)
 	if err != nil {
 		if errors.Is(err, projects.ErrProjectNotFound) {
@@ -134,7 +134,7 @@ func runPHPIsolate(version string) error {
 		}
 		return fmt.Errorf("load project configuration: %w", err)
 	}
-
+	
 	projectCfg.PHP = version
 	if projectCfg.Runtime.PHPFPM == "" {
 		projectCfg.Runtime.PHPFPM = layout.SocketPath

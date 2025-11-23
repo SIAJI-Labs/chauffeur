@@ -157,6 +157,17 @@ ${installPHPCmd?.output || '✓ PHP 8.2 installed successfully'}`} />
               </ul>
             </div>
           </div>
+
+          <div className="mt-6 p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
+            <h4 className="font-semibold text-green-300 mb-2">🎁 Example Project</h4>
+            <div className="text-sm text-green-100/80 space-y-2">
+              <p><strong>Automatic Setup:</strong> Chauffeur creates an example project during <code className="bg-slate-800 px-2 py-1 rounded text-green-300">chauf init</code> and automatically links it when you install nginx and php!</p>
+              <p><strong>What's Included:</strong> Welcome page with Chauffeur information, phpinfo() output to verify PHP setup, and links to documentation</p>
+              <p><strong>Location:</strong> Created at <code className="bg-slate-800 px-2 py-1 rounded text-green-300">~/.chauffeur/projects/example-project</code></p>
+              <p><strong>Access:</strong> Visit <code className="bg-slate-800 px-2 py-1 rounded text-green-300">http://example-project.test</code> (or your configured port) after installing services</p>
+              <p><strong>Remove When Ready:</strong> Use <code className="bg-slate-800 px-2 py-1 rounded text-green-300">chauf unlink --project example-project</code> when you're ready to work on your own projects</p>
+            </div>
+          </div>
         </section>
 
         <section>

@@ -169,15 +169,21 @@ func RunLinks(args []string) error {
 			domainDisplay = project.Site.Domain
 		}
 
+		// Add indicator for example project
+		slugDisplay := project.Slug
+		if project.Slug == "example-project" {
+			slugDisplay = project.Slug + " 📁" // Add folder icon to indicate example
+		}
+
 		row := fmt.Sprintf("%-*s  %-*s  %-*s  %-*d  %-3s  %-4s  %s",
-		maxSlug, project.Slug,
+		maxSlug, slugDisplay,
 		maxPath, project.Path,
 		maxSlug+5, domainDisplay,
 		maxAliasCount, project.AliasCount,
 		ssl,
 		project.PHP,
 		created)
-	logger.Info(row)
+		logger.Info(row)
 	}
 
 	return nil

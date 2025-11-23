@@ -322,6 +322,33 @@ chauf install php 8.3 --local    # Prompt for local tarball path
 chauf install composer --force   # Fresh download, updates cache
 ```
 
+### Example Project Feature
+
+Chauffeur creates an example project during `chauf init` and automatically links it when you install services, helping you get started immediately:
+
+```bash
+# 1. Initialize workspace (creates example project)
+chauf init
+# Example project created at: ~/.chauffeur/projects/example-project
+
+# 2. Install services (links example project)
+chauf install nginx php
+# Example project linked successfully at: example-project.test
+
+# 3. Start services
+chauf start
+
+# 4. Access example project
+# Available at http://example-project.test (or your configured port)
+# The example includes:
+#   - Welcome page with Chauffeur information
+#   - phpinfo() output to verify PHP setup
+#   - Links to documentation
+
+# 5. Remove example project when ready
+chauf unlink --project example-project
+```
+
 ### Cache Management
 
 ```bash

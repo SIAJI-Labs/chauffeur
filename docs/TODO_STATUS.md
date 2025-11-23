@@ -28,6 +28,7 @@ _A living status board for features, debt, and priorities. Keep this in sync wit
 - **Release checklist documentation** with comprehensive build, test, and deployment procedures in `docs/RELEASE_CHECKLIST.md`
 - **CLI ergonomics improvement** with `-v` shorthand for `--version` flag in main command
 - **Comprehensive `chauf doctor` command** for dependency validation and health checking across system, PHP build, SSL, network, and DNS dependencies
+- **Example project automation** with automatic creation and linking after service installation, providing immediate testing environment for new users
 
 ### Project-Level PHP-FPM Architecture
 - **Project-specific FPM control**: `--dedicated-fpm` flag for isolated PHP-FPM pools per project
