@@ -142,10 +142,9 @@ jobs:
       - name: Package site for release
         if: needs.extract-release-info.outputs.trigger_source == 'goreleaser'
         run: |
-          cd sites
-          # Create a compressed archive of the site
-          tar -czf chauffeur-site-${{ needs.extract-release-info.outputs.version }}.tar.gz out/
-          echo "📦 Created site archive: chauffeur-site-${{ needs.extract-release-info.outputs.version }}.tar.gz"
+          # Create a compressed archive of the static site
+          tar -czf chauffeur-site-${{ needs.extract-release-info.outputs.version }}.tar.gz sites/out/
+          echo "📦 Created static site archive: chauffeur-site-${{ needs.extract-release-info.outputs.version }}.tar.gz"
           ls -lh chauffeur-site-${{ needs.extract-release-info.outputs.version }}.tar.gz
 
       - name: Upload site to release
@@ -153,12 +152,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cd sites
-          # Upload the site as a release asset
+          # Upload the static site as a release asset
           gh release upload ${{ needs.extract-release-info.outputs.version }} \
             chauffeur-site-${{ needs.extract-release-info.outputs.version }}.tar.gz \
             --clobber
-          echo "🚀 Site uploaded to release ${{ needs.extract-release-info.outputs.version }}"
+          echo "🚀 Static site uploaded to release ${{ needs.extract-release-info.outputs.version }}"
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4

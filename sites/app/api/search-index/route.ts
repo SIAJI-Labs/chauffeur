@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { generateSearchIndex } from '../../../utils/content-extractor';
 
+export const dynamic = 'force-static';
+
 export async function GET() {
   try {
     console.log('🔍 API: Generating dynamic search index...');
