@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/siaji/chauffeur/cli/commands"
-	"github.com/siaji/chauffeur/tests/internal/helpers"
+	"github.com/siaji/chauffeur/tests/internal/helpers" // Add this import
 )
 
 func TestLinkWithMultipleAliases(t *testing.T) {
@@ -70,6 +70,8 @@ func TestLinkWithMultipleAliases(t *testing.T) {
 }
 
 func TestLinkWithAliasesAndSSL(t *testing.T) {
+	helpers.MockAllExecutors(t) // Setup all necessary mocks
+
 	home, workspace := helpers.SetupTestHome(t)
 
 	if err := commands.RunInit(nil); err != nil {
@@ -88,7 +90,7 @@ func TestLinkWithAliasesAndSSL(t *testing.T) {
 	// Test linking with aliases and SSL
 	args := []string{
 		"--site", "app.test",
-		"--ssl", // This should enable SSL for primary domain
+		"--secure", // This should enable SSL for primary domain
 		"--alias", "admin.test",
 		"--alias", "api.test",
 	}
@@ -131,6 +133,8 @@ func TestLinkWithAliasesAndSSL(t *testing.T) {
 	}
 }
 
+
+
 func TestLinkSingleDomainBackwardCompatibility(t *testing.T) {
 	home, workspace := helpers.SetupTestHome(t)
 
@@ -150,7 +154,7 @@ func TestLinkSingleDomainBackwardCompatibility(t *testing.T) {
 	// Test single domain linking (backward compatibility)
 	args := []string{
 		"--site", "legacy.test",
-		"--ssl",
+		"--secure",
 	}
 
 	if err := commands.RunLink(args); err != nil {

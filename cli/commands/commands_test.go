@@ -1,7 +1,11 @@
 package commands
 
 import (
+	"os"
+	"os/exec"
 	"testing"
+
+	"github.com/siaji/chauffeur/cli/lib" // Import the lib package for CommandExecutor
 )
 
 // TestVersionManagement tests version setting functions
@@ -78,6 +82,16 @@ func TestHelpCommands(t *testing.T) {
 
 // TestDryRunCommands tests dry-run functionality
 func TestDryRunCommands(t *testing.T) {
+	// Mock exec.Command to prevent actual iptables calls
+	lib.SetCommandExecutor(func(name string, arg ...string) *exec.Cmd {
+		cs := []string{"-test.run=TestHelperProcess", "--", name}
+		cs = append(cs, arg...)
+		cmd := exec.Command(os.Args[0], cs...)
+		cmd.Env = []string{"GO_WANT_HELPER_PROCESS=1"}
+		return cmd
+	})
+	defer lib.ResetCommandExecutor()
+
 	// Test that dry-run commands don't fail due to missing services
 	err := RunStart([]string{"--dry-run"})
 	// This might fail due to missing workspace/services, but shouldn't crash
@@ -95,5 +109,39 @@ func TestDryRunCommands(t *testing.T) {
 	// This might fail due to missing workspace/services, but shouldn't crash
 	if err != nil {
 		t.Logf("Restart dry-run returned error (may be expected): %v", err)
+	}
+}
+
+// TestHelperProcess is a helper function for mocking exec.Command
+// It's not a real test, but a way to intercept exec.Command calls.
+func TestHelperProcess(t *testing.T) {
+	if os.Getenv("GO_WANT_HELPER_PROCESS") != "1" {
+		return
+	}
+	defer os.Exit(0)
+
+	args := os.Args
+	for len(args) > 0 {
+		if args[0] == "--" {
+			args = args[1:]
+			break
+		}
+		args = args[1:]
+	}
+	if len(args) == 0 {
+		return // Should not happen
+	}
+
+	cmd := args[0]
+	switch cmd {
+	case "sudo":
+		// Simulate successful sudo operations
+		return
+	case "mkcert":
+		// Simulate successful mkcert operations
+		return
+	default:
+		// Default to success for other commands
+		return
 	}
 }

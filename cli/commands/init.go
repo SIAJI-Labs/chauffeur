@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/siaji/chauffeur/cli/internal/config"
+	"github.com/siaji/chauffeur/cli/internal/example"
 	"github.com/siaji/chauffeur/cli/internal/workspace"
 	"github.com/siaji/chauffeur/cli/lib"
 )
@@ -128,6 +129,14 @@ tmp/
 		logger.Info("Then restart your shell or run: source ~/.bashrc")
 	}
 
+	// Create example project directory immediately
+	logger.Info("Creating example project...")
+	if err := example.CreateExampleProject(); err != nil {
+		logger.Warn("Failed to create example project", err.Error())
+	} else {
+		logger.Info("Example project created. It will be linked after installing nginx and php.")
+	}
+
 	if !quiet {
 		logger.Success("Chauffeur workspace initialized successfully", fmt.Sprintf("at %s", wsDir))
 		logger.Info("Next steps:")
@@ -135,6 +144,10 @@ tmp/
 		logger.Info("  2. Install services: chauf install nginx php")
 		logger.Info("  3. Create your first project: cd /path/to/project && chauf link")
 		logger.Info("  4. Start services: chauf start")
+		logger.Info("")
+		logger.Info("🎁 Example project created!")
+		logger.Info("   Located at: ~/.chauffeur/projects/example-project")
+		logger.Info("   Will be automatically linked after installing nginx and php")
 	} else {
 		logger.Success("Workspace initialized", wsDir)
 	}

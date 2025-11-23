@@ -75,12 +75,12 @@ release:
 
       ### Quick Install
       ```bash
-      curl -sSL https://github.com/siaji/chauffeur/releases/latest/download/install.sh | bash
+      curl -sL https://chauffeur.siaji.com/install | bash
       ```
 
       ### Manual Install
       ```bash
-      wget https://github.com/siaji/chauffeur/releases/latest/download/chauf_{{ .Version }}_linux_amd64.tar.gz
+      wget https://github.com/SIAJI-Labs/chauffeur/releases/latest/download/chauf_{{ .Version }}_linux_amd64.tar.gz
       tar -xzf chauf_{{ .Version }}_linux_amd64.tar.gz
       sudo cp chauf /usr/local/bin/
       ```

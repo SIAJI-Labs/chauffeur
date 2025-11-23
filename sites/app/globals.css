@@ -1,0 +1,320 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  /* Font configuration */
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-jetbrains-mono);
+
+  /* Tailwind v4 CSS-first color configuration - Complete color system */
+  --color-background: #0F172A; /* Slate 900 - matches original site */
+  --color-foreground: #F8FAFC; /* Slate 50 */
+  --color-card: #1E293B; /* Slate 800 */
+  --color-card-foreground: #F8FAFC; /* Slate 50 */
+  --color-popover: #1E293B; /* Slate 800 */
+  --color-popover-foreground: #F8FAFC; /* Slate 50 */
+  --color-primary: #10B981; /* Emerald 500 - matches original site */
+  --color-primary-foreground: #0F172A; /* Slate 900 */
+  --color-secondary: #6366F1; /* Indigo 500 - matches original site */
+  --color-secondary-foreground: #F8FAFC; /* Slate 50 */
+  --color-muted: #1E293B; /* Slate 800 */
+  --color-muted-foreground: #94A3B8; /* Slate 400 */
+  --color-accent: #F59E0B; /* Amber 500 - matches original site */
+  --color-accent-foreground: #0F172A; /* Slate 900 */
+  --color-destructive: #EF4444; /* Red 500 */
+  --color-border: #334155; /* Slate 700 */
+  --color-input: #1E293B; /* Slate 800 */
+  --color-ring: #10B981; /* Emerald 500 */
+
+  /* Additional color classes used in components */
+  --color-surface: #1E293B; /* Slate 800 - used for feature cards */
+  --color-white: #FFFFFF;
+  --color-black: #000000;
+
+  /* Complete slate color palette for consistency */
+  --color-slate-50: #F8FAFC;
+  --color-slate-100: #F1F5F9;
+  --color-slate-200: #E2E8F0;
+  --color-slate-300: #CBD5E1;
+  --color-slate-400: #94A3B8;
+  --color-slate-500: #64748B;
+  --color-slate-600: #475569;
+  --color-slate-700: #334155;
+  --color-slate-800: #1E293B;
+  --color-slate-900: #0F172A;
+  --color-slate-950: #020617;
+
+  /* Emerald color palette */
+  --color-emerald-400: #34D399;
+  --color-emerald-500: #10B981;
+  --color-emerald-600: #059669;
+  --color-emerald-300: #86EFAC;
+
+  /* Amber color palette */
+  --color-amber-400: #FBBF24;
+  --color-amber-500: #F59E0B;
+  --color-amber-600: #D97706;
+  --color-amber-200: #FEF3C7;
+
+  /* Indigo color palette */
+  --color-indigo-400: #818CF8;
+  --color-indigo-500: #6366F1;
+  --color-indigo-600: #4F46E5;
+  --color-indigo-900: #312E81;
+
+  /* Sidebar colors */
+  --color-sidebar: #1E293B; /* Slate 800 */
+  --color-sidebar-foreground: #F8FAFC; /* Slate 50 */
+  --color-sidebar-primary: #10B981; /* Emerald 500 */
+  --color-sidebar-primary-foreground: #F8FAFC; /* Slate 50 */
+  --color-sidebar-accent: #1E293B; /* Slate 800 */
+  --color-sidebar-accent-foreground: #F8FAFC; /* Slate 50 */
+  --color-sidebar-border: #334155; /* Slate 700 */
+  --color-sidebar-ring: #10B981; /* Emerald 500 */
+
+  /* Chart colors */
+  --color-chart-1: #0F172A; /* Slate 900 */
+  --color-chart-2: #1E293B; /* Slate 800 */
+  --color-chart-3: #334155; /* Slate 700 */
+  --color-chart-4: #475569; /* Slate 600 */
+  --color-chart-5: #64748B; /* Slate 500 */
+
+  /* Border radius */
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  /* Chauffeur Custom Colors (legacy support) */
+  --chauffeur-primary: #10B981; /* Emerald 500 */
+  --chauffeur-secondary: #6366F1; /* Indigo 500 */
+  --chauffeur-accent: #F59E0B; /* Amber 500 */
+  --chauffeur-background: #0F172A; /* Slate 900 */
+  --chauffeur-surface: #1E293B; /* Slate 800 */
+  --chauffeur-muted: #94A3B8; /* Slate 400 */
+}
+
+:root {
+  --radius: 0.625rem;
+}
+
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* Chauffeur Custom Animations */
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+@keyframes fadeIn {
+  0% { opacity: 0; transform: translateY(10px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+.animate-cursor-blink {
+  animation: blink 1s step-end infinite;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.5s ease-out forwards;
+}
+
+/* Custom scrollbar styles */
+/* Default scrollbar - thin and minimal */
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.3) transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(148, 163, 184, 0.4) 0%, rgba(148, 163, 184, 0.2) 100%);
+  border-radius: 3px;
+  border: 1px solid rgba(148, 163, 184, 0.1);
+  transition: all 0.2s ease;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(148, 163, 184, 0.6) 0%, rgba(148, 163, 184, 0.4) 100%);
+  border-color: rgba(148, 163, 184, 0.3);
+}
+
+/* Elegant scrollbar - rounded with emerald accent */
+.scrollbar-elegant {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(16, 185, 129, 0.3) rgba(30, 41, 59, 0.1);
+}
+
+.scrollbar-elegant::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.scrollbar-elegant::-webkit-scrollbar-track {
+  background: linear-gradient(180deg, rgba(30, 41, 59, 0.1) 0%, rgba(30, 41, 59, 0.05) 100%);
+  border-radius: 4px;
+  margin: 2px;
+}
+
+.scrollbar-elegant::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(16, 185, 129, 0.5) 0%, rgba(16, 185, 129, 0.3) 100%);
+  border-radius: 4px;
+  border: 1px solid rgba(16, 185, 129, 0.2);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  transition: all 0.3s ease;
+}
+
+.scrollbar-elegant::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(16, 185, 129, 0.7) 0%, rgba(16, 185, 129, 0.5) 100%);
+  border-color: rgba(16, 185, 129, 0.4);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+.scrollbar-elegant::-webkit-scrollbar-thumb:active {
+  background: linear-gradient(180deg, rgba(16, 185, 129, 0.8) 0%, rgba(16, 185, 129, 0.6) 100%);
+}
+
+/* Minimal scrollbar - very subtle */
+.scrollbar-minimal {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.scrollbar-minimal::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+.scrollbar-minimal::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-minimal::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.1);
+  border-radius: 2px;
+  transition: background 0.2s ease;
+}
+
+.scrollbar-minimal::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.3);
+}
+
+/* Large scrollbar - for better accessibility */
+.scrollbar-large {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.4) rgba(30, 41, 59, 0.1);
+}
+
+.scrollbar-large::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+.scrollbar-large::-webkit-scrollbar-track {
+  background: rgba(30, 41, 59, 0.1);
+  border-radius: 6px;
+  margin: 4px;
+}
+
+.scrollbar-large::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(148, 163, 184, 0.4) 0%, rgba(148, 163, 184, 0.2) 100%);
+  border-radius: 6px;
+  border: 2px solid rgba(30, 41, 59, 0.2);
+  transition: all 0.3s ease;
+  position: relative;
+}
+
+.scrollbar-large::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(148, 163, 184, 0.6) 0%, rgba(148, 163, 184, 0.4) 100%);
+  border-color: rgba(30, 41, 59, 0.3);
+}
+
+.scrollbar-large::-webkit-scrollbar-thumb:active {
+  background: linear-gradient(180deg, rgba(148, 163, 184, 0.7) 0%, rgba(148, 163, 184, 0.5) 100%);
+}
+
+/* Neon scrollbar - futuristic style */
+.scrollbar-neon {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(16, 185, 129, 0.6) transparent;
+}
+
+.scrollbar-neon::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.scrollbar-neon::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-neon::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(16, 185, 129, 0.8) 0%, rgba(16, 185, 129, 0.4) 100%);
+  border-radius: 5px;
+  border: 1px solid rgba(16, 185, 129, 0.6);
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.5), inset 0 0 3px rgba(16, 185, 129, 0.6);
+  transition: all 0.3s ease;
+}
+
+.scrollbar-neon::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(16, 185, 129, 1) 0%, rgba(16, 185, 129, 0.6) 100%);
+  box-shadow: 0 0 20px rgba(16, 185, 129, 0.8), inset 0 0 5px rgba(16, 185, 129, 0.8);
+}
+
+/* Default for all scrollbars - elegant as standard */
+html {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.3) rgba(30, 41, 59, 0.1);
+}
+
+html::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+html::-webkit-scrollbar-track {
+  background: linear-gradient(180deg, rgba(30, 41, 59, 0.1) 0%, rgba(30, 41, 59, 0.05) 100%);
+  border-radius: 4px;
+  margin: 2px;
+}
+
+html::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(16, 185, 129, 0.5) 0%, rgba(16, 185, 129, 0.3) 100%);
+  border-radius: 4px;
+  border: 1px solid rgba(16, 185, 129, 0.2);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  transition: all 0.3s ease;
+}
+
+html::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(16, 185, 129, 0.7) 0%, rgba(16, 185, 129, 0.5) 100%);
+  border-color: rgba(16, 185, 129, 0.4);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+/* Hide scrollbar for floating elements */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}

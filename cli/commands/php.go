@@ -34,6 +34,10 @@ func RunPHP(args []string) error {
 			return fmt.Errorf("php isolate requires <version>")
 		}
 		return runPHPIsolate(args[1])
+	case "current":
+		return runPHPCurrent()
+	case "list":
+		return runPHPList()
 	default:
 		return runPHPBinary(args)
 	}
@@ -122,7 +126,7 @@ func runPHPIsolate(version string) error {
 	if err != nil {
 		return fmt.Errorf("resolve project path: %w", err)
 	}
-
+	
 	projectCfg, layout, err := projects.FindByPath(cfg.ProjectsDir, cwd)
 	if err != nil {
 		if errors.Is(err, projects.ErrProjectNotFound) {
@@ -130,7 +134,7 @@ func runPHPIsolate(version string) error {
 		}
 		return fmt.Errorf("load project configuration: %w", err)
 	}
-
+	
 	projectCfg.PHP = version
 	if projectCfg.Runtime.PHPFPM == "" {
 		projectCfg.Runtime.PHPFPM = layout.SocketPath
@@ -194,6 +198,100 @@ func runPHPIsolate(version string) error {
 	return nil
 }
 
+func runPHPList() error {
+	logger := lib.NewCommandLogger("php")
+
+	supportedVersions := installers.GetSupportedPHPVersions()
+	workspaceDir, err := workspace.Dir()
+	if err != nil {
+		return fmt.Errorf("get workspace directory: %w", err)
+	}
+
+	logger.Success("Supported PHP versions", "Checking installation status...")
+
+	for _, version := range supportedVersions {
+		phpPath := filepath.Join(workspaceDir, "php", version.Version, "bin", "php")
+		status := "not installed"
+
+		if _, err := os.Stat(phpPath); err == nil {
+			// Check if it's the default version
+			defaultVersion, err := config.GetDefaultPHPVersion()
+			if err == nil && defaultVersion == version.Version {
+				status = "active"
+			} else {
+				status = "installed"
+			}
+		}
+
+		statusIcon := "❌"
+		if status == "active" {
+			statusIcon = "✅ (active)"
+		} else if status == "installed" {
+			statusIcon = "✅"
+		}
+
+		fmt.Printf("  PHP %s %s\n", version.Version, statusIcon)
+	}
+
+	return nil
+}
+
+func runPHPCurrent() error {
+	logger := lib.NewCommandLogger("php current")
+
+	// Get current working directory
+	wd, err := os.Getwd()
+	if err != nil {
+		return logger.Error("Failed to get current directory", err.Error())
+	}
+
+	// Get global configuration
+	globalConfig, err := config.Load()
+	if err != nil {
+		return logger.Error("Failed to load global configuration", err.Error())
+	}
+	globalPHP := globalConfig.PHP.Default
+
+	// Try to find project in current directory
+	projectsDir := globalConfig.ProjectsDir
+
+	proj, _, err := projects.FindByPath(projectsDir, wd)
+	if err != nil {
+		// No project found, show only global PHP
+		logger.Info("No project detected in current directory")
+		logger.Info(fmt.Sprintf("Global PHP: %s (default)", globalPHP))
+
+		workspaceDir, err := workspace.Dir()
+		if err != nil {
+			return logger.Error("Failed to get workspace directory", err.Error())
+		}
+		phpBinary := filepath.Join(workspaceDir, "php", globalPHP, "bin", "php")
+		logger.Info(fmt.Sprintf("PHP binary: %s", phpBinary))
+		return nil
+	}
+
+	// Project found
+	projectPHP := proj.PHP
+	logger.Info(fmt.Sprintf("Project: %s", proj.Path))
+	logger.Info(fmt.Sprintf("Project PHP: %s", projectPHP))
+
+	if proj.PHP != globalPHP {
+		logger.Info(fmt.Sprintf("Global PHP: %s (default)", globalPHP))
+	} else {
+		logger.Info(fmt.Sprintf("Global PHP: %s (same as project)", globalPHP))
+	}
+
+	// Show PHP binary path
+	workspaceDir, err := workspace.Dir()
+	if err != nil {
+		return logger.Error("Failed to get workspace directory", err.Error())
+	}
+	phpBinary := filepath.Join(workspaceDir, "php", projectPHP, "bin", "php")
+	logger.Info(fmt.Sprintf("PHP binary: %s", phpBinary))
+
+	return nil
+}
+
 func printPHPUsage() {
 	fmt.Print(`Chauffeur PHP Commands
 
@@ -202,6 +300,8 @@ Usage:
   chauf php use <version>   Set the default PHP version.
   chauf php isolate <version>
                              Pin the current project to a specific PHP version.
+  chauf php current         Show current PHP version for directory or global default.
+  chauf php list            List all supported PHP versions and their status.
 `)
 }
 

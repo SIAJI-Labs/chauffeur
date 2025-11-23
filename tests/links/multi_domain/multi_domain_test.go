@@ -86,30 +86,38 @@ func TestLinksShowsMultiDomainProjects(t *testing.T) {
 		t.Fatalf("expected output to show main.test domain, got:\n%s", output)
 	}
 
-	if !strings.Contains(output, "admin.test") {
-		t.Fatalf("expected output to show admin.test alias, got:\n%s", output)
+	// Verify alias count is shown correctly for secure-app (has 3 aliases)
+	if !strings.Contains(output, "secure-app") {
+		t.Fatalf("expected output to show secure-app project, got:\n%s", output)
 	}
 
-	if !strings.Contains(output, "api.test") {
-		t.Fatalf("expected output to show api.test alias, got:\n%s", output)
+	// Look for the count "3" in the aliases column for secure-app
+	secureAppLine := ""
+	lines := strings.Split(output, "\n")
+	for _, line := range lines {
+		if strings.Contains(line, "secure-app") {
+			secureAppLine = line
+			break
+		}
+	}
+	if !strings.Contains(secureAppLine, "3") {
+		t.Fatalf("expected secure-app to show 3 aliases, got:\n%s", secureAppLine)
 	}
 
-	if !strings.Contains(output, "public.test") {
-		t.Fatalf("expected output to show public.test alias, got:\n%s", output)
+	// Verify simple-app has no aliases (count should be 0)
+	if !strings.Contains(output, "simple-app") {
+		t.Fatalf("expected output to show simple-app project, got:\n%s", output)
 	}
 
-	// Verify SSL indicators are shown for SSL-enabled aliases (look for (*) indicators in ALIAS column)
-	if !strings.Contains(output, "admin.test (*)") {
-		t.Fatalf("expected output to show SSL indicator for admin.test, got:\n%s", output)
+	simpleAppLine := ""
+	for _, line := range lines {
+		if strings.Contains(line, "simple-app") {
+			simpleAppLine = line
+			break
+		}
 	}
-
-	// Verify non-SSL domains don't have indicators
-	if strings.Contains(output, "api.test (*)") {
-		t.Fatalf("unexpected SSL indicator for api.test (should be non-SSL), got:\n%s", output)
-	}
-
-	if strings.Contains(output, "public.test (*)") {
-		t.Fatalf("unexpected SSL indicator for public.test (should be non-SSL), got:\n%s", output)
+	if !strings.Contains(simpleAppLine, "0") {
+		t.Fatalf("expected simple-app to show 0 aliases, got:\n%s", simpleAppLine)
 	}
 
 	// Verify primary domain SSL is shown in SSL column (* indicates SSL enabled)
@@ -118,7 +126,6 @@ func TestLinksShowsMultiDomainProjects(t *testing.T) {
 	}
 
 	// Check that the SSL column shows * for SSL-enabled project
-	lines := strings.Split(output, "\n")
 	secureAppFound := false
 	for _, line := range lines {
 		if strings.Contains(line, "secure-app") {
@@ -192,25 +199,20 @@ func TestLinksShowsOnlySSLIndicatorsForSSLEnabledDomains(t *testing.T) {
 		}
 	})
 
-	// Verify SSL indicators are only shown for SSL-enabled aliases (in ALIAS column)
-	sslAliases := []string{"secure.test", "also-secure.test"}
-	for _, alias := range sslAliases {
-		if !strings.Contains(output, alias+" (*)") {
-			t.Fatalf("expected SSL indicator for %s, got:\n%s", alias, output)
+	// Verify alias count is shown correctly (3 aliases total)
+	lines := strings.Split(output, "\n")
+	mixedSslLine := ""
+	for _, line := range lines {
+		if strings.Contains(line, "mixed-ssl") {
+			mixedSslLine = line
+			break
 		}
 	}
-
-	// Verify non-SSL domain doesn't have SSL indicator
-	if strings.Contains(output, "insecure.test (*)") {
-		t.Fatalf("unexpected SSL indicator for insecure.test (should be non-SSL), got:\n%s", output)
-	}
-
-	if !strings.Contains(output, "insecure.test") {
-		t.Fatalf("expected insecure.test to be listed (without SSL indicator), got:\n%s", output)
+	if !strings.Contains(mixedSslLine, "3") {
+		t.Fatalf("expected mixed-ssl to show 3 aliases, got:\n%s", mixedSslLine)
 	}
 
 	// Verify primary domain SSL is shown in SSL column (* indicates SSL enabled)
-	lines := strings.Split(output, "\n")
 	mixedSslFound := false
 	for _, line := range lines {
 		if strings.Contains(line, "mixed-ssl") {

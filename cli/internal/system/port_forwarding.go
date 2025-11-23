@@ -7,7 +7,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+
+	"github.com/siaji/chauffeur/cli/lib" // Add this import
 )
+
+
 
 type portForwardingState struct {
 	HTTP  int `json:"http_port"`
@@ -158,7 +162,7 @@ func ensureRedirectRule(fromPort, toPort int) error {
 		return fmt.Errorf("invalid ports: from=%d, to=%d", fromPort, toPort)
 	}
 
-	cmd := exec.Command("sudo", "iptables", "-t", "nat", "-A", "OUTPUT",
+	cmd := lib.CommandExecutor("sudo", "iptables", "-t", "nat", "-A", "OUTPUT",
 		"-p", "tcp",
 		"-d", "127.0.0.1",
 		"--dport", strconv.Itoa(fromPort),
@@ -174,7 +178,7 @@ func ensureRedirectRule(fromPort, toPort int) error {
 }
 
 func removeRedirectRule(fromPort, toPort int) error {
-	cmd := exec.Command("sudo", "iptables", "-t", "nat", "-D", "OUTPUT",
+	cmd := lib.CommandExecutor("sudo", "iptables", "-t", "nat", "-D", "OUTPUT",
 		"-p", "tcp",
 		"-d", "127.0.0.1",
 		"--dport", strconv.Itoa(fromPort),
@@ -191,7 +195,7 @@ func removeRedirectRule(fromPort, toPort int) error {
 }
 
 func redirectRuleExists(fromPort, toPort int) (bool, error) {
-	cmd := exec.Command("sudo", "iptables", "-t", "nat", "-C", "OUTPUT",
+	cmd := lib.CommandExecutor("sudo", "iptables", "-t", "nat", "-C", "OUTPUT",
 		"-p", "tcp",
 		"-d", "127.0.0.1",
 		"--dport", strconv.Itoa(fromPort),

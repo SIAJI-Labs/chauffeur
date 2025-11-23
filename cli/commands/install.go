@@ -11,6 +11,7 @@ import (
 
 	"github.com/siaji/chauffeur/cli/installers"
 	"github.com/siaji/chauffeur/cli/internal/config"
+	"github.com/siaji/chauffeur/cli/internal/example"
 	"github.com/siaji/chauffeur/cli/internal/system"
 	"github.com/siaji/chauffeur/cli/internal/workspace"
 	"github.com/siaji/chauffeur/cli/lib"
@@ -169,6 +170,27 @@ func RunInstall(args []string) error {
 				return logger.Error(fmt.Sprintf("install %s", spec.Name), err.Error())
 			}
 			logger.Success(fmt.Sprintf("Installed %s successfully", spec.Name), "")
+		}
+	}
+
+	// Check if we should create/link example project
+	if shouldCreateExampleProject(services) {
+		logger.Info("Checking example project status...")
+		if err := example.LinkExampleProjectIfReady(); err != nil {
+			logger.Warn("Failed to link example project", err.Error())
+		} else if example.IsExampleProjectLinked() {
+			logger.Success("Example project is ready!", "")
+			// Load config for port information
+			cfg, err := config.Load()
+			if err == nil {
+				httpURL := fmt.Sprintf("http://%s", example.ExampleProjectDomain)
+				if cfg.Nginx.HTTPPort != 80 {
+					httpURL = fmt.Sprintf("http://%s:%d", example.ExampleProjectDomain, cfg.Nginx.HTTPPort)
+				}
+				logger.Info(fmt.Sprintf("Access it at: %s", httpURL))
+				logger.Info("The example project helps you test your Chauffeur setup")
+				logger.Info("Remove it anytime with: chauf unlink --project example-project")
+			}
 		}
 	}
 
@@ -558,6 +580,26 @@ func promptForLocalTarball(version string, logger *lib.Logger) (string, error) {
 /**
  * printInstallUsage renders CLI help for the install command.
  */
+// shouldCreateExampleProject determines if example project should be created based on installed services
+func shouldCreateExampleProject(services []string) bool {
+	// Only check if nginx or php was just installed
+	nginxInstalled := false
+	phpInstalled := false
+	
+	for _, service := range services {
+		if service == "nginx" {
+			nginxInstalled = true
+		}
+		if service == "php" {
+			phpInstalled = true
+		}
+	}
+	
+	// Trigger example project if either nginx or php was installed
+	return nginxInstalled || phpInstalled
+}
+
+// printInstallUsage renders CLI help for the install command.
 func printInstallUsage() {
 	fmt.Println(`Usage: chauf install [--force] [--local] [--no-cache] <service> [<version>...] [<service>...]
 
