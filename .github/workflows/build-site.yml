@@ -150,6 +150,8 @@ jobs:
 
       - name: Upload site to release
         if: needs.extract-release-info.outputs.trigger_source == 'goreleaser'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           cd sites
           # Upload the site as a release asset
