@@ -13,10 +13,58 @@ import (
 	"github.com/siaji/chauffeur/cli/lib"
 )
 
+// ANSI Color constants
+const (
+	colorReset  = "\033[0m"
+	colorRed    = "\033[31m"
+	colorGreen  = "\033[32m"
+	colorYellow = "\033[33m"
+	colorGray   = "\033[90m"
+)
+
+// Color helper functions
+func colorizeRed(text string) string {
+	if isTerminal() {
+		return colorRed + text + colorReset
+	}
+	return text
+}
+
+func colorizeGreen(text string) string {
+	if isTerminal() {
+		return colorGreen + text + colorReset
+	}
+	return text
+}
+
+func colorizeYellow(text string) string {
+	if isTerminal() {
+		return colorYellow + text + colorReset
+	}
+	return text
+}
+
+func colorizeGray(text string) string {
+	if isTerminal() {
+		return colorGray + text + colorReset
+	}
+	return text
+}
+
+// isTerminal checks if output is a terminal
+func isTerminal() bool {
+	info, err := os.Stdout.Stat()
+	if err != nil {
+		return false
+	}
+	return (info.Mode() & os.ModeCharDevice) != 0
+}
+
 // ServiceHealthInfo contains detailed health information about a service
 type ServiceHealthInfo struct {
 	Status       string
 	Icon         string
+	StateWithText string // For detailed view: "● (running)", "○ (stopped)", etc.
 	PID          int
 	Uptime       string
 	MemoryUsage  string
@@ -26,22 +74,52 @@ type ServiceHealthInfo struct {
 	ConfigPath   string
 }
 
-// getHealthIcon returns appropriate status icon based on service health
+// getHealthIcon returns appropriate colored status dot based on service health
 func getHealthIcon(isRunning bool, hasWarnings bool, hasErrors bool) string {
 	if hasErrors {
-		return "🔴"
+		return "●"
 	}
 	if hasWarnings {
-		return "⚠️"
+		return "●"
 	}
 	if isRunning {
-		return "✅"
+		return "●"
 	}
-	return "🔘"
+	return "○"
+}
+
+// getStateText returns appropriate state text based on service health
+func getStateText(isRunning bool, hasWarnings bool, hasErrors bool) string {
+	if hasErrors {
+		return "error"
+	}
+	if hasWarnings {
+		return "warning"
+	}
+	if isRunning {
+		return "running"
+	}
+	return "stopped"
+}
+
+// getColoredStateWithIcon returns colored icon with state text
+func getColoredStateWithIcon(isRunning bool, hasWarnings bool, hasErrors bool) string {
+	icon := getHealthIcon(isRunning, hasWarnings, hasErrors)
+	stateText := getStateText(isRunning, hasWarnings, hasErrors)
+
+	if hasErrors {
+		return colorizeRed(icon) + " (" + colorizeRed(stateText) + ")"
+	} else if hasWarnings {
+		return colorizeYellow(icon) + " (" + colorizeYellow(stateText) + ")"
+	} else if isRunning {
+		return colorizeGreen(icon) + " (" + colorizeGreen(stateText) + ")"
+	} else {
+		return colorizeGray(icon) + " (" + colorizeGray(stateText) + ")"
+	}
 }
 
 // getServiceHealthInfo collects detailed health information about a service
-func getServiceHealthInfo(svc services.Service, status string) ServiceHealthInfo {
+func getServiceHealthInfo(svc services.Service, status string, logger *lib.Logger) ServiceHealthInfo {
 	info := ServiceHealthInfo{
 		Status:     status,
 		ConfigPath: getConfigPath(svc),
@@ -52,7 +130,20 @@ func getServiceHealthInfo(svc services.Service, status string) ServiceHealthInfo
 	hasWarnings := strings.Contains(status, "warning")
 	hasErrors := strings.Contains(status, "error") || strings.Contains(status, "failed")
 
-	info.Icon = getHealthIcon(isRunning, hasWarnings, hasErrors)
+	// Get the dot symbol and apply color
+	dotSymbol := getHealthIcon(isRunning, hasWarnings, hasErrors)
+	if hasErrors {
+		info.Icon = colorizeRed(dotSymbol)
+	} else if hasWarnings {
+		info.Icon = colorizeYellow(dotSymbol)
+	} else if isRunning {
+		info.Icon = colorizeGreen(dotSymbol)
+	} else {
+		info.Icon = colorizeGray(dotSymbol)
+	}
+
+	// Get colored state with text for detailed view
+	info.StateWithText = getColoredStateWithIcon(isRunning, hasWarnings, hasErrors)
 
 	// Extract PID from status if available
 	if strings.Contains(status, "pid ") {
@@ -374,7 +465,7 @@ func RunStatus(args []string) error {
 		tableData := [][]string{}
 		for _, service := range servicesToCheck {
 			status, _ := manager.GetStatus(service)
-			healthInfo := getServiceHealthInfo(service, status)
+			healthInfo := getServiceHealthInfo(service, status, logger)
 
 			serviceType := formatServiceType(service.Type)
 			projectDisplay := service.Slug
@@ -399,7 +490,8 @@ func RunStatus(args []string) error {
 
 		// Add legend
 		logger.Info("")
-		logger.Info("Legend: ✅ Running  ⚠️ Warning  🔴 Error  🔘 Stopped")
+		logger.Info(fmt.Sprintf("Legend: %s Running  %s Warning  %s Error  %s Stopped",
+			colorizeGreen("●"), colorizeYellow("●"), colorizeRed("●"), colorizeGray("○")))
 	} else {
 		// Enhanced detailed view with health information
 		logger.PrintSection(fmt.Sprintf("Chauffeur Services - Detailed Status (%d total)", len(servicesToCheck)))
@@ -411,10 +503,10 @@ func RunStatus(args []string) error {
 				continue
 			}
 
-			healthInfo := getServiceHealthInfo(service, status)
+			healthInfo := getServiceHealthInfo(service, status, logger)
 
 			// Service header
-			serviceHeader := fmt.Sprintf("Service: %s %s", healthInfo.Icon, service.Name)
+			serviceHeader := fmt.Sprintf("Service: %s %s", healthInfo.StateWithText, service.Name)
 			if i > 0 {
 				logger.Info("")
 			}

@@ -496,16 +496,8 @@ func (l *Logger) PrintServiceTable(headers []string, rows [][]string) {
 				cell := row[i]
 				// Apply color based on content
 				switch i {
-				case 0: // Status icon column
-					if cell == "✅" {
-						cell = l.green(cell)
-					} else if cell == "⚠️" {
-						cell = l.yellow(cell)
-					} else if cell == "🔴" {
-						cell = l.red(cell)
-					} else if cell == "🔘" {
-						cell = l.gray(cell)
-					}
+				case 0: // Status icon column - already colored in getServiceHealthInfo
+					// No additional coloring needed
 				case 3: // Status text column
 					if strings.Contains(cell, "running") {
 						cell = l.green(cell)
