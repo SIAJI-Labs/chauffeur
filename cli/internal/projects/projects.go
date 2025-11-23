@@ -176,7 +176,9 @@ func FindByPath(baseDir, projectPath string) (Config, Layout, error) {
 		}
 		cfg, err := LoadConfig(layout.ConfigPath)
 		if err != nil {
-			return Config{}, Layout{}, fmt.Errorf("load project config %s: %w", layout.ConfigPath, err)
+			// Skip project directories that don't have config files
+			// This handles the case where example project exists but isn't linked yet
+			continue
 		}
 
 		storedPath := cfg.Path

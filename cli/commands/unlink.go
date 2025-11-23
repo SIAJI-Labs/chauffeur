@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/siaji/chauffeur/cli/internal/config"
+	"github.com/siaji/chauffeur/cli/internal/example"
 	"github.com/siaji/chauffeur/cli/internal/projects"
 	"github.com/siaji/chauffeur/cli/internal/services"
 	"github.com/siaji/chauffeur/cli/internal/templates"
@@ -197,6 +198,8 @@ func RunUnlink(args []string) error {
 		if err != nil {
 			return fmt.Errorf("determine current directory: %w", err)
 		}
+		logger.Info(fmt.Sprintf("Default unlink case - all=%v, slug='%s', domain='%s', project='%s'", all, slug, domain, project))
+		logger.Info(fmt.Sprintf("Current working directory: %s", cwd))
 		cwd, err = filepath.Abs(cwd)
 		if err != nil {
 			return fmt.Errorf("resolve project path: %w", err)
@@ -369,6 +372,7 @@ func RunUnlink(args []string) error {
 		projectPath = absProject
 
 		// Find the project by path
+		logger.Info(fmt.Sprintf("Looking for project at: %s", projectPath))
 		_, layout, err := projects.FindByPath(cfg.ProjectsDir, projectPath)
 		if err != nil {
 			return fmt.Errorf("project at path %s is not registered", project)
@@ -400,6 +404,14 @@ func RunUnlink(args []string) error {
 			logger.Info(fmt.Sprintf("  Primary Domain: %s (ssl=%t)", projCfg.Site.Domain, projCfg.Site.SSL))
 		}
 
+		// Check if this is the example project and provide special guidance
+		isExampleProject := (projectSlug == example.ExampleProjectName)
+		if isExampleProject {
+			logger.Info("📁 This is the example project created by Chauffeur")
+			logger.Info("   It's safe to remove it when you're ready to work on your own projects")
+			logger.Info("")
+		}
+
 		// Show alias domains if they exist
 		if projCfg.Domains != nil && len(projCfg.Domains.Aliases) > 0 {
 			logger.Info("  Alias Domains:")
@@ -412,7 +424,11 @@ func RunUnlink(args []string) error {
 			}
 		}
 
-		logger.Prompt("This will remove the project registration and all associated configuration", "Use --force to skip confirmation")
+		promptMessage := "This will remove the project registration and all associated configuration"
+		if isExampleProject {
+			promptMessage = "This will remove the example project and all associated configuration"
+		}
+		logger.Prompt(promptMessage, "Use --force to skip confirmation")
 		if !confirmUnlinkAction(logger, "Continue unlinking this project?") {
 			logger.Info("Unlink cancelled by user.")
 			return nil
@@ -458,11 +474,27 @@ func RunUnlink(args []string) error {
 
 	// Remove the project directory
 	projectDir := layout.Root
-	if err := os.RemoveAll(projectDir); err != nil {
-		return fmt.Errorf("remove project directory: %w", err)
+	
+	// Special handling for example project
+	isExampleProject := (projectSlug == example.ExampleProjectName)
+	if isExampleProject {
+		// Example project is managed by Chauffeur, remove it using helper
+		if err := example.RemoveExampleProject(); err != nil {
+			logger.Warn("Failed to completely remove example project", err.Error())
+		} else {
+			logger.Success("Example project removed successfully", "")
+			logger.Info("You can recreate it anytime by running:")
+			logger.Info("  chauf install nginx php")
+			return nil
+		}
+	} else {
+		// Regular project removal
+		if err := os.RemoveAll(projectDir); err != nil {
+			return fmt.Errorf("remove project directory: %w", err)
+		}
+		logger.Success("Successfully unlinked project", projectSlug)
 	}
-
-	logger.Success("Successfully unlinked project", projectSlug)
+	
 	return nil
 }
 

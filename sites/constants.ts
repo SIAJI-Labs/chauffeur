@@ -35,7 +35,7 @@ export const CLI_COMMANDS: CommandDefinition[] = [
     examples: [
       { name: 'Initialize workspace', description: 'Create Chauffeur workspace', command: 'chauf init', output: '✓ Creating workspace at ~/.chauffeur' }
     ],
-    notes: ['Safe to run multiple times', 'Creates ~/.chauffeur directory structure']
+    notes: ['Safe to run multiple times', 'Creates ~/.chauffeur directory structure', 'Automatically creates example project at ~/.chauffeur/projects/example-project']
   },
 
   // SERVICES - Service management commands
@@ -54,7 +54,12 @@ export const CLI_COMMANDS: CommandDefinition[] = [
       { name: 'Install composer', description: 'Install Composer dependency manager', command: 'chauf install composer', output: '✓ composer installed successfully' },
       { name: 'Install PHP version', description: 'Install specific PHP version', command: 'chauf install php 8.2', output: '✓ PHP 8.2 installed successfully' }
     ],
-    notes: ['Service parameter is required. Available services: nginx, php, composer']
+    notes: [
+      'Service parameter is required. Available services: nginx, php, composer',
+      'Creates example project during chauf init, automatically links when nginx and php are installed',
+      'Example project provides immediate testing environment with welcome page and phpinfo()',
+      'Project location: ~/.chauffeur/projects/example-project'
+    ]
   },
   {
     command: 'chauf start',

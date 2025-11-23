@@ -873,7 +873,11 @@ func generateMultiDomainSelfSignedCertificate(logger *lib.Logger, certPath, keyP
 
 	// Create OpenSSL configuration for SAN certificate
 	opensslConfig := createSANConfig(domains)
-	configPath := "/tmp/chauffeur-san.conf"
+	
+	// Get workspace directory from certificate path
+	workspaceDir := filepath.Dir(filepath.Dir(certPath)) // ~/.chauffeur from ~/.chauffeur/nginx/certs/file.crt
+	configPath := filepath.Join(workspaceDir, "chauffeur-san.conf")
+	
 	if err := os.WriteFile(configPath, []byte(opensslConfig), 0o644); err != nil {
 		return lib.SSLCertificateTypeSelfSigned, fmt.Errorf("write OpenSSL config: %w", err)
 	}
