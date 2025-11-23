@@ -1,0 +1,166 @@
+name: Build Documentation Site
+
+on:
+  # Only trigger when Goreleaser workflow completes
+  workflow_run:
+    workflows: ["Goreleaser"]
+    types: [completed]
+
+  # Optional manual trigger for testing/debugging
+  workflow_dispatch:
+    inputs:
+      version_override:
+        description: 'Override version (e.g., v0.2.0)'
+        required: false
+        type: string
+      release_url_override:
+        description: 'Override release URL'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  # Extract version information from the triggering workflow
+  extract-release-info:
+    runs-on: ubuntu-latest
+    # Only run if Goreleaser succeeded
+    if: github.event.workflow_run.conclusion == 'success'
+    outputs:
+      version: ${{ steps.info.outputs.version }}
+      release_url: ${{ steps.info.outputs.release_url }}
+      trigger_source: ${{ steps.info.outputs.source }}
+
+    steps:
+      - name: Extract version from triggering workflow
+        id: info
+        run: |
+          VERSION=""
+          RELEASE_URL=""
+          SOURCE="unknown"
+
+          if [[ "${{ github.event_name }}" == "workflow_run" ]]; then
+            # Get tag from the triggering Goreleaser workflow
+            if [[ "${{ github.event.workflow_run.head_branch }}" == refs/tags/* ]]; then
+              VERSION="${{ github.event.workflow_run.head_branch }}"
+            else
+              # Fallback: get tag from workflow run metadata
+              VERSION="${{ github.event.workflow_run.head_branch }}"
+            fi
+            SOURCE="goreleaser"
+            echo "🚀 Extracted version from Goreleaser: $VERSION"
+
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            # Manual trigger with optional overrides
+            if [[ -n "${{ github.event.inputs.version_override }}" ]]; then
+              VERSION="${{ github.event.inputs.version_override }}"
+              if [[ -n "${{ github.event.inputs.release_url_override }}" ]]; then
+                RELEASE_URL="${{ github.event.inputs.release_url_override }}"
+              fi
+            fi
+            SOURCE="manual"
+            echo "🔨 Manual trigger with version: ${VERSION:-latest release}"
+          fi
+
+          # Generate release URL if not provided
+          if [[ -n "$VERSION" && -z "$RELEASE_URL" ]]; then
+            RELEASE_URL="https://github.com/SIAJI-Labs/chauffeur/releases/tag/$VERSION"
+          fi
+
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "release_url=$RELEASE_URL" >> $GITHUB_OUTPUT
+          echo "source=$SOURCE" >> $GITHUB_OUTPUT
+
+      - name: Display extracted info
+        run: |
+          echo "📋 Extracted Information:"
+          echo "  Version: ${{ steps.info.outputs.version }}"
+          echo "  Release URL: ${{ steps.info.outputs.release_url }}"
+          echo "  Source: ${{ steps.info.outputs.source }}"
+
+  build-site:
+    needs: extract-release-info
+    runs-on: ubuntu-latest
+    # Only run if Goreleaser succeeded or if manually triggered
+    if: (github.event.workflow_run.conclusion == 'success') || (github.event_name == 'workflow_dispatch')
+
+    steps:
+      - name: Notify build start
+        run: |
+          echo "🏗️  Building documentation site"
+          echo "Trigger source: ${{ needs.extract-release-info.outputs.trigger_source }}"
+          echo "Version: ${{ needs.extract-release-info.outputs.version }}"
+          echo "Release URL: ${{ needs.extract-release-info.outputs.release_url }}"
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: sites/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          cd sites
+          npm ci
+
+      - name: Set environment variables
+        run: |
+          echo "NEXT_PUBLIC_VERSION=${{ needs.extract-release-info.outputs.version }}" >> $GITHUB_ENV
+          echo "NEXT_PUBLIC_RELEASE_URL=${{ needs.extract-release-info.outputs.release_url }}" >> $GITHUB_ENV
+
+      - name: Display build info
+        run: |
+          echo "🔧 Build Configuration:"
+          echo "  Version: ${{ env.NEXT_PUBLIC_VERSION }}"
+          echo "  Release URL: ${{ env.NEXT_PUBLIC_RELEASE_URL }}"
+          echo "  Trigger: ${{ needs.extract-release-info.outputs.trigger_source }}"
+          echo "  Commit: ${{ github.sha }}"
+
+      - name: Build site
+        run: |
+          cd sites
+          npm run build
+        env:
+          NEXT_PUBLIC_VERSION: ${{ env.NEXT_PUBLIC_VERSION }}
+          NEXT_PUBLIC_RELEASE_URL: ${{ env.NEXT_PUBLIC_RELEASE_URL }}
+
+      - name: Verify build
+        run: |
+          if [[ ! -d "sites/out" ]]; then
+            echo "❌ Build failed - no output directory found"
+            exit 1
+          fi
+          echo "✅ Build completed successfully"
+          echo "📁 Output directory contents:"
+          ls -la sites/out/
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: site-build-${{ github.sha }}
+          path: sites/out/
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Deploy to staging (if on main branch)
+        if: github.ref == 'refs/heads/main'
+        run: |
+          echo "🚀 Ready for deployment to staging"
+          echo "Artifact: site-build-${{ github.sha }}"
+          echo "Download with:"
+          echo "gh run download ${{ github.run_id }} -n site-build-${{ github.sha }}"
+
+      - name: Summary
+        run: |
+          echo "## 🎉 Site Build Complete!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ **Trigger Source**: ${{ needs.extract-release-info.outputs.trigger_source }}" >> $GITHUB_STEP_SUMMARY
+          echo "✅ **Version Displayed**: ${{ needs.extract-release-info.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "✅ **Release URL**: ${{ needs.extract-release-info.outputs.release_url }}" >> $GITHUB_STEP_SUMMARY
+          echo "✅ **Artifact**: \`site-build-${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "✅ **Build Size**: $(du -sh sites/out/ | cut -f1)" >> $GITHUB_STEP_SUMMARY
