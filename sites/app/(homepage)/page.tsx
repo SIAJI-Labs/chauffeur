@@ -55,7 +55,7 @@ const LandingPage: React.FC = () => {
     <div className="min-h-screen flex flex-col relative">
 
       {/* Dev Warning Banner */}
-      <div className="bg-amber-500/10 border-b border-amber-500/20 px-4 py-2 text-amber-200/90 text-xs md:text-sm font-medium flex items-center justify-center gap-2 relative z-[60]">
+      <div className="bg-amber-500/10 border-b border-amber-500/20 px-4 py-2 text-amber-200/90 text-xs md:text-sm font-medium flex items-center justify-center gap-2 relative z-60">
         <AlertTriangle size={14} className="text-amber-400" />
         <span>Development Preview: Chauffeur is currently tested on Arch Linux. Support for other distributions is experimental.</span>
       </div>
@@ -94,7 +94,7 @@ const LandingPage: React.FC = () => {
 
       {/* Hero Section */}
       <section className="relative pt-32 pb-20 lg:pt-48 lg:pb-32 overflow-hidden">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-indigo-900/20 via-slate-900 to-slate-900 z-0" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,var(--tw-gradient-stops))] from-indigo-900/20 via-slate-900 to-slate-900 z-0" />
 
         <div className="container mx-auto px-4 md:px-6 relative z-10">
           <div className="flex flex-col lg:flex-row items-center gap-12 lg:gap-20">
@@ -113,16 +113,16 @@ const LandingPage: React.FC = () => {
                     rel="noopener noreferrer"
                     className="hover:text-emerald-300 transition-colors flex items-center gap-1 hover:underline"
                   >
-                    {process.env.NEXT_PUBLIC_VERSION || 'v0.1.0-beta'}: Native Linux Support
+                    {process.env.NEXT_PUBLIC_VERSION || 'v0.1.0-beta'}
                     <ExternalLink size={12} className="opacity-70" />
                   </Link>
                 ) : (
-                  <span>{process.env.NEXT_PUBLIC_VERSION || 'v0.1.0-beta'}: Native Linux Support</span>
+                  <span>{process.env.NEXT_PUBLIC_VERSION || 'v0.1.0-beta'}</span>
                 )}
               </div>
 
               <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold tracking-tight text-white mb-6 leading-[1.1]">
-                The Linux Development Environment <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-emerald-300">You've Been Waiting For.</span>
+                The Linux Development Environment <span className="text-transparent bg-clip-text bg-linear-to-r from-primary to-emerald-300">You've Been Waiting For.</span>
               </h1>
 
               <p className="text-lg md:text-xl text-slate-400 mb-8 max-w-2xl mx-auto lg:mx-0 leading-relaxed">
