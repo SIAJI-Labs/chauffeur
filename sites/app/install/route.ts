@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
+export const dynamic = 'force-static';
+
 export async function GET(request: NextRequest) {
   try {
     // Read the install.sh file from the public directory (symlink to root install.sh)

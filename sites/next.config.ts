@@ -5,6 +5,12 @@ const nextConfig: NextConfig = {
   reactCompiler: true,
   // Custom output directory for GitHub Actions artifacts
   distDir: 'out',
+  // Static export configuration for fully static site
+  output: 'export',
+  // Disable image optimization for static export
+  images: {
+    unoptimized: true,
+  },
   // Add empty turbopack config to silence the warning
   turbopack: {},
   webpack: (config, { isServer, dev }) => {
