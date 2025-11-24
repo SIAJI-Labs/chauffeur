@@ -142,9 +142,13 @@ jobs:
       - name: Package site for release
         if: needs.extract-release-info.outputs.trigger_source == 'goreleaser'
         run: |
-          # Create a compressed archive of the static site
-          tar -czf chauffeur-site-${{ needs.extract-release-info.outputs.version }}.tar.gz sites/out/
+          # Create a compressed archive of the static site with public/ directory structure
+          mkdir -p public
+          cp -r sites/out/* public/
+          tar -czf chauffeur-site-${{ needs.extract-release-info.outputs.version }}.tar.gz public/
           echo "📦 Created static site archive: chauffeur-site-${{ needs.extract-release-info.outputs.version }}.tar.gz"
+          echo "📂 Archive structure:"
+          tar -tzf chauffeur-site-${{ needs.extract-release-info.outputs.version }}.tar.gz | head -10
           ls -lh chauffeur-site-${{ needs.extract-release-info.outputs.version }}.tar.gz
 
       - name: Upload site to release
@@ -183,9 +187,14 @@ jobs:
           echo "✅ **Release URL**: ${{ needs.extract-release-info.outputs.release_url }}" >> $GITHUB_STEP_SUMMARY
           echo "✅ **Artifact**: \`site-build-${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
           echo "✅ **Build Size**: $(du -sh sites/out/ | cut -f1)" >> $GITHUB_STEP_SUMMARY
+          echo "✅ **Next Action**: Deployment will be handled by deploy-site.yml workflow" >> $GITHUB_STEP_SUMMARY
 
           if [[ "${{ needs.extract-release-info.outputs.trigger_source }}" == "goreleaser" ]]; then
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "📦 **Release Asset**: \`chauffeur-site-${{ needs.extract-release-info.outputs.version }}.tar.gz\`" >> $GITHUB_STEP_SUMMARY
             echo "🔗 **Download from**: ${{ needs.extract-release-info.outputs.release_url }}" >> $GITHUB_STEP_SUMMARY
           fi
+
+# Note: Deployment is now handled by the separate deploy-site.yml workflow
+# This workflow only builds and creates artifacts
+# The deploy-site.yml workflow triggers automatically when this workflow completes successfully

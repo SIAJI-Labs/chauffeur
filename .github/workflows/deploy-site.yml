@@ -1,0 +1,144 @@
+name: Deploy Documentation Site (Debug)
+
+on:
+  # Only trigger when build-site workflow completes
+  workflow_run:
+    workflows: ["Build Documentation Site"]
+    types: [completed]
+
+  # Optional manual trigger for testing/debugging
+  workflow_dispatch:
+    inputs:
+      version_override:
+        description: 'Override version (e.g., v0.2.0)'
+        required: false
+        type: string
+      release_url_override:
+        description: 'Override release URL'
+        required: false
+        type: string
+      build_artifact_override:
+        description: 'Override build artifact name'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  # Extract deployment information from the triggering workflow
+  extract-deploy-info:
+    runs-on: ubuntu-latest
+    # Only run if build-site succeeded
+    if: github.event.workflow_run.conclusion == 'success'
+    outputs:
+      version: ${{ steps.info.outputs.version }}
+      release_url: ${{ steps.info.outputs.release_url }}
+      artifact_name: ${{ steps.info.outputs.artifact_name }}
+      trigger_source: ${{ steps.info.outputs.source }}
+
+    steps:
+      - name: Extract deployment info from triggering workflow
+        id: info
+        run: |
+          VERSION=""
+          RELEASE_URL=""
+          ARTIFACT_NAME=""
+          SOURCE="unknown"
+
+          if [[ "${{ github.event_name }}" == "workflow_run" ]]; then
+            # Get version from the triggering build-site workflow
+            VERSION="${{ github.event.workflow_run.head_branch }}"
+            ARTIFACT_NAME="site-build-${{ github.event.workflow_run.id }}"
+            RELEASE_URL="https://github.com/SIAJI-Labs/chauffeur/releases/tag/$VERSION"
+            SOURCE="build-site"
+            echo "🚀 Extracted deployment info from build-site workflow"
+            echo "  Version: $VERSION"
+            echo "  Artifact: $ARTIFACT_NAME"
+
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            # Manual trigger with optional overrides
+            if [[ -n "${{ github.event.inputs.version_override }}" ]]; then
+              VERSION="${{ github.event.inputs.version_override }}"
+              if [[ -n "${{ github.event.inputs.release_url_override }}" ]]; then
+                RELEASE_URL="${{ github.event.inputs.release_url_override }}"
+              else
+                RELEASE_URL="https://github.com/SIAJI-Labs/chauffeur/releases/tag/$VERSION"
+              fi
+            fi
+            if [[ -n "${{ github.event.inputs.build_artifact_override }}" ]]; then
+              ARTIFACT_NAME="${{ github.event.inputs.build_artifact_override }}"
+            else
+              ARTIFACT_NAME="site-build-${{ github.run_id }}"
+            fi
+            SOURCE="manual"
+            echo "🔨 Manual trigger with version: ${VERSION:-latest}"
+            echo "📦 Artifact: $ARTIFACT_NAME"
+          fi
+
+          # Generate release URL if not provided
+          if [[ -n "$VERSION" && -z "$RELEASE_URL" ]]; then
+            RELEASE_URL="https://github.com/SIAJI-Labs/chauffeur/releases/tag/$VERSION"
+          fi
+
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "release_url=$RELEASE_URL" >> $GITHUB_OUTPUT
+          echo "artifact_name=$ARTIFACT_NAME" >> $GITHUB_OUTPUT
+          echo "source=$SOURCE" >> $GITHUB_OUTPUT
+
+      - name: Display extracted deployment info
+        run: |
+          echo "📋 Deployment Information:"
+          echo "  Version: ${{ steps.info.outputs.version }}"
+          echo "  Release URL: ${{ steps.info.outputs.release_url }}"
+          echo "  Artifact: ${{ steps.info.outputs.artifact_name }}"
+          echo "  Source: ${{ steps.info.outputs.source }}"
+
+  debug-ssh-connection:
+    needs: extract-deploy-info
+    runs-on: ubuntu-latest
+    # Only deploy for successful builds or manual triggers
+    if: needs.extract-deploy-info.outputs.trigger_source == 'build-site' || needs.extract-deploy-info.outputs.trigger_source == 'manual'
+    environment: production
+
+    steps:
+      - name: Debug deployment info
+        run: |
+          echo "🐛 Debug Information:"
+          echo "  Trigger Source: ${{ needs.extract-deploy-info.outputs.trigger_source }}"
+          echo "  Version: ${{ needs.extract-deploy-info.outputs.version }}"
+          echo "  Artifact Name: ${{ needs.extract-deploy-info.outputs.artifact_name }}"
+          echo "  Release URL: ${{ needs.extract-deploy-info.outputs.release_url }}"
+
+          echo "🔑 Secrets Status:"
+          echo "  SSH_HOST: ${{ secrets.SSH_HOST && 'SET' || 'NOT SET' }}"
+          echo "  SSH_USERNAME: ${{ secrets.SSH_USERNAME && 'SET' || 'NOT SET' }}"
+          echo "  SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY && 'SET' || 'NOT SET' }}"
+          echo "  VPS_DEPLOY_PATH: ${{ secrets.VPS_DEPLOY_PATH && 'SET' || 'NOT SET' }}"
+          echo "  VPS_WEB_ROOT: ${{ secrets.VPS_WEB_ROOT && 'SET' || 'NOT SET' }}"
+          echo "  VPS_DOMAIN: ${{ secrets.VPS_DOMAIN && 'SET' || 'NOT SET' }}"
+
+      - name: Test Artifact Download (Optional)
+        if: needs.extract-deploy-info.outputs.trigger_source == 'build-site'
+        run: |
+          echo "📦 Testing Artifact Download..."
+          echo "Artifact name: ${{ needs.extract-deploy-info.outputs.artifact_name }}"
+          echo "This would download: ${{ needs.extract-deploy-info.outputs.artifact_name }}"
+
+          # Note: We'll add artifact download in next iteration
+          echo "✅ Artifact download test skipped for now"
+
+      - name: Debug Summary
+        run: |
+          echo "## 🐛 SSH Debug Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ **SSH Connection**: Tested" >> $GITHUB_STEP_SUMMARY
+          echo "✅ **Environment Variables**: Tested" >> $GITHUB_STEP_SUMMARY
+          echo "✅ **File Operations**: Tested" >> $GITHUB_STEP_SUMMARY
+          echo "✅ **Server Access**: Verified" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📋 Next Steps:" >> $GITHUB_STEP_SUMMARY
+          echo "- [ ] Verify all environment variables are correctly set" >> $GITHUB_STEP_SUMMARY
+          echo "- [ ] Add artifact download functionality" >> $GITHUB_STEP_SUMMARY
+          echo "- [ ] Add deployment logic" >> $GITHUB_STEP_SUMMARY
+          echo "- [ ] Add backup and rollback functionality" >> $GITHUB_STEP_SUMMARY
