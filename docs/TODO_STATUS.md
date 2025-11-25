@@ -183,17 +183,42 @@ _A living status board for features, debt, and priorities. Keep this in sync wit
 - `cli/installers/php_legacy.go`: GD compatibility patches and wrapper functions
 - Build process preserves `/tmp/chauffeur-php-*/src/php-*/ext/gd/` for debugging
 
-## 6. Known Issues / Tech Debt
+## 6. Archived Documentation Features
+
+### Commands Removed from Documentation (Never Implemented)
+The following commands were documented but **never implemented** in the actual CLI:
+
+#### `chauf config` - ARCHIVED
+- **Status**: ❌ **Never implemented** - No traces found in codebase
+- **Documentation References**: Was referenced in sites/constants.ts and site documentation
+- **Intended Purpose**: Unknown - documentation was vague about configuration management
+- **Analysis**: No `RunConfig()` function exists in cli/commands/
+- **Recommendation**: Remove from all documentation, consider as future enhancement
+
+#### `chauf env` - ARCHIVED
+- **Status**: ❌ **Never implemented** - No traces found in codebase
+- **Documentation References**: Was referenced in sites/constants.ts and site documentation
+- **Intended Purpose**: Unknown - documentation was vague about environment management
+- **Analysis**: No `RunEnv()` function exists in cli/commands/
+- **Recommendation**: Remove from all documentation, consider as future enhancement
+
+### Analysis Summary
+- **Root Cause**: Documentation was written based on planned features that were never implemented
+- **Impact**: Users encountering "command not found" errors when following documentation
+- **Action Taken**: Commands archived in this section with recommendations for future consideration
+
+## 7. Known Issues / Tech Debt
 - Repo currently contains built binaries (`chauf`, `main`) checked in by mistake – remove and add to `.gitignore`
 - DNS setup path requires clearer rollback instructions when NetworkManager/systemd-resolved changes are applied manually
+- **RESOLVED**: Documentation synchronization completed - non-existent commands removed from docs/constants.ts
 
-## 7. Testing & QA
+## 8. Testing & QA
 - ✅ **`go test ./...` now green on Go 1.22+** with comprehensive unit test coverage across all packages
 - Integration tests should stub HOME to temp directories, avoiding host mutation
 - CI (`.github/workflows/go-tests.yml`) runs the suite on every pull request to `release`
 - **New test coverage areas**: installers, logging, projects, services, system, templates, nginx templates with proper error handling and edge case validation
 
-## 8. Release Readiness Checklist
+## 9. Release Readiness Checklist
 - [x] `go test ./...` passes locally with comprehensive test coverage
 - [ ] README.md / docs/TODO_STATUS.md / AGENTS.md agree on feature status
 - [ ] No compiled binaries or caches tracked in git
@@ -201,7 +226,183 @@ _A living status board for features, debt, and priorities. Keep this in sync wit
 - [ ] dnsmasq/NetworkManager instructions reviewed and verified
 - [x] GD extension infrastructure complete (legacy PHP compilation is future enhancement)
 
-## 9. How to Help
+## 11. Future Feature Roadmap
+
+### High Priority (P1) - Essential for Production Readiness
+
+#### Enhanced Service Monitoring & Logging
+- **Description**: Add comprehensive service monitoring with historical data, metrics, and log aggregation
+- **Commands to Implement**:
+  - `chauf logs <service>` - Enhanced with filtering, historical analysis
+  - `chauf monitor` - Real-time service metrics dashboard
+  - `chauf metrics` - Performance statistics and resource usage
+- **Complexity**: Medium
+- **User Value**: High - Critical for production debugging and performance tuning
+- **Implementation Recommendation**: Build on existing logs infrastructure, add metrics collection
+
+#### Configuration Management System
+- **Description**: Implement `chauf config` command for workspace and project configuration management
+- **Commands to Implement**:
+  - `chauf config show [--project <slug>]` - Display current configuration
+  - `chauf config set <key> <value> [--project <slug>]` - Set configuration values
+  - `chauf config validate [--project <slug>]` - Validate configuration files
+  - `chauf config export [--project <slug>]` - Export configuration to file
+  - `chauf config import <file> [--project <slug>]` - Import configuration from file
+  - `chauf config reset [--project <slug>]` - Reset to defaults
+- **Complexity**: Medium
+- **User Value**: High - Essential for advanced configuration and automation
+- **Implementation Recommendation**: Create config management library, integrate with existing YAML structures
+
+#### Environment Management (`chauf env`)
+- **Description**: Implement environment variable management for projects
+- **Commands to Implement**:
+  - `chauf env list [--project <slug>]` - List environment variables
+  - `chauf env set <key> <value> [--project <slug>]` - Set environment variable
+  - `chauf env unset <key> [--project <slug>]` - Remove environment variable
+  - `chauf env import <file> [--project <slug>]` - Import from .env file
+  - `chauf env export [--project <slug>]` - Export to .env file
+- **Complexity**: Low-Medium
+- **User Value**: High - Critical for modern development workflows
+- **Implementation Recommendation**: Build on existing project configuration system
+
+### Medium Priority (P2) - Quality of Life Improvements
+
+#### Advanced Service Management
+- **Description**: Enhanced service control with better process management and dependencies
+- **Commands to Implement**:
+  - `chauf services status` - Detailed service health with dependency graph
+  - `chauf services dependencies` - Show service dependency relationships
+  - `chauf services heal` - Auto-repair common service issues
+  - `chauf services benchmark` - Performance benchmarking tools
+- **Complexity**: Medium
+- **User Value**: Medium-High
+- **Implementation Recommendation**: Extend existing service manager
+
+#### Project Management Utilities
+- **Description**: Advanced project lifecycle management and utilities
+- **Commands to Implement**:
+  - `chauf project create <name> [--template]` - Create new project from template
+  - `chauf project clone <source> <destination>` - Clone project configuration
+  - `chauf project backup <slug> [--include-data]` - Create project backups
+  - `chauf project restore <backup-file>` - Restore from backup
+  - `chauf project archive <slug>` - Archive inactive projects
+- **Complexity**: Medium
+- **User Value**: Medium
+- **Implementation Recommendation**: Build on existing linking/unlinking infrastructure
+
+#### Enhanced Security & SSL Management
+- **Description**: Advanced SSL certificate management with automation
+- **Commands to Implement**:
+  - `chauf ssl status [--project <slug>]` - Detailed SSL certificate status
+  - `chauf ssl renew [--project <slug>] [--force]` - Manual certificate renewal
+  - `chauf ssl import <cert-file> <key-file> [--project <slug>]` - Import custom certificates
+  - `chauf ssl generate [--wildcard] [--project <slug>]` - Advanced certificate generation
+- **Complexity**: Medium
+- **User Value**: Medium
+- **Implementation Recommendation**: Extend existing secure/unsecure commands
+
+### Low Priority (P3) - Advanced Features
+
+#### Universal Service Update Management
+- **Description**: Unified update system for all Chauffeur-managed services
+- **Commands to Implement**:
+  - `chauf update <service> [--dry-run] [--backup]` - Update specific service
+  - `chauf update all [--dry-run] [--backup]` - Update all services
+  - `chauf update rollback <service> <version>` - Rollback to previous version
+  - `chauf update list-available [--service]` - List available updates
+- **Complexity**: High
+- **User Value**: Medium
+- **Implementation Recommendation**: Create unified update framework with backup/rollback
+
+#### Advanced Debugging & Profiling
+- **Description**: Professional debugging and profiling tools
+- **Commands to Implement**:
+  - `chauf debug start <service>` - Enable debugging mode for service
+  - `chauf debug profile <service> [--duration]` - Performance profiling
+  - `chauf debug trace <service> [--filter]` - Request tracing and debugging
+  - `chauf debug dump <service>` - Service state dump for analysis
+- **Complexity**: High
+- **User Value**: Low-Medium (niche, but valuable for advanced users)
+- **Implementation Recommendation**: Build on existing service management and logging
+
+#### Auto-Start Service Integration (Design Complete)
+- **Description**: Systemd integration for automatic startup on system boot
+- **Status**: Design documented in `docs/AUTOSTART_DESIGN.md`
+- **Commands to Implement**:
+  - `chauf autostart enable [--service]` - Enable auto-start
+  - `chauf autostart disable [--service]` - Disable auto-start
+  - `chauf autostart status` - Show auto-start status
+  - `chauf autostart list` - List all auto-start services
+- **Complexity**: Medium-High (system integration)
+- **User Value**: Medium
+- **Implementation Recommendation**: Follow existing design documents
+
+### Implementation Complexity Analysis
+
+#### Low Complexity (2-4 weeks each)
+- **Environment Management**: Builds on existing project config system
+- **Enhanced SSL Management**: Extension of existing secure/unsecure commands
+- **Project Management Utilities**: Leverages existing linking infrastructure
+
+#### Medium Complexity (4-8 weeks each)
+- **Service Monitoring**: Requires metrics collection and storage system
+- **Configuration Management**: New system but well-defined requirements
+- **Advanced Service Management**: Extensions to existing service manager
+- **Auto-Start Integration**: Systemd integration with security considerations
+
+#### High Complexity (8-16 weeks each)
+- **Universal Update System**: Complex backup/rollback and dependency management
+- **Advanced Debugging**: Requires deep service integration and profiling tools
+
+### Recommended Implementation Order
+
+1. **Phase 1** (Next 2-3 months): P1 - Configuration Management and Environment Management
+   - Foundation for other features
+   - High user impact
+   - Enables automation and advanced workflows
+
+2. **Phase 2** (3-6 months): P1 - Enhanced Service Monitoring and P2 - Project Management Utilities
+   - Production readiness features
+   - Improves debugging and maintenance workflows
+
+3. **Phase 3** (6-12 months): P2 - Advanced features and P3 - Universal updates
+   - Advanced user features
+   - Professional development workflows
+
+4. **Phase 4** (12+ months): P3 - Debugging and profiling tools
+   - Specialized features for power users
+   - Advanced production troubleshooting
+
+### Resource Requirements
+
+#### For P1 Features (Configuration & Environment Management):
+- **Development**: 1-2 developers
+- **Testing**: Comprehensive unit and integration tests
+- **Documentation**: Updated CLI reference and user guides
+- **Estimated effort**: 6-10 developer-weeks
+
+#### For Full Roadmap Completion:
+- **Development**: 2-3 developers over 12-18 months
+- **Infrastructure**: Monitoring backend, metrics storage
+- **Testing**: End-to-end testing suite expansion
+- **Documentation**: Complete documentation overhaul
+- **Estimated total effort**: 40-60 developer-weeks
+
+### Success Metrics
+
+#### User Experience Metrics:
+- **Command discovery time**: Reduce from current to <30 seconds for any command
+- **Configuration changes**: Reduce from manual file editing to single commands
+- **Troubleshooting time**: Reduce from hours to minutes with enhanced monitoring
+- **Onboarding time**: New users productive in <15 minutes
+
+#### Technical Metrics:
+- **Service reliability**: 99.9% uptime with auto-healing
+- **Performance monitoring**: Real-time metrics with 1-minute resolution
+- **Backup/restore**: <5 minutes for complete project restore
+- **Update safety**: 100% rollback success rate
+
+## 12. How to Help
 - Help expand service orchestration tests/logging and harden dnsmasq/NetworkManager flows
 - Improve tests around `chauf link`/`links` to avoid double-run conflicts
 - Document real-world setups (distro, Go version, dnsmasq config) in issues to broaden coverage
