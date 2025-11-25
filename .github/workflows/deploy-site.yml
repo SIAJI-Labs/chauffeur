@@ -247,14 +247,14 @@ jobs:
 
               # Download artifact (as www user to ensure file ownership)
               sudo -u www curl -L -H "Authorization: token $GITHUB_TOKEN" \
-                "$ARTIFACT_URL" -o "artifact.zip"
+                "$ARTIFACT_URL" -o "artifact.tar.gz"
 
               # Extract artifact directly to site root (contains public/ directory)
-              echo "📂 Extracting artifact to $SITE_ROOT_PATH..."
-              sudo -u www unzip -q artifact.zip
+              echo "📂 Extracting tar.gz artifact to $SITE_ROOT_PATH..."
+              sudo -u www tar -xzf "artifact.tar.gz"
 
-              # Remove the zip file
-              sudo -u www rm artifact.zip
+              # Remove the tar.gz file
+              sudo -u www rm artifact.tar.gz
 
               # Check if public directory exists (expected structure)
               if [ -d "public" ]; then
