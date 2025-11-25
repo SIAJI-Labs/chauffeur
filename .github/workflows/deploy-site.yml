@@ -1,10 +1,10 @@
 name: Deploy Documentation Site
 
 on:
-  # Trigger on push to current branch for easier testing
-  push:
-    branches: [ develop, main, deploy-test, feat/site-autodeploy ]
-    paths: [ 'sites/**', '.github/workflows/deploy-site.yml' ]
+  # Only trigger when build-site workflow completes
+  workflow_run:
+    workflows: ["Build Documentation Site"]
+    types: [completed]
 
   # Optional manual trigger for testing/debugging
   workflow_dispatch:
@@ -21,11 +21,6 @@ on:
         description: 'Override build artifact name'
         required: false
         type: string
-
-  # Only trigger when build-site workflow completes (commented out for testing)
-  # workflow_run:
-  #   workflows: ["Build Documentation Site"]
-  #   types: [completed]
 
 permissions:
   contents: write
