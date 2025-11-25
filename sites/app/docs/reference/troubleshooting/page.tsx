@@ -240,14 +240,14 @@ chauf restart --project=my-project" />
                 PHP Version Not Available
               </h3>
               <p className="text-slate-400 text-sm mb-2">Required PHP version isn't installed.</p>
-              <CodeBlock code="# Check available PHP versions
-chauf php list
+              <CodeBlock code="# Check current PHP version
+chauf php current
 
 # Install required version
 chauf php install 8.3
 
 # Install with specific options
-chauf php install 8.3 --force --from source
+chauf php install 8.3 --force
 
 # Verify installation
 ~/.chauffeur/php/8.3/bin/php --version" />
@@ -418,8 +418,8 @@ sudo systemd-resolve --flush-caches" />
                 Subdomain Not Working
               </h3>
               <p className="text-slate-400 text-sm mb-2">Subdomains of linked project aren't accessible.</p>
-              <CodeBlock code="# Check project configuration
-chauf config show --project=my-app
+              <CodeBlock code="# Check project information
+chauf links --slug=my-app
 
 # Add subdomain alias
 chauf link --alias=admin.my-app.test --secure
@@ -431,7 +431,7 @@ chauf link --alias=admin.my-app.test --secure
 #       ssl: true
 
 # Restart services
-chauf restart --project=my-app" />
+chauf restart --project my-app" />
             </div>
           </div>
         </section>
@@ -450,15 +450,13 @@ chauf restart --project=my-app" />
               </h3>
               <p className="text-slate-400 text-sm mb-2">Chauffeur is using too much memory.</p>
               <CodeBlock code="# Check memory usage
-chauf status --detail
+chauf status -v
 ps aux --sort=-%mem | head
 
-# Enable memory optimization
-# Edit configuration manually
-# ~/.chauffeur/projects/project-slug/project.yaml
-# Set performance.memory_optimization: true
+# Check detailed service information
+chauf info
 
-# Tune PHP-FPM
+# Tune PHP-FPM settings
 # Edit project configuration manually
 # ~/.chauffeur/projects/my-app/project.yaml
 # Adjust max_children based on available memory
@@ -474,24 +472,17 @@ chauf restart" />
                 Slow Load Times
               </h3>
               <p className="text-slate-400 text-sm mb-2">Websites are loading slowly.</p>
-              <CodeBlock code="# Enable gzip compression
-# Edit configuration manually
-# ~/.chauffeur/projects/project-slug/project.yaml
-# Set nginx.gzip: true
-
-# Enable caching
-# Edit configuration manually
-# ~/.chauffeur/projects/project-slug/project.yaml
-# Set nginx.cache.enabled: true
-
-# Optimize PHP
-# Edit project configuration manually
-# ~/.chauffeur/projects/my-app/project.yaml
-# Enable opcache and tune settings
+              <CodeBlock code="# Check nginx configuration
+chauf nginx -t
 
 # Monitor performance
-chauf logs access --project=my-app --follow
-# Look for slow requests (>2s)" />
+chauf logs nginx --follow
+
+# Check service status
+chauf status -v
+
+# Monitor PHP-FPM performance
+chauf logs php-fpm --follow" />
             </div>
           </div>
         </section>
@@ -512,13 +503,13 @@ chauf logs access --project=my-app --follow
 chauf doctor
 
 # Detailed status
-chauf status --detail
+chauf status -v
 
 # Check logs
-chauf logs --level=error --follow
+chauf logs --level error --follow
 
-# Validate configuration
-chauf config validate" />
+# Get workspace information
+chauf info" />
             </div>
 
             <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-4">
@@ -574,11 +565,14 @@ chauf start" />
                 <Settings size={16} className="text-emerald-400" />
                 Reset Configuration
               </h4>
-              <CodeBlock code="# Reset to defaults (warning: removes custom settings)
-chauf config reset
+              <CodeBlock code="# Check workspace information
+chauf info
 
-# Reset specific project
-chauf config reset --project=my-app" />
+# Clean workspace files
+chauf clean --dry-run  # Preview first
+
+# Reset specific project by unlinking
+chauf unlink --project my-app" />
             </div>
 
             <div className="bg-surface p-4 rounded-lg border border-slate-800">
@@ -587,10 +581,11 @@ chauf config reset --project=my-app" />
                 Clean Workspace
               </h4>
               <CodeBlock code="# Clean old files and logs
+chauf clean --dry-run  # Preview first
 chauf clean
 
-# Clean specific project
-chauf clean --project=my-app" />
+# Check what would be cleaned
+chauf clean --what" />
             </div>
 
             <div className="bg-surface p-4 rounded-lg border border-slate-800">
@@ -598,11 +593,14 @@ chauf clean --project=my-app" />
                 <Copy size={16} className="text-purple-400" />
                 Export/Import Config
               </h4>
-              <CodeBlock code="# Backup configuration
-chauf config export > config-backup.yaml
+              <CodeBlock code="# Backup workspace
+cp -r ~/.chauffeur ~/.chauffeur.backup
 
-# Restore configuration
-chauf config import config-backup.yaml" />
+# Check current configuration
+chauf info
+
+# Clean old configuration files
+chauf clean" />
             </div>
           </div>
         </section>

@@ -1,4 +1,4 @@
-import { Server, Shield, Zap, Globe, Layers, Terminal, Cpu, Settings, Link, Link2, FolderOpen, FileText, AlertTriangle, Wrench, Download } from 'lucide-react';
+import { Server, Shield, Zap, Globe, Layers, Terminal, Cpu, Settings, Link, Link2, FolderOpen, FileText, AlertTriangle, Wrench, Download, Activity, Heart, Info } from 'lucide-react';
 import { TerminalLine, Feature, CommandExample } from './types';
 
 // CLI Commands Reference - Source of truth for all command documentation
@@ -19,18 +19,18 @@ export interface CommandFlag {
   default?: string;
 }
 
-// Complete CLI Commands Reference - Matches AGENTS.md specification
+// Complete CLI Commands Reference - Accurate as of current CLI implementation
 // Organized by category with most essential commands first
 export const CLI_COMMANDS: CommandDefinition[] = [
   // WORKSPACE - Most fundamental command first
   {
     command: 'chauf init',
     category: 'workspace',
-    description: 'Bootstrap workspace under ~/.chauffeur/. Idempotent operation.',
+    description: 'Initializes the Chauffeur workspace with default configuration and directory structure. Creates ~/.chauffeur/ with necessary subdirectories including config/, projects/, logs/, cache/, and service-specific directories.',
     usage: 'chauf init [--force] [--quiet]',
     keyFlags: [
-      { flag: '--force', description: 'Reinitialize existing workspace', required: false },
-      { flag: '--quiet', description: 'Minimal output during initialization', required: false }
+      { flag: '--force', description: 'Overwrite existing configuration files', required: false },
+      { flag: '--quiet, -q', description: 'Suppress verbose output', required: false }
     ],
     examples: [
       { name: 'Initialize workspace', description: 'Create Chauffeur workspace', command: 'chauf init', output: '✓ Creating workspace at ~/.chauffeur' }
@@ -64,68 +64,73 @@ export const CLI_COMMANDS: CommandDefinition[] = [
   {
     command: 'chauf start',
     category: 'services',
-    description: 'Start nginx/PHP-FPM plus dnsmasq validation.',
-    usage: 'chauf start [--project <path>] [--all] [--dry-run]',
+    description: 'Start Chauffeur services with port forwarding and dnsmasq validation.',
+    usage: 'chauf start [service...] [--project <slug>] [--all] [--dry-run]',
     keyFlags: [
-      { flag: '--project <path>', description: 'Start specific project only', required: false },
-      { flag: '--all', description: 'Start all services', required: false, default: 'true' },
+      { flag: '--project <slug>', description: 'Start services for specific project', required: false },
+      { flag: '--all', description: 'Start all services (default behavior)', required: false, default: 'true' },
       { flag: '--dry-run', description: 'Show what would be started without executing', required: false }
     ],
     examples: [
-      { name: 'Start all services', description: 'Start all Chauffeur services', command: 'chauf start', output: '✓ Started nginx (8080), php-fpm 8.3 (9000)' }
-    ]
+      { name: 'Start all services', description: 'Start all Chauffeur services', command: 'chauf start', output: '✓ Started nginx (8080), php-fpm 8.3 (9000)' },
+      { name: 'Start nginx only', description: 'Start only nginx service', command: 'chauf start nginx', output: '✓ nginx started successfully' },
+      { name: 'Start project services', description: 'Start services for specific project', command: 'chauf start --project my-project', output: '✓ Started nginx, php-fpm for my-project' }
+    ],
+    notes: ['Valid services: nginx, php-fpm, or project slugs', 'Automatically configures port forwarding for privileged ports', 'Validates dnsmasq configuration for .test domains']
   },
   {
     command: 'chauf stop',
     category: 'services',
-    description: 'Stop services and clean port-forward rules.',
-    usage: 'chauf stop [--project <path>] [--all] [--dry-run]',
+    description: 'Stop Chauffeur services and clean port-forward rules.',
+    usage: 'chauf stop [service...] [--project <slug>] [--all] [--dry-run]',
     keyFlags: [
-      { flag: '--project <path>', description: 'Stop specific project only', required: false },
-      { flag: '--all', description: 'Stop all services', required: false, default: 'true' },
+      { flag: '--project <slug>', description: 'Stop services for specific project', required: false },
+      { flag: '--all', description: 'Stop all services (default behavior)', required: false, default: 'true' },
       { flag: '--dry-run', description: 'Show what would be stopped without executing', required: false }
     ],
     examples: [
       { name: 'Stop all services', description: 'Stop all Chauffeur services', command: 'chauf stop', output: '✓ Stopped nginx, php-fpm, port forwarding' }
-    ]
+    ],
+    notes: ['Valid services: nginx, php-fpm, or project slugs', 'Cleans up port forwarding rules when nginx is stopped']
   },
   {
     command: 'chauf restart',
     category: 'services',
-    description: 'Restart services (equivalent to stop then start, preserves configuration).',
-    usage: 'chauf restart [--project <slug>] [--all] [--dry-run]',
+    description: 'Restart Chauffeur services (equivalent to stop then start, preserves configuration).',
+    usage: 'chauf restart [service...] [--project <slug>] [--all] [--dry-run]',
     keyFlags: [
-      { flag: '--project <slug>', description: 'Restart specific project', required: false },
-      { flag: '--all', description: 'Restart all services', required: false, default: 'true' },
+      { flag: '--project <slug>', description: 'Restart services for specific project', required: false },
+      { flag: '--all', description: 'Restart all services (default behavior)', required: false, default: 'true' },
       { flag: '--dry-run', description: 'Show what would be restarted without executing', required: false }
     ],
     examples: [
       { name: 'Restart all services', description: 'Restart all services with preserved config', command: 'chauf restart', output: '✓ Restarted nginx (8080), php-fpm pools' }
-    ]
+    ],
+    notes: ['Service-specific, project-specific, and all-service restart capabilities available']
   },
   {
     command: 'chauf status',
     category: 'services',
-    description: 'Show status for global or per-project services.',
-    usage: 'chauf status [service-type] [--project] [--detail] [-v]',
+    description: 'Shows the status of Chauffeur services with chauf- prefix.',
+    usage: 'chauf status [service-type] [--project <slug>] [--detail]',
     keyFlags: [
-      { flag: '--project', description: 'Show project-specific status', required: false },
-      { flag: '--detail', description: 'Show detailed service information', required: false },
-      { flag: '-v', description: 'Verbose output', required: false }
+      { flag: '--project <slug>', description: 'Show status for specific project only', required: false },
+      { flag: '--detail, -v', description: 'Show detailed status information', required: false }
     ],
     examples: [
-      { name: 'Show all services', description: 'Display service status', command: 'chauf status', output: 'nginx: running (8080), php-fpm: running (2 pools)' }
-    ]
+      { name: 'Show all services', description: 'Display service status', command: 'chauf status', output: '[ status ] Checking status of 3 Chauffeur services...\n\n[ status ] Chauffeur Services (3 total)\n[ status ]      SERVICE             TYPE      PROJECT     UPTIME    MEMORY    \n[ status ] ───────────────────────────────────────────────────────────────────\n[ status ] ○    chauf-nginx         Global    —                               \n[ status ] ○    chauf-php-fpm-8.3   Global    8.3                             \n[ status ] ○    chauf-php-fpm-7.4   Global    7.4                             \n[ status ] \n[ status ] Legend: ● Running  ● Warning  ● Error  ○ Stopped\n[ status ] ✓ Status check complete (56ms)' }
+    ],
+    notes: ['Shows global services and project-specific services', 'Display includes process information, uptime, and resource usage']
   },
 
-  // PROJECTS - Right after chauf init
+  // PROJECTS - Project management commands
   {
     command: 'chauf link',
     category: 'projects',
     description: 'Register current directory, detect template, generate configs with multi-domain support.',
-    usage: 'chauf link [--site] [--secure] [--php <version>] [--http-port <port>] [--https-port <port>] [--alias <domain>] [--add-alias <domain>] [--force]',
+    usage: 'chauf link [--site <domain>] [--secure] [--php <version>] [--http-port <port>] [--https-port <port>] [--alias <domain>] [--add-alias <domain>] [--dedicated-fpm] [--force]',
     keyFlags: [
-      { flag: '--site', description: 'Site name for domain', required: false },
+      { flag: '--site <domain>', description: 'Site name for domain', required: false },
       { flag: '--secure', description: 'Enable HTTPS with SSL certificate', required: false },
       { flag: '--php <version>', description: 'PHP version for this project', required: false },
       { flag: '--http-port <port>', description: 'Custom HTTP port', required: false },
@@ -136,9 +141,12 @@ export const CLI_COMMANDS: CommandDefinition[] = [
       { flag: '--force', description: 'Overwrite existing configuration', required: false }
     ],
     examples: [
+      { name: 'Link current directory', description: 'Link current directory as project', command: 'chauf link', output: '✓ Linked to http://my-app.test [PHP 8.3]' },
       { name: 'Link with SSL', description: 'Link project with HTTPS', command: 'chauf link --secure', output: '✓ Linked to https://my-app.test [PHP 8.3]' },
-      { name: 'Link with custom PHP', description: 'Link with specific PHP version', command: 'chauf link --php 8.1', output: '✓ Linked to http://my-app.test [PHP 8.1 Dedicated]' }
-    ]
+      { name: 'Link with custom PHP', description: 'Link with specific PHP version', command: 'chauf link --php 8.1', output: '✓ Linked to http://my-app.test [PHP 8.1 Dedicated]' },
+      { name: 'Link with aliases', description: 'Link project with additional domains', command: 'chauf link --alias api.test --alias admin.test', output: '✓ Linked to http://my-app.test [aliases: api.test, admin.test]' }
+    ],
+    notes: ['Supports Laravel, WordPress, and general project detection', 'Creates nginx configuration and restarts services', 'Multi-domain SSL certificates supported']
   },
   {
     command: 'chauf links',
@@ -150,16 +158,16 @@ export const CLI_COMMANDS: CommandDefinition[] = [
       { flag: '--site <domain>', description: 'Display detailed information for a specific project by site domain', required: false }
     ],
     examples: [
-      { name: 'List projects', description: 'Show all linked projects', command: 'chauf links', output: '📋 Found 3 linked projects' },
-      { name: 'View project details', description: 'Show detailed project information', command: 'chauf links --slug my-project', output: '📋 Project Details: my-project' }
+      { name: 'List projects', description: 'Show all linked projects', command: 'chauf links', output: '[ links ] Linked Projects (6)\n[ links ] SLUG             PATH                                             DOMAIN                ALIASES   SSL  PHP   CREATED\n[ links ] ---------------  -----------------------------------------------  --------------------  --------  ---  ----  -------------------\n[ links ] example-project 📁  /home/user/.chauffeur/projects/example-project  example-project.test  0              8.3   2025-11-23 03:02' },
+      { name: 'View project details', description: 'Show detailed project information', command: 'chauf links --slug my-project', output: '[ links ] Project Details: my-project' }
     ],
-    notes: ['--slug and --site flags are mutually exclusive']
+    notes: ['--slug and --site flags are mutually exclusive', 'Shows SSL indicators (*) for secured sites', 'Displays primary domain and all aliases']
   },
   {
     command: 'chauf unlink',
     category: 'projects',
-    description: 'Remove registrations or specific aliases. Defaults to current dir.',
-    usage: 'chauf unlink [--slug] [--site] [--project] [--alias] [--all] [--force]',
+    description: 'Remove registrations or specific aliases. Defaults to current directory.',
+    usage: 'chauf unlink [--slug <slug>] [--site <domain>] [--project <path>] [--alias <domain>] [--all] [--force]',
     keyFlags: [
       { flag: '--slug <slug>', description: 'Project slug to unlink', required: false },
       { flag: '--site <site>', description: 'Site name to unlink', required: false },
@@ -169,8 +177,10 @@ export const CLI_COMMANDS: CommandDefinition[] = [
       { flag: '--force', description: 'Force unlink without confirmation', required: false }
     ],
     examples: [
-      { name: 'Unlink current project', description: 'Unlink current directory', command: 'chauf unlink', output: '✓ Unlinked my-app.test' }
-    ]
+      { name: 'Unlink current project', description: 'Unlink current directory', command: 'chauf unlink', output: '✓ Unlinked my-app.test' },
+      { name: 'Unlink specific alias', description: 'Remove only a specific domain alias', command: 'chauf unlink --alias api.test', output: '✓ Removed alias api.test from my-project' }
+    ],
+    notes: ['Removes nginx configurations and restarts nginx', 'Shows confirmation with all domains and SSL status']
   },
   {
     command: 'chauf secure',
@@ -183,16 +193,8 @@ export const CLI_COMMANDS: CommandDefinition[] = [
         name: 'Add SSL to current project',
         description: 'Generate and install SSL certificate for the current project',
         command: 'chauf secure',
-        output: `[ secure ] Checking for mkcert availability...
-[ secure ] mkcert found - will generate trusted certificates
-[ secure ] Generating SSL certificates ⠋[ secure ] Generating multi-domain certificate for:
-[ secure ]   - my-project.test (HTTPS)
-[ secure ] Generating templates ⠙100.8ms[ secure ] Generating trusted multi-domain SSL certificate using mkcert
-[ secure ] Generating SSL certificates ⠇801.2ms...[ secure ] ✓ Multi-domain SSL certificate generated successfully with mkcert (domains: my-project.test)
-[ secure ] Generating SSL certificates ✓ (891.2ms)
-  └── ✓ Multi-domain SSL certificates generated
+        output: `[ secure ] ✓ Multi-domain SSL certificate generated successfully with mkcert
 [ secure ] ✓ SSL certificate added successfully
-[ secure ] ✓ Trusted SSL certificate generated (mkcert certificate is automatically trusted by browsers)
 [ secure ]   Secure access: https://my-project.test`
       }
     ],
@@ -200,7 +202,8 @@ export const CLI_COMMANDS: CommandDefinition[] = [
       'Must be run from a linked project directory',
       'Uses mkcert for trusted certificates if available',
       'Falls back to self-signed certificates if mkcert not available',
-      'Automatically reloads nginx configuration'
+      'Automatically reloads nginx configuration',
+      'Supports multi-domain certificates for all aliases'
     ]
   },
   {
@@ -214,8 +217,7 @@ export const CLI_COMMANDS: CommandDefinition[] = [
         name: 'Remove SSL from current project',
         description: 'Remove SSL certificate from the current project',
         command: 'chauf unsecure',
-        output: `[ unsecure ] Removing SSL certificate...
-[ unsecure ] ✓ SSL certificate removed successfully
+        output: `[ unsecure ] ✓ SSL certificate removed successfully
 [ unsecure ]   HTTP access: http://my-project.test`
       }
     ],
@@ -240,7 +242,7 @@ export const CLI_COMMANDS: CommandDefinition[] = [
     examples: [
       { name: 'Install PHP 8.3', description: 'Install PHP 8.3 runtime', command: 'chauf php install 8.3', output: '✓ PHP 8.3 installed (extensions: 23)' }
     ],
-    notes: ['First installation may take 10-15 minutes', 'Requires build-essential toolchain']
+    notes: ['First installation may take 10-15 minutes', 'Requires build-essential toolchain', 'Supports GD extension prompting for legacy PHP versions']
   },
   {
     command: 'chauf php use',
@@ -255,7 +257,7 @@ export const CLI_COMMANDS: CommandDefinition[] = [
   {
     command: 'chauf php isolate',
     category: 'php',
-    description: 'Pin current linked project to a version.',
+    description: 'Pin current linked project to a PHP version.',
     usage: 'chauf php isolate <version>',
     keyFlags: [],
     examples: [
@@ -276,7 +278,7 @@ export const CLI_COMMANDS: CommandDefinition[] = [
         output: `[ php current ] Project: /home/user/my-project
 [ php current ] Project PHP: 8.3 (isolated)
 [ php current ] Global PHP: 8.2 (default)
-[ php current ] PHP binary: /home/user/.chauffeur/runtimes/php/8.3/bin/php`
+[ php current ] PHP binary: /home/user/.chauffeur/php/8.3/bin/php`
       },
       {
         name: 'Show current PHP outside project',
@@ -284,7 +286,7 @@ export const CLI_COMMANDS: CommandDefinition[] = [
         command: 'chauf php current',
         output: `[ php current ] No project detected in current directory
 [ php current ] Global PHP: 8.2 (default)
-[ php current ] PHP binary: /home/user/.chauffeur/runtimes/php/8.2/bin/php`
+[ php current ] PHP binary: /home/user/.chauffeur/php/8.2/bin/php`
       }
     ],
     notes: [
@@ -293,29 +295,45 @@ export const CLI_COMMANDS: CommandDefinition[] = [
       'Displays PHP binary path for reference'
     ]
   },
+
+  // SERVICE EXECUTION - Direct service commands
   {
-    command: 'chauf install composer',
-    category: 'php',
-    description: 'Fetch verified composer PHAR and shims.',
-    usage: 'chauf install composer',
+    command: 'chauf nginx',
+    category: 'services',
+    description: 'Run the managed nginx binary with passthrough arguments.',
+    usage: 'chauf nginx [args...]',
     keyFlags: [],
     examples: [
-      { name: 'Install Composer', description: 'Install Composer dependency manager', command: 'chauf install composer', output: '✓ Composer installed' }
-    ]
+      { name: 'Check nginx version', description: 'Show nginx version', command: 'chauf nginx -v', output: 'nginx version: nginx/1.24.0' },
+      { name: 'Test nginx configuration', description: 'Validate nginx configuration', command: 'chauf nginx -t', output: 'nginx: configuration file test is successful' },
+      { name: 'Reload nginx configuration', description: 'Reload nginx without restart', command: 'chauf nginx -s reload', output: 'nginx: configuration reloaded' }
+    ],
+    notes: ['Only available after `chauf install nginx`', 'All nginx arguments are passed through directly']
   },
   {
-    command: 'chauf install php',
+    command: 'chauf php',
     category: 'php',
-    description: 'Build/install specific PHP runtime version under workspace.',
-    usage: 'chauf install php <version> [--force] [--no-ext] [--from <source>]',
-    keyFlags: [
-      { flag: '--force', description: 'Reinstall even if already exists', required: false, default: 'false' },
-      { flag: '--no-ext', description: 'Skip extension compilation', required: false, default: 'false' },
-      { flag: '--from <source>', description: 'Install from specific source', required: false, default: 'package' }
-    ],
+    description: 'Run the managed PHP binary with project-aware version isolation.',
+    usage: 'chauf php [args...]',
+    keyFlags: [],
     examples: [
-      { name: 'Install PHP version', description: 'Install specific PHP version', command: 'chauf install php 8.2', output: '✓ PHP 8.2 installed successfully' }
-    ]
+      { name: 'Check PHP version', description: 'Show current PHP version', command: 'chauf php --version', output: 'PHP 8.3.10 (cli)' },
+      { name: 'Run PHP script', description: 'Execute a PHP file', command: 'chauf php script.php', output: 'Script output here' },
+      { name: 'Interactive PHP shell', description: 'Start interactive PHP shell', command: 'chauf php -a', output: 'Interactive shell' }
+    ],
+    notes: ['Automatically uses project-specific PHP if project is isolated', 'Falls back to global default PHP version', 'Only available after installing at least one PHP version']
+  },
+  {
+    command: 'chauf composer',
+    category: 'php',
+    description: 'Run the managed Composer binary with Chauffeur PHP integration.',
+    usage: 'chauf composer [args...]',
+    keyFlags: [],
+    examples: [
+      { name: 'Check Composer version', description: 'Show Composer version', command: 'chauf composer --version', output: 'Composer version 2.7.1' },
+      { name: 'Install dependencies', description: 'Install project dependencies', command: 'chauf composer install', output: 'Installing dependencies from lock file' }
+    ],
+    notes: ['Only available after `chauf install composer`', 'Automatically uses appropriate PHP version for projects', 'Integrates with Chauffeur PHP runtimes']
   },
 
   // SYSTEM - System commands
@@ -328,7 +346,8 @@ export const CLI_COMMANDS: CommandDefinition[] = [
       { flag: '--dev', description: 'Rebuild from current repo', required: false }
     ],
     examples: [
-      { name: 'Update Chauffeur', description: 'Update to latest version', command: 'chauf self-update', output: '✓ Updated to v1.2.0' }
+      { name: 'Update Chauffeur', description: 'Update to latest version', command: 'chauf self-update', output: '✓ Updated to v1.2.0' },
+      { name: 'Development rebuild', description: 'Rebuild from current source', command: 'chauf self-update --dev', output: '✓ Rebuilt from current source' }
     ]
   },
   {
@@ -340,7 +359,8 @@ export const CLI_COMMANDS: CommandDefinition[] = [
       { flag: '--purge', description: 'Remove all runtimes as well', required: false }
     ],
     examples: [
-      { name: 'Uninstall Chauffeur', description: 'Remove Chauffeur workspace', command: 'chauf uninstall', output: '✓ Workspace removed' }
+      { name: 'Uninstall Chauffeur', description: 'Remove Chauffeur workspace', command: 'chauf uninstall', output: '✓ Workspace removed' },
+      { name: 'Complete uninstall', description: 'Remove workspace and all runtimes', command: 'chauf uninstall --purge', output: '✓ Workspace and runtimes removed' }
     ]
   },
   {
@@ -352,18 +372,66 @@ export const CLI_COMMANDS: CommandDefinition[] = [
       { flag: '--force', description: 'Force removal without confirmation', required: false }
     ],
     examples: [
-      { name: 'Remove PHP version', description: 'Remove specific PHP version', command: 'chauf remove php 8.1', output: '✓ Removed PHP 8.1' }
+      { name: 'Remove PHP version', description: 'Remove specific PHP version', command: 'chauf remove php 8.1', output: '✓ Removed PHP 8.1' },
+      { name: 'Remove nginx', description: 'Remove nginx installation', command: 'chauf remove nginx', output: '✓ Removed nginx' },
+      { name: 'Remove composer', description: 'Remove composer installation', command: 'chauf remove composer', output: '✓ Removed composer' }
     ]
   },
 
-  // UTILITIES - Finally utilities
+  // UTILITIES - Enhanced utility commands
+  {
+    command: 'chauf info',
+    category: 'utilities',
+    description: 'Show workspace paths, installed services, versions, port configuration, and GitHub release status.',
+    usage: 'chauf info',
+    keyFlags: [
+      { flag: '--help, -h', description: 'Show help message', required: false }
+    ],
+    examples: [
+      {
+        name: 'Show workspace information',
+        description: 'Display comprehensive workspace and system information',
+        command: 'chauf info',
+        output: `[ info ] Environment
+[ info ] Workspace: /home/user/.chauffeur
+[ info ] Binary: /home/user/.chauffeur/bin/chauf
+[ info ] Projects dir: /home/user/.chauffeur/projects
+[ info ] Config file: /home/user/.chauffeur/config/chauffeur.yaml
+
+[ info ] Versions
+[ info ] Current CLI: 0.1.0
+[ info ] Build timestamp: 2025-11-23T12:09:24Z
+[ info ] Build commit: 4a20ddc
+[ info ] Latest release: v1.3.4 (update available)
+  ⚠ Warning: Remote branch has newer commits
+  └── develop is 24 commit(s) ahead (latest 8323960)
+
+[ info ] Managed Services
+[ info ] Nginx: nginx version: nginx/1.29.3 (/home/user/.chauffeur/nginx/sbin/nginx)
+[ info ] Composer: Composer version 2.9.2 2025-11-19 21:57:25 (/home/user/.chauffeur/bin/composer)
+[ info ] PHP: 7.4, 8.3 (default)
+
+[ info ] Port Configuration
+[ info ] Nginx HTTP: 8080
+[ info ] Nginx HTTPS: 8443
+[ info ] Port range: 8080-8099 (PROMPT)
+[ info ] PHP-FPM fallback: 9000`
+      }
+    ],
+    notes: [
+      'Shows GitHub release comparison with local build',
+      'Reports commit drift (ahead/behind status)',
+      'Displays workspace structure and paths',
+      'Shows all installed service versions'
+    ]
+  },
   {
     command: 'chauf doctor',
     category: 'utilities',
-    description: 'Perform health checks and diagnose system issues.',
+    description: 'Performs comprehensive health checks on your Chauffeur installation, validates system dependencies, and provides guidance for resolving issues.',
     usage: 'chauf doctor [options]',
     keyFlags: [
-      { flag: '--check-all, -a', description: 'Run all dependency checks (default)', required: false },
+      { flag: '--check-all, -a', description: 'Run all dependency checks (default behavior)', required: false },
       { flag: '--check-deps, -d', description: 'Check system dependencies (git, curl, tar, etc.)', required: false },
       { flag: '--check-php, -p', description: 'Check PHP build dependencies and headers', required: false },
       { flag: '--check-ssl, -s', description: 'Check SSL certificate dependencies', required: false },
@@ -372,39 +440,50 @@ export const CLI_COMMANDS: CommandDefinition[] = [
       { flag: '--verbose, -v', description: 'Show detailed diagnostic information', required: false },
       { flag: '--fix, -f', description: 'Show fix suggestions for issues found', required: false },
       { flag: '--auto-fix', description: 'Attempt to automatically fix issues where safe', required: false },
-      { flag: '--quiet, -q', description: 'Suppress non-error output', required: false }
+      { flag: '--quiet, -q', description: 'Suppress non-error output', required: false },
+      { flag: '--help, -h', description: 'Show this help message', required: false }
     ],
     examples: [
-      { name: 'Full health check', description: 'Run all health checks', command: 'chauf doctor', output: '✓ System health check completed' },
-      { name: 'Check dependencies only', description: 'Check only system dependencies', command: 'chauf doctor --check-deps', output: '✓ System dependencies OK' }
+      { name: 'Full health check', description: 'Run all health checks', command: 'chauf doctor', output: '[ doctor ] 🩺 Chauffeur Doctor\n[ doctor ] Performing health checks...\n[ doctor ] ✓ Overall Status (✅ All systems healthy)\n[ doctor ] ✓ Doctor completed (All checks passed - system is healthy!)' },
+      { name: 'Check dependencies only', description: 'Check only system dependencies', command: 'chauf doctor --check-deps', output: '[ doctor ] ✅ System dependencies OK' },
+      { name: 'Fix issues automatically', description: 'Auto-fix detected issues', command: 'chauf doctor --auto-fix', output: '[ doctor ] ✅ Issues auto-fixed' }
     ],
-    notes: ['Provides comprehensive validation and guidance for resolving issues']
-  },
-  {
-    command: 'chauf info',
-    category: 'utilities',
-    description: 'Show workspace paths, installed services, versions, port config.',
-    usage: 'chauf info',
-    keyFlags: [],
-    examples: [
-      { name: 'Show info', description: 'Display workspace information', command: 'chauf info', output: 'Workspace: ~/.chauffeur, PHP: 8.3, nginx: running' }
+    notes: [
+      'Cross-platform support (Ubuntu/Debian, CentOS/RHEL, Arch, Fedora)',
+      'Validates build dependencies for PHP compilation',
+      'Checks SSL certificate setup (mkcert, OpenSSL)',
+      'Validates network configuration and port availability',
+      'Tests DNS resolution for .test domains',
+      'Provides distro-specific fix commands'
     ]
   },
   {
     command: 'chauf logs',
     category: 'utilities',
-    description: 'View and follow service logs with interactive version selection.',
-    usage: 'chauf logs [service] [version] [--follow] [-f] [--lines] [-n] [--level] [--context] [-c] [--verbose] [-v] [--quiet] [-q]',
+    description: 'View and follow logs from Chauffeur services.',
+    usage: 'chauf logs [service-name] [options]',
     keyFlags: [
-      { flag: '--follow, -f', description: 'Follow log output', required: false },
-      { flag: '--lines, -n <num>', description: 'Number of lines to show', required: false, default: '50' },
-      { flag: '--level <level>', description: 'Filter by log level', required: false },
-      { flag: '--context, -c', description: 'Show context around matches', required: false },
-      { flag: '--verbose, -v', description: 'Verbose output', required: false },
-      { flag: '--quiet, -q', description: 'Quiet output', required: false }
+      { flag: '--follow, -f', description: 'Follow log output in real-time (like tail -f)', required: false },
+      { flag: '--lines <n>, -n', description: 'Show last N lines (default: 100)', required: false, default: '100' },
+      { flag: '--since <time>', description: 'Show logs since specified time', required: false },
+      { flag: '--until <time>', description: 'Show logs until specified time', required: false },
+      { flag: '--level <level>', description: 'Filter logs by level (error, warning, info, debug)', required: false },
+      { flag: '--context, -c', description: 'Show file context and metadata', required: false },
+      { flag: '--verbose, -v', description: 'Show verbose output with service prefixes', required: false },
+      { flag: '--quiet, -q', description: 'Show only log lines without additional formatting', required: false }
     ],
     examples: [
-      { name: 'View logs', description: 'Show service logs', command: 'chauf logs nginx', output: 'nginx: 2024-01-01 12:00:00 [info] Server started' }
+      { name: 'View available services', description: 'List all services with logs available', command: 'chauf logs', output: '📋 Available Services for Log Viewing' },
+      { name: 'View nginx logs', description: 'Show nginx access and error logs', command: 'chauf logs nginx', output: 'nginx: 2024-01-01 12:00:00 [info] Server started' },
+      { name: 'Follow PHP-FPM logs', description: 'Follow PHP-FPM logs in real-time', command: 'chauf logs php-fpm --follow', output: 'Following PHP-FPM logs...' },
+      { name: 'Filter by log level', description: 'Show only error logs', command: 'chauf logs nginx --level error', output: 'nginx: 2024-01-01 12:00:00 [error] Connection failed' }
+    ],
+    notes: [
+      'Automatic service discovery for global and project services',
+      'Supports nginx and PHP-FPM log locations',
+      'Interactive selection when multiple services match',
+      'Smart log file detection across workspace',
+      'Supports both real-time following and historical viewing'
     ]
   },
   {
@@ -415,12 +494,13 @@ export const CLI_COMMANDS: CommandDefinition[] = [
     keyFlags: [
       { flag: '--dry-run', description: 'Show what would be cleaned without executing', required: false },
       { flag: '--force', description: 'Clean without confirmation', required: false },
-      { flag: '--older-than <days>', description: 'Clean files older than days', required: false },
-      { flag: '--keep-versions <num>', description: 'Keep N versions', required: false },
+      { flag: '--older-than <days>', description: 'Clean files older than specified days', required: false },
+      { flag: '--keep-versions <num>', description: 'Keep N most recent versions', required: false },
       { flag: '--what', description: 'Show what would be cleaned', required: false }
     ],
     examples: [
-      { name: 'Clean workspace', description: 'Clean old files', command: 'chauf clean --dry-run', output: 'Would clean 2.3GB of old files' }
+      { name: 'Clean workspace', description: 'Clean old files', command: 'chauf clean --dry-run', output: 'Would clean 2.3GB of old files' },
+      { name: 'Force clean', description: 'Clean without confirmation', command: 'chauf clean --force', output: '✓ Cleaned 2.3GB of files' }
     ]
   },
   {
@@ -440,6 +520,25 @@ export const CLI_COMMANDS: CommandDefinition[] = [
       { name: 'Dry run migration', description: 'Preview migration without making changes', command: 'chauf migrate blog-site /backup/workspace --dry-run', output: 'DRY RUN: Would migrate blog-site to /backup/workspace' }
     ],
     notes: ['Creates automatic backups unless --no-backup is specified', 'Use --dry-run to preview changes before migration']
+  },
+  {
+    command: 'chauf hello-world',
+    category: 'utilities',
+    description: 'Prints a friendly greeting message.',
+    usage: 'chauf hello-world',
+    keyFlags: [
+      { flag: '-h, --help', description: 'Show this help message', required: false }
+    ],
+    examples: [
+      {
+        name: 'Print greeting',
+        description: 'Display friendly welcome message',
+        command: 'chauf hello-world',
+        output: `[ hello-world ] ✓ Hello, World! (Chauffeur greeting)
+[ hello-world ] Welcome to Chauffeur - your Linux PHP development environment`
+      }
+    ],
+    notes: ['Simple utility command for testing Chauffeur installation']
   }
 ];
 
@@ -482,7 +581,7 @@ export const COMMAND_CATEGORIES = [
   {
     id: 'utilities',
     title: 'Utilities',
-    description: 'Logs, cleanup, and diagnostic tools',
+    description: 'Logs, cleanup, diagnostics, and helpful tools',
     icon: Wrench
   },
   {
@@ -577,6 +676,18 @@ export const COMMAND_EXAMPLES: CommandExample[] = [
     description: "Show all linked projects",
     command: "chauf links",
     output: "📋 Found 2 linked projects"
+  },
+  {
+    name: "Health Check",
+    description: "Run comprehensive health checks",
+    command: "chauf doctor",
+    output: "✅ All systems healthy"
+  },
+  {
+    name: "View Logs",
+    description: "View nginx logs",
+    command: "chauf logs nginx --follow",
+    output: "Following nginx logs..."
   }
 ];
 

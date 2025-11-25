@@ -1,4 +1,4 @@
-name: Deploy Documentation Site (Debug)
+name: Deploy Documentation Site
 
 on:
   # Only trigger when build-site workflow completes
@@ -26,35 +26,86 @@ permissions:
   contents: write
 
 jobs:
-  # Extract deployment information from the triggering workflow
-  extract-deploy-info:
+  # Build and deploy documentation site
+  deploy-site:
     runs-on: ubuntu-latest
-    # Only run if build-site succeeded
-    if: github.event.workflow_run.conclusion == 'success'
-    outputs:
-      version: ${{ steps.info.outputs.version }}
-      release_url: ${{ steps.info.outputs.release_url }}
-      artifact_name: ${{ steps.info.outputs.artifact_name }}
-      trigger_source: ${{ steps.info.outputs.source }}
+    environment: production
 
     steps:
-      - name: Extract deployment info from triggering workflow
+      - name: Extract deployment info and check for artifacts
         id: info
         run: |
+          # Extract deployment information for push-based triggers
           VERSION=""
           RELEASE_URL=""
           ARTIFACT_NAME=""
-          SOURCE="unknown"
+          SOURCE="push"
 
-          if [[ "${{ github.event_name }}" == "workflow_run" ]]; then
-            # Get version from the triggering build-site workflow
-            VERSION="${{ github.event.workflow_run.head_branch }}"
-            ARTIFACT_NAME="site-build-${{ github.event.workflow_run.id }}"
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            # Always use latest released tag
+            echo "🏷️  Getting latest released tag..."
+            LATEST_TAG=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+              "https://api.github.com/repos/${{ github.repository }}/releases/latest" | \
+              jq -r '.tag_name')
+
+            if [[ -n "$LATEST_TAG" && "$LATEST_TAG" != "null" ]]; then
+              VERSION="$LATEST_TAG"
+              echo "✅ Found latest release tag: $VERSION"
+            else
+              echo "❌ No release tags found in repository"
+              echo "This deployment requires at least one published release tag"
+              exit 1
+            fi
+
+            # Get release assets from the latest release
+            echo "🔍 Checking for site assets in release: $VERSION..."
+            RELEASE_ASSETS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+              "https://api.github.com/repos/${{ github.repository }}/releases/tags/$VERSION")
+
+            # Debug: Check what we got from the API
+            echo "🔍 DEBUG: Checking release response structure..."
+            HAS_ASSETS=$(echo "$RELEASE_ASSETS" | jq 'has("assets")')
+            echo "🔍 DEBUG: Has assets field: $HAS_ASSETS"
+
+            if [[ "$HAS_ASSETS" == "true" ]]; then
+              ASSETS_COUNT=$(echo "$RELEASE_ASSETS" | jq '.assets | length')
+              echo "🔍 DEBUG: Found $ASSETS_COUNT assets in release"
+            else
+              echo "❌ DEBUG: No assets field found in release response"
+              echo "🔍 DEBUG: Release response sample:"
+              echo "$RELEASE_ASSETS" | head -c 200
+              echo ""
+            fi
+
+            # Look for the site tar.gz asset (with null safety)
+            SITE_ASSET=$(echo "$RELEASE_ASSETS" | \
+              jq -r '.assets[] | select(.name and (.name | contains("chauffeur-site")) and (.name | endswith(".tar.gz")))')
+
+            if [[ -n "$SITE_ASSET" && "$SITE_ASSET" != "null" ]]; then
+              ARTIFACT_NAME=$(echo "$SITE_ASSET" | jq -r '.name')
+              ARTIFACT_URL=$(echo "$SITE_ASSET" | jq -r '.browser_download_url')
+              echo "✅ Found site asset: $ARTIFACT_NAME"
+              echo "📥 Download URL: ${ARTIFACT_URL:0:50}... (truncated for security)"
+            else
+              echo "❌ No site assets found for release $VERSION"
+              echo "🔍 DEBUG: Available assets:"
+              if [[ "$HAS_ASSETS" == "true" ]]; then
+                echo "$RELEASE_ASSETS" | jq -r '.assets[] | select(.name) | .name' | head -5
+              fi
+              echo "This could mean:"
+              echo "  - Release was created without site assets"
+              echo "  - Site asset has different naming pattern"
+              echo "  - Asset upload failed during release"
+              exit 1
+            fi
+
             RELEASE_URL="https://github.com/SIAJI-Labs/chauffeur/releases/tag/$VERSION"
-            SOURCE="build-site"
-            echo "🚀 Extracted deployment info from build-site workflow"
+            SOURCE="push"
+            echo "🚀 Deploying latest release: $VERSION"
+            echo "  Triggered by push to branch: ${{ github.ref_name }}"
             echo "  Version: $VERSION"
             echo "  Artifact: $ARTIFACT_NAME"
+            echo "  Release URL: $RELEASE_URL"
 
           elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             # Manual trigger with optional overrides
@@ -65,80 +116,206 @@ jobs:
               else
                 RELEASE_URL="https://github.com/SIAJI-Labs/chauffeur/releases/tag/$VERSION"
               fi
+            else
+              VERSION="latest"
+              RELEASE_URL="https://github.com/SIAJI-Labs/chauffeur/commit/${{ github.sha }}"
             fi
-            if [[ -n "${{ github.event.inputs.build_artifact_override }}" ]]; then
+
+            # For manual triggers, use the latest available artifact using GitHub API
+            ARTIFACT_CHECK=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+              "https://api.github.com/repos/${{ github.repository }}/actions/artifacts?per_page=10" | \
+              jq -r '.artifacts[] | select(.name and (.name | startswith("site-build-"))) | .name' | \
+              head -1)
+
+            if [[ -n "$ARTIFACT_CHECK" ]]; then
+              ARTIFACT_NAME="$ARTIFACT_CHECK"
+            elif [[ -n "${{ github.event.inputs.build_artifact_override }}" ]]; then
               ARTIFACT_NAME="${{ github.event.inputs.build_artifact_override }}"
             else
               ARTIFACT_NAME="site-build-${{ github.run_id }}"
             fi
+
             SOURCE="manual"
-            echo "🔨 Manual trigger with version: ${VERSION:-latest}"
+            echo "🔨 Manual trigger with version: $VERSION"
             echo "📦 Artifact: $ARTIFACT_NAME"
           fi
 
-          # Generate release URL if not provided
-          if [[ -n "$VERSION" && -z "$RELEASE_URL" ]]; then
-            RELEASE_URL="https://github.com/SIAJI-Labs/chauffeur/releases/tag/$VERSION"
-          fi
-
+          # Output for use in later steps
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "release_url=$RELEASE_URL" >> $GITHUB_OUTPUT
           echo "artifact_name=$ARTIFACT_NAME" >> $GITHUB_OUTPUT
+          echo "artifact_url=$ARTIFACT_URL" >> $GITHUB_OUTPUT
           echo "source=$SOURCE" >> $GITHUB_OUTPUT
 
-      - name: Display extracted deployment info
-        run: |
           echo "📋 Deployment Information:"
-          echo "  Version: ${{ steps.info.outputs.version }}"
-          echo "  Release URL: ${{ steps.info.outputs.release_url }}"
-          echo "  Artifact: ${{ steps.info.outputs.artifact_name }}"
-          echo "  Source: ${{ steps.info.outputs.source }}"
+          echo "  Version: $VERSION"
+          echo "  Release URL: $RELEASE_URL"
+          echo "  Artifact: $ARTIFACT_NAME"
+          echo "  Source: $SOURCE"
 
-  debug-ssh-connection:
-    needs: extract-deploy-info
-    runs-on: ubuntu-latest
-    # Only deploy for successful builds or manual triggers
-    if: needs.extract-deploy-info.outputs.trigger_source == 'build-site' || needs.extract-deploy-info.outputs.trigger_source == 'manual'
-    environment: production
+      - name: Deploy to server via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          timeout: 300s
+          command_timeout: 60s
+          envs: VERSION,RELEASE_URL,ARTIFACT_NAME,ARTIFACT_URL,TRIGGER_SOURCE,COMMIT_SHA
+          script: |
+            # Set environment variables
+            export VERSION="${{ steps.info.outputs.version }}"
+            export RELEASE_URL="${{ steps.info.outputs.release_url }}"
+            export ARTIFACT_NAME="${{ steps.info.outputs.artifact_name }}"
+            export ARTIFACT_URL="${{ steps.info.outputs.artifact_url }}"
+            export TRIGGER_SOURCE="${{ steps.info.outputs.source }}"
+            export COMMIT_SHA="${{ github.sha }}"
+            export SITE_ROOT_PATH="${{ secrets.ENV_SITE_ROOT_PATH }}"
+            export GITHUB_REPO="${{ github.repository }}"
+            export GITHUB_TOKEN="${{ secrets.GITHUB_TOKEN }}"
 
-    steps:
-      - name: Debug deployment info
+            echo "🚀 Starting Chauffeur Documentation Site Deployment"
+            echo "Version: $VERSION"
+            echo "Source: $TRIGGER_SOURCE"
+            echo "Artifact: $ARTIFACT_NAME"
+            echo "Artifact URL: ${ARTIFACT_URL:0:50}... (truncated for security)"
+            echo "Site Root Path: $SITE_ROOT_PATH"
+
+            # Navigate to site root path for direct download and extraction
+            cd "$SITE_ROOT_PATH"
+
+            # Backup current deployment if it exists in site root
+            if [ -d "public" ]; then
+              echo "📦 Creating backup of current deployment..."
+              BACKUP_NAME="backup-$(date +%Y%m%d-%H%M%S)"
+              sudo -u www mkdir -p "$SITE_ROOT_PATH/backups"
+              sudo -u www cp -r "public" "$SITE_ROOT_PATH/backups/$BACKUP_NAME"
+              echo "✅ Backup created: $BACKUP_NAME"
+
+              # Cleanup old backups (keep only 5 latest)
+              echo "🧹 Cleaning up old backups (keeping latest 5)..."
+              sudo -u www bash -c "cd '$SITE_ROOT_PATH/backups' && ls -1t | tail -n +6 | xargs -r rm -rf"
+              echo "✅ Backup cleanup completed"
+            else
+              echo "ℹ️ No existing public directory found to backup"
+            fi
+
+            # Clean up only the public directory
+            echo "🧹 Cleaning up current public directory..."
+            sudo -u www rm -rf public/
+            echo "✅ Public directory cleanup completed"
+
+            # Create deployment info
+            echo "📊 Creating deployment-info.json..."
+            sudo -u www tee "deployment-info.json" > /dev/null << EOF
+            {
+              "version": "$VERSION",
+              "release_url": "$RELEASE_URL",
+              "artifact_name": "$ARTIFACT_NAME",
+              "trigger_source": "$TRIGGER_SOURCE",
+              "commit_sha": "$COMMIT_SHA",
+              "deployed_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+              "deployed_by": "github-actions",
+              "site_root_path": "$SITE_ROOT_PATH"
+            }
+            EOF
+
+            echo "✅ Deployment info created: $SITE_ROOT_PATH/deployment-info.json"
+
+            # Download artifact directly from GitHub to server
+            echo "⬇️  Downloading artifact: $ARTIFACT_NAME"
+
+            # Get artifact download URL from release asset (passed from step output)
+            echo "🔍 Using release asset download URL"
+            echo "📡 Release asset: $ARTIFACT_NAME"
+            echo "🔗 Download URL: ${ARTIFACT_URL:0:50}... (truncated for security)"
+
+            # ARTIFACT_URL is already available from step output
+
+            echo "📥 Checking artifact URL result..."
+
+            if [ -n "$ARTIFACT_URL" ]; then
+              echo "✅ Successfully found artifact download URL"
+              echo "🔗 Download URL: ${ARTIFACT_URL:0:50}... (truncated for security)"
+              echo "📥 Downloading artifact from: $ARTIFACT_URL"
+
+              # Download artifact (as www user to ensure file ownership)
+              sudo -u www curl -L -H "Authorization: token $GITHUB_TOKEN" \
+                "$ARTIFACT_URL" -o "artifact.tar.gz"
+
+              # Extract artifact directly to site root (contains public/ directory)
+              echo "📂 Extracting tar.gz artifact to $SITE_ROOT_PATH..."
+              sudo -u www tar -xzf "artifact.tar.gz"
+
+              # Remove the tar.gz file
+              sudo -u www rm artifact.tar.gz
+
+              # Check if public directory exists (expected structure)
+              if [ -d "public" ]; then
+                echo "✅ Artifact extracted successfully with public directory"
+                echo "📁 Public directory contents:"
+                ls -la public/ | head -10
+              else
+                echo "⚠️  Warning: No 'public' directory found in artifact"
+                echo "📁 Current directory contents:"
+                ls -la
+                echo ""
+                echo "🔄 Restoring site from latest backup due to extraction failure..."
+
+                # Find the latest backup
+                LATEST_BACKUP=$(ls -1t "$SITE_ROOT_PATH/backups" 2>/dev/null | head -1)
+
+                if [[ -n "$LATEST_BACKUP" ]]; then
+                  echo "📦 Restoring from backup: $LATEST_BACKUP"
+                  sudo -u www cp -r "$SITE_ROOT_PATH/backups/$LATEST_BACKUP" "$SITE_ROOT_PATH/public"
+                  echo "✅ Site restored from backup successfully"
+                else
+                  echo "⚠️  No backups found to restore from"
+                  echo "🚨 Site will be unavailable until manual intervention"
+                fi
+              fi
+            else
+              echo "❌ Failed to get artifact download URL for: $ARTIFACT_NAME"
+              echo "This could mean:"
+              echo "  - Artifact doesn't exist"
+              echo "  - GitHub token permissions insufficient"
+              echo "  - Artifact has expired"
+              echo "  - Artifact name mismatch"
+
+              echo "🔄 Restoring site from latest backup..."
+
+              # Find the latest backup
+              LATEST_BACKUP=$(ls -1t "$SITE_ROOT_PATH/backups" 2>/dev/null | head -1)
+
+              if [[ -n "$LATEST_BACKUP" ]]; then
+                echo "📦 Restoring from backup: $LATEST_BACKUP"
+                sudo -u www cp -r "$SITE_ROOT_PATH/backups/$LATEST_BACKUP" "$SITE_ROOT_PATH/public"
+                echo "✅ Site restored from backup successfully"
+              else
+                echo "⚠️  No backups found to restore from"
+                echo "🚨 Site will be unavailable until manual intervention"
+              fi
+
+              echo "❌ Deployment failed with exit code 1"
+              exit 1
+            fi
+
+            echo "✅ Deployment completed successfully!"
+            echo "📁 Site files deployed to: $SITE_ROOT_PATH/public"
+            echo "📊 Deployment info saved to: $SITE_ROOT_PATH/deployment-info.json"
+
+      - name: Deployment Summary
         run: |
-          echo "🐛 Debug Information:"
-          echo "  Trigger Source: ${{ needs.extract-deploy-info.outputs.trigger_source }}"
-          echo "  Version: ${{ needs.extract-deploy-info.outputs.version }}"
-          echo "  Artifact Name: ${{ needs.extract-deploy-info.outputs.artifact_name }}"
-          echo "  Release URL: ${{ needs.extract-deploy-info.outputs.release_url }}"
-
-          echo "🔑 Secrets Status:"
-          echo "  SSH_HOST: ${{ secrets.SSH_HOST && 'SET' || 'NOT SET' }}"
-          echo "  SSH_USERNAME: ${{ secrets.SSH_USERNAME && 'SET' || 'NOT SET' }}"
-          echo "  SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY && 'SET' || 'NOT SET' }}"
-          echo "  VPS_DEPLOY_PATH: ${{ secrets.VPS_DEPLOY_PATH && 'SET' || 'NOT SET' }}"
-          echo "  VPS_WEB_ROOT: ${{ secrets.VPS_WEB_ROOT && 'SET' || 'NOT SET' }}"
-          echo "  VPS_DOMAIN: ${{ secrets.VPS_DOMAIN && 'SET' || 'NOT SET' }}"
-
-      - name: Test Artifact Download (Optional)
-        if: needs.extract-deploy-info.outputs.trigger_source == 'build-site'
-        run: |
-          echo "📦 Testing Artifact Download..."
-          echo "Artifact name: ${{ needs.extract-deploy-info.outputs.artifact_name }}"
-          echo "This would download: ${{ needs.extract-deploy-info.outputs.artifact_name }}"
-
-          # Note: We'll add artifact download in next iteration
-          echo "✅ Artifact download test skipped for now"
-
-      - name: Debug Summary
-        run: |
-          echo "## 🐛 SSH Debug Summary" >> $GITHUB_STEP_SUMMARY
+          echo "## 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "✅ **SSH Connection**: Tested" >> $GITHUB_STEP_SUMMARY
-          echo "✅ **Environment Variables**: Tested" >> $GITHUB_STEP_SUMMARY
-          echo "✅ **File Operations**: Tested" >> $GITHUB_STEP_SUMMARY
-          echo "✅ **Server Access**: Verified" >> $GITHUB_STEP_SUMMARY
+          echo "✅ **Status**: Successfully deployed to production" >> $GITHUB_STEP_SUMMARY
+          echo "📦 **Version**: ${{ steps.info.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "🔗 **Release**: [${{ steps.info.outputs.version }}](${{ steps.info.outputs.release_url }})" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 📋 Next Steps:" >> $GITHUB_STEP_SUMMARY
-          echo "- [ ] Verify all environment variables are correctly set" >> $GITHUB_STEP_SUMMARY
-          echo "- [ ] Add artifact download functionality" >> $GITHUB_STEP_SUMMARY
-          echo "- [ ] Add deployment logic" >> $GITHUB_STEP_SUMMARY
-          echo "- [ ] Add backup and rollback functionality" >> $GITHUB_STEP_SUMMARY
+          echo "### 📋 Deployment Details:" >> $GITHUB_STEP_SUMMARY
+          echo "- **Trigger**: ${{ steps.info.outputs.source }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Artifact**: ${{ steps.info.outputs.artifact_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit**: [${{ github.sha }}](https://github.com/SIAJI-Labs/chauffeur/commit/${{ github.sha }})" >> $GITHUB_STEP_SUMMARY
+          echo "- **Deployed At**: $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
