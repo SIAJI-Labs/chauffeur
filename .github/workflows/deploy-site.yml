@@ -67,6 +67,21 @@ jobs:
             RELEASE_ASSETS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
               "https://api.github.com/repos/${{ github.repository }}/releases/tags/$VERSION")
 
+            # Debug: Check what we got from the API
+            echo "🔍 DEBUG: Checking release response structure..."
+            HAS_ASSETS=$(echo "$RELEASE_ASSETS" | jq 'has("assets")')
+            echo "🔍 DEBUG: Has assets field: $HAS_ASSETS"
+
+            if [[ "$HAS_ASSETS" == "true" ]]; then
+              ASSETS_COUNT=$(echo "$RELEASE_ASSETS" | jq '.assets | length')
+              echo "🔍 DEBUG: Found $ASSETS_COUNT assets in release"
+            else
+              echo "❌ DEBUG: No assets field found in release response"
+              echo "🔍 DEBUG: Release response sample:"
+              echo "$RELEASE_ASSETS" | head -c 200
+              echo ""
+            fi
+
             # Look for the site tar.gz asset
             SITE_ASSET=$(echo "$RELEASE_ASSETS" | \
               jq -r '.assets[] | select(.name | contains("chauffeur-site") and (.name | endswith(".tar.gz")))')
@@ -78,6 +93,10 @@ jobs:
               echo "📥 Download URL: ${ARTIFACT_URL:0:50}... (truncated for security)"
             else
               echo "❌ No site assets found for release $VERSION"
+              echo "🔍 DEBUG: Available assets:"
+              if [[ "$HAS_ASSETS" == "true" ]]; then
+                echo "$RELEASE_ASSETS" | jq -r '.assets[] | .name' | head -5
+              fi
               echo "This could mean:"
               echo "  - Release was created without site assets"
               echo "  - Site asset has different naming pattern"
