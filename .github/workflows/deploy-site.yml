@@ -192,71 +192,71 @@ jobs:
 
             # Backup current deployment if it exists in site root
             if [ -d "public" ]; then
-              echo "📦 DEBUG: Would create backup of current deployment..."
+              echo "📦 Creating backup of current deployment..."
               BACKUP_NAME="backup-$(date +%Y%m%d-%H%M%S)"
-              echo "🔧 DEBUG: Backup name would be: $BACKUP_NAME"
-              echo "📁 DEBUG: Would create backup directory: $SITE_ROOT_PATH/backups"
-              # mkdir -p "$SITE_ROOT_PATH/backups"
-              # cp -r "public" "$SITE_ROOT_PATH/backups/$BACKUP_NAME"
-              echo "✅ DEBUG: Backup would be created: $BACKUP_NAME"
+              mkdir -p "$SITE_ROOT_PATH/backups"
+              cp -r "public" "$SITE_ROOT_PATH/backups/$BACKUP_NAME"
+              echo "✅ Backup created: $BACKUP_NAME"
 
               # Cleanup old backups (keep only 5 latest)
-              echo "🧹 DEBUG: Would clean up old backups (keeping latest 5)..."
-              # cd "$SITE_ROOT_PATH/backups"
-              # ls -1t | tail -n +6 | xargs -r rm -rf
-              # cd "$SITE_ROOT_PATH"
-              echo "✅ DEBUG: Backup cleanup would be completed"
+              echo "🧹 Cleaning up old backups (keeping latest 5)..."
+              cd "$SITE_ROOT_PATH/backups"
+              ls -1t | tail -n +6 | xargs -r rm -rf
+              cd "$SITE_ROOT_PATH"
+              echo "✅ Backup cleanup completed"
             else
-              echo "ℹ️ DEBUG: No existing public directory found to backup"
+              echo "ℹ️ No existing public directory found to backup"
             fi
 
             # Clean up only the public directory
-            echo "🧹 DEBUG: Would clean up current public directory..."
-            # rm -rf public/
-            echo "✅ DEBUG: Public directory cleanup would be completed"
+            echo "🧹 Cleaning up current public directory..."
+            rm -rf public/
+            echo "✅ Public directory cleanup completed"
 
-            # Create deployment info (DEBUG: Commented out)
-            echo "📊 DEBUG: Would create deployment-info.json with:"
-            echo "  - Version: $VERSION"
-            echo "  - Release URL: $RELEASE_URL"
-            echo "  - Artifact: $ARTIFACT_NAME"
-            echo "  - Trigger: $TRIGGER_SOURCE"
-            echo "  - Commit: $COMMIT_SHA"
-            echo "  - Site Root: $SITE_ROOT_PATH"
+            # Create deployment info
+            echo "📊 Creating deployment-info.json..."
+            cat > "deployment-info.json" << EOF
+            {
+              "version": "$VERSION",
+              "release_url": "$RELEASE_URL",
+              "artifact_name": "$ARTIFACT_NAME",
+              "trigger_source": "$TRIGGER_SOURCE",
+              "commit_sha": "$COMMIT_SHA",
+              "deployed_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+              "deployed_by": "github-actions",
+              "site_root_path": "$SITE_ROOT_PATH"
+            }
+            EOF
 
-            # Download artifact directly from GitHub to server (DEBUG: Commented out)
-            echo "⬇️  DEBUG: Would download artifact: $ARTIFACT_NAME"
+            echo "✅ Deployment info created: $SITE_ROOT_PATH/deployment-info.json"
+
+            # Download artifact directly from GitHub to server
+            echo "⬇️  Downloading artifact: $ARTIFACT_NAME"
 
             # Get artifact download URL from release asset (passed from step output)
-            echo "🔍 DEBUG: Using release asset download URL"
-            echo "📡 DEBUG: Release asset: $ARTIFACT_NAME"
-            echo "🔗 DEBUG: Download URL: $ARTIFACT_URL"
+            echo "🔍 Using release asset download URL"
+            echo "📡 Release asset: $ARTIFACT_NAME"
+            echo "🔗 Download URL: ${ARTIFACT_URL:0:50}... (truncated for security)"
 
             # ARTIFACT_URL is already available from step output
-            # No need to query GitHub API for artifacts
 
-            echo "📥 DEBUG: Checking artifact URL result..."
+            echo "📥 Checking artifact URL result..."
 
             if [ -n "$ARTIFACT_URL" ]; then
-              echo "✅ DEBUG: Successfully found artifact download URL"
-              echo "🔗 DEBUG: Download URL: ${ARTIFACT_URL:0:50}... (truncated for security)"
+              echo "✅ Successfully found artifact download URL"
+              echo "🔗 Download URL: ${ARTIFACT_URL:0:50}... (truncated for security)"
               echo "📥 Downloading artifact from: $ARTIFACT_URL"
-              
-              echo "📥 DEBUG: Would download artifact to artifact.zip"
-              echo "📂 DEBUG: Would extract artifact to $SITE_ROOT_PATH"
-              echo "🗂️ DEBUG: Would expect 'public' directory in extracted files"
-              echo "🧹 DEBUG: Would remove artifact.zip after extraction"
 
-            #   # Download artifact
-            #   curl -L -H "Authorization: token $GITHUB_TOKEN" \
-            #     "$ARTIFACT_URL" -o "artifact.zip"
+              # Download artifact
+              curl -L -H "Authorization: token $GITHUB_TOKEN" \
+                "$ARTIFACT_URL" -o "artifact.zip"
 
               # Extract artifact directly to site root (contains public/ directory)
               echo "📂 Extracting artifact to $SITE_ROOT_PATH..."
-            #   unzip -q artifact.zip
+              unzip -q artifact.zip
 
               # Remove the zip file
-            #   rm artifact.zip
+              rm artifact.zip
 
               # Check if public directory exists (expected structure)
               if [ -d "public" ]; then
@@ -269,50 +269,40 @@ jobs:
                 ls -la
               fi
             else
-              echo "❌ DEBUG: Failed to get artifact download URL for: $ARTIFACT_NAME"
-              echo "🔍 DEBUG: This could mean:"
+              echo "❌ Failed to get artifact download URL for: $ARTIFACT_NAME"
+              echo "This could mean:"
               echo "  - Artifact doesn't exist"
               echo "  - GitHub token permissions insufficient"
               echo "  - Artifact has expired"
               echo "  - Artifact name mismatch"
 
-              echo "🔄 DEBUG: Would restore site from latest backup..."
+              echo "🔄 Restoring site from latest backup..."
 
               # Find the latest backup
               LATEST_BACKUP=$(ls -1t "$SITE_ROOT_PATH/backups" 2>/dev/null | head -1)
 
               if [[ -n "$LATEST_BACKUP" ]]; then
-                echo "📦 DEBUG: Would restore from backup: $LATEST_BACKUP"
-                echo "✅ DEBUG: Site would be restored from backup successfully"
-                echo "🌍 DEBUG: Site would remain available at: https://$DOMAIN"
+                echo "📦 Restoring from backup: $LATEST_BACKUP"
+                cp -r "$SITE_ROOT_PATH/backups/$LATEST_BACKUP" "$SITE_ROOT_PATH/public"
+                echo "✅ Site restored from backup successfully"
               else
-                echo "⚠️  DEBUG: No backups found to restore from"
-                echo "🚨 DEBUG: Site would be unavailable until manual intervention"
+                echo "⚠️  No backups found to restore from"
+                echo "🚨 Site will be unavailable until manual intervention"
               fi
 
-              echo "❌ DEBUG: Deployment would fail with exit code 1"
-              # exit 1
+              echo "❌ Deployment failed with exit code 1"
+              exit 1
             fi
 
-            # === DEBUG MODE: Show all environment variables ===
-            echo ""
-            echo "🐛 === DEBUG ENVIRONMENT VARIABLES ==="
-            echo "VERSION: $VERSION"
-            echo "RELEASE_URL: $RELEASE_URL"
-            echo "ARTIFACT_NAME: $ARTIFACT_NAME"
-            echo "TRIGGER_SOURCE: $TRIGGER_SOURCE"
-            echo "COMMIT_SHA: $COMMIT_SHA"
-            echo "SITE_ROOT_PATH: $SITE_ROOT_PATH"
-            echo "GITHUB_REPO: $GITHUB_REPO"
-            echo "DOMAIN: $DOMAIN"
-            echo "GITHUB_TOKEN: ${GITHUB_TOKEN:0:10}... (truncated for security)"
-            echo ""
+            echo "🔧 Web server configuration updated..."
 
-            echo "✅ DEBUG: SSH connection successful!"
-            echo "🌍 DEBUG: Would deploy to: https://$DOMAIN"
-            echo "📁 DEBUG: Would deploy to: $SITE_ROOT_PATH/public"
-            echo "📦 DEBUG: Would download artifact: $ARTIFACT_NAME"
-            echo "🔧 DEBUG: All deployment operations are commented out for testing"
+            # Set proper permissions for site root
+            chmod -R 755 "$SITE_ROOT_PATH"
+            chown -R ${{ secrets.SSH_USERNAME }}:${{ secrets.SSH_USERNAME }} "$SITE_ROOT_PATH"
+
+            echo "✅ Deployment completed successfully!"
+            echo "📁 Site files deployed to: $SITE_ROOT_PATH/public"
+            echo "📊 Deployment info saved to: $SITE_ROOT_PATH/deployment-info.json"
 
       - name: Deployment Summary
         run: |
