@@ -310,7 +310,6 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "✅ **Status**: Successfully deployed to production" >> $GITHUB_STEP_SUMMARY
           echo "📦 **Version**: ${{ steps.info.outputs.version }}" >> $GITHUB_STEP_SUMMARY
-          echo "🌐 **Domain**: ${{ secrets.VPS_DOMAIN }}" >> $GITHUB_STEP_SUMMARY
           echo "🔗 **Release**: [${{ steps.info.outputs.version }}](${{ steps.info.outputs.release_url }})" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### 📋 Deployment Details:" >> $GITHUB_STEP_SUMMARY
@@ -319,4 +318,3 @@ jobs:
           echo "- **Commit**: [${{ github.sha }}](https://github.com/SIAJI-Labs/chauffeur/commit/${{ github.sha }})" >> $GITHUB_STEP_SUMMARY
           echo "- **Deployed At**: $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "🌍 **Site URL**: https://${{ secrets.VPS_DOMAIN }}" >> $GITHUB_STEP_SUMMARY
