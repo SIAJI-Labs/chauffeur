@@ -8,6 +8,8 @@
     "build:search": "tsx scripts/build-search.ts",
     "build:prod": "npm run build:search && next build",
     "start": "next start",
+    "serve": "npx serve out -p 3000",
+    "preview": "npm run build && npm run serve",
     "lint": "eslint"
   },
   "dependencies": {
