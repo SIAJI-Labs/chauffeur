@@ -62,22 +62,26 @@ jobs:
               exit 1
             fi
 
-            # Check for available artifacts from build-site workflow using GitHub API
-            echo "🔍 Checking for available artifacts for tag: $VERSION..."
-            ARTIFACT_CHECK=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-              "https://api.github.com/repos/${{ github.repository }}/actions/artifacts?per_page=50" | \
-              jq -r '.artifacts[] | select(.workflow_run.head_branch == "${{ github.ref_name }}" and (.name | startswith("site-build-"))) | .name' | \
-              head -1)
+            # Get release assets from the latest release
+            echo "🔍 Checking for site assets in release: $VERSION..."
+            RELEASE_ASSETS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+              "https://api.github.com/repos/${{ github.repository }}/releases/tags/$VERSION")
 
-            if [[ -n "$ARTIFACT_CHECK" ]]; then
-              ARTIFACT_NAME="$ARTIFACT_CHECK"
-              echo "✅ Found artifact: $ARTIFACT_NAME"
+            # Look for the site tar.gz asset
+            SITE_ASSET=$(echo "$RELEASE_ASSETS" | \
+              jq -r '.assets[] | select(.name | contains("chauffeur-site") and (.name | endswith(".tar.gz")))')
+
+            if [[ -n "$SITE_ASSET" && "$SITE_ASSET" != "null" ]]; then
+              ARTIFACT_NAME=$(echo "$SITE_ASSET" | jq -r '.name')
+              ARTIFACT_URL=$(echo "$SITE_ASSET" | jq -r '.browser_download_url')
+              echo "✅ Found site asset: $ARTIFACT_NAME"
+              echo "📥 Download URL: ${ARTIFACT_URL:0:50}... (truncated for security)"
             else
-              echo "❌ No build artifacts found for branch ${{ github.ref_name }}"
+              echo "❌ No site assets found for release $VERSION"
               echo "This could mean:"
-              echo "  - The build-site workflow hasn't run yet"
-              echo "  - The build-site workflow failed"
-              echo "  - Artifacts have expired (30-day retention)"
+              echo "  - Release was created without site assets"
+              echo "  - Site asset has different naming pattern"
+              echo "  - Asset upload failed during release"
               exit 1
             fi
 
@@ -126,6 +130,7 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "release_url=$RELEASE_URL" >> $GITHUB_OUTPUT
           echo "artifact_name=$ARTIFACT_NAME" >> $GITHUB_OUTPUT
+          echo "artifact_url=$ARTIFACT_URL" >> $GITHUB_OUTPUT
           echo "source=$SOURCE" >> $GITHUB_OUTPUT
 
           echo "📋 Deployment Information:"
@@ -143,12 +148,13 @@ jobs:
           port: ${{ secrets.SSH_PORT || 22 }}
           timeout: 300s
           command_timeout: 60s
-          envs: VERSION,RELEASE_URL,ARTIFACT_NAME,TRIGGER_SOURCE,COMMIT_SHA
+          envs: VERSION,RELEASE_URL,ARTIFACT_NAME,ARTIFACT_URL,TRIGGER_SOURCE,COMMIT_SHA
           script: |
             # Set environment variables
             export VERSION="${{ steps.info.outputs.version }}"
             export RELEASE_URL="${{ steps.info.outputs.release_url }}"
             export ARTIFACT_NAME="${{ steps.info.outputs.artifact_name }}"
+            export ARTIFACT_URL="${{ steps.info.outputs.artifact_url }}"
             export TRIGGER_SOURCE="${{ steps.info.outputs.source }}"
             export COMMIT_SHA="${{ github.sha }}"
             export SITE_ROOT_PATH="${{ secrets.ENV_SITE_ROOT_PATH }}"
@@ -159,6 +165,7 @@ jobs:
             echo "Version: $VERSION"
             echo "Source: $TRIGGER_SOURCE"
             echo "Artifact: $ARTIFACT_NAME"
+            echo "Artifact URL: ${ARTIFACT_URL:0:50}... (truncated for security)"
             echo "Site Root Path: $SITE_ROOT_PATH"
 
             # Navigate to site root path for direct download and extraction
@@ -201,15 +208,13 @@ jobs:
             # Download artifact directly from GitHub to server (DEBUG: Commented out)
             echo "⬇️  DEBUG: Would download artifact: $ARTIFACT_NAME"
 
-            # Get artifact download URL (DEBUG: Active for testing)
-            echo "🔍 DEBUG: Getting artifact download URL from GitHub API"
-            echo "📡 DEBUG: Querying GitHub repo: $GITHUB_REPO"
-            echo "🔍 DEBUG: Looking for artifact: $ARTIFACT_NAME"
+            # Get artifact download URL from release asset (passed from step output)
+            echo "🔍 DEBUG: Using release asset download URL"
+            echo "📡 DEBUG: Release asset: $ARTIFACT_NAME"
+            echo "🔗 DEBUG: Download URL: $ARTIFACT_URL"
 
-            ARTIFACT_URL=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
-              "https://api.github.com/repos/$GITHUB_REPO/actions/artifacts" | \
-              jq -r ".artifacts[] | select(.name == \"$ARTIFACT_NAME\") | .archive_download_url" | \
-              head -1)
+            # ARTIFACT_URL is already available from step output
+            # No need to query GitHub API for artifacts
 
             echo "📥 DEBUG: Checking artifact URL result..."
 
