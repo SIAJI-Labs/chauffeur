@@ -82,9 +82,9 @@ jobs:
               echo ""
             fi
 
-            # Look for the site tar.gz asset
+            # Look for the site tar.gz asset (with null safety)
             SITE_ASSET=$(echo "$RELEASE_ASSETS" | \
-              jq -r '.assets[] | select(.name | contains("chauffeur-site") and (.name | endswith(".tar.gz")))')
+              jq -r '.assets[] | select(.name and (.name | contains("chauffeur-site")) and (.name | endswith(".tar.gz")))')
 
             if [[ -n "$SITE_ASSET" && "$SITE_ASSET" != "null" ]]; then
               ARTIFACT_NAME=$(echo "$SITE_ASSET" | jq -r '.name')
@@ -95,7 +95,7 @@ jobs:
               echo "❌ No site assets found for release $VERSION"
               echo "🔍 DEBUG: Available assets:"
               if [[ "$HAS_ASSETS" == "true" ]]; then
-                echo "$RELEASE_ASSETS" | jq -r '.assets[] | .name' | head -5
+                echo "$RELEASE_ASSETS" | jq -r '.assets[] | select(.name) | .name' | head -5
               fi
               echo "This could mean:"
               echo "  - Release was created without site assets"
