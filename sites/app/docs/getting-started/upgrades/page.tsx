@@ -71,20 +71,23 @@ export default function UpgradesPage() {
             Check Current Version
             <Link href="#check-current-version" onClick={(e) => scrollToId(e, 'check-current-version')} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-primary cursor-pointer">#</Link>
           </h2>
-          <p className="text-slate-400 mb-4">First, check your current Chauffeur version to see if an upgrade is available:</p>
+          <p className="text-slate-400 mb-4">Chauffeur provides dynamic version checking that automatically detects newer versions from GitHub:</p>
 
           <h3 className="text-xl font-semibold text-slate-200 mb-3">Check Version</h3>
           <CodeBlock code={`$ chauf --version
-Chauffeur 2.0.3
-Build: 2024-12-15T10:30:00+07:00`} />
+chauf develop-90b3218 (built 2025-11-26T03:36:34Z, commit 90b32186784f4989b7a05d03ae8f62580bdb2e4c)
+Latest version: v1.3.6
+Update available: Run 'chauf self-update' to upgrade`} />
 
-          <h3 className="text-xl font-semibold text-slate-200 mb-3">Check for Updates</h3>
-          <CodeBlock code={`$ chauf update --check
-
-🔍 Checking for updates...
-Current version: 2.0.3
-Latest version: 2.1.0
-✓ Update available! Run 'chauf update' to upgrade`} />
+          <div className="mt-4 p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+            <p className="text-blue-300 text-sm mb-2"><strong>Dynamic Version Detection:</strong></p>
+            <ul className="text-blue-200 text-sm space-y-1">
+              <li>• Shows your current version with build metadata</li>
+              <li>• Fetches latest release from GitHub API</li>
+              <li>• Automatically detects if updates are available</li>
+              <li>• Works for both development and production builds</li>
+            </ul>
+          </div>
         </section>
 
         <section id="upgrade-process">
@@ -92,25 +95,28 @@ Latest version: 2.1.0
             Upgrade Process
             <Link href="#upgrade-process" onClick={(e) => scrollToId(e, 'upgrade-process')} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-primary cursor-pointer">#</Link>
           </h2>
-          <p className="text-slate-400 mb-4">Upgrading Chauffeur is a simple, automated process:</p>
+          <p className="text-slate-400 mb-4">Upgrading Chauffeur is a simple, automated process with intelligent version checking:</p>
 
           <h3 className="text-xl font-semibold text-slate-200 mb-3">Standard Upgrade</h3>
-          <CodeBlock code={`$ chauf update
+          <CodeBlock code={`$ chauf self-update
+[INFO] Update available: chauffeur 1.3.5 → 1.3.6
+[INFO] Starting self-update process...
+[ self-update ] Cloning Chauffeur sources ✓ (1.2s)
+[ self-update ] Updating branch main ✓ (2.8s)
+[ self-update ] Building Chauffeur CLI ✓ (5.2s)
+[ self-update ] binary installed to /home/user/.chauffeur/bin/chauf (5.3s)
 
-🔄 Starting Chauffeur upgrade...
-📋 Current version: 2.0.3
-📦 Latest version: 2.1.0
-💾 Downloading update...
-🔧 Installing update...
-⚙️  Updating configuration...
-✅ Upgrade completed successfully!
+[ self-update ] Summary
+[ self-update ] Duration: 11.5s
+[ self-update ] Previous: fresh installation
+[ self-update ] Current: abc1234
+[ self-update ] Changes: fresh installation
+[ self-update ] ✓ Self-update complete (commit abc1234)
 
-🎉 Chauffeur upgraded to version 2.1.0
-
-# Check the new version
+# Verify the upgrade
 $ chauf --version
-Chauffeur 2.1.0
-Build: 2025-01-20T14:45:00+07:00`} />
+chauf 1.3.6 (built 2025-11-26T04:15:30Z, commit abc1234...)
+You're using the latest version (1.3.6)`} />
 
           <div className="mt-6 p-4 bg-amber-500/10 border border-amber-500/20 rounded-lg flex gap-3">
             <AlertTriangle className="text-amber-400 shrink-0" />
