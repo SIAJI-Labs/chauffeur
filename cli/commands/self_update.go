@@ -506,16 +506,62 @@ func defaultGoBuild(repoDir, output, buildTimestamp string) error {
 		args = append(args, "-ldflags", strings.Join(ldflags, " "))
 	}
 	args = append(args, "-o", output, "./cli")
+
+	// Set up Go module cache with proper permissions
+	gomodCacheDir := filepath.Join(repoDir, ".gomodcache")
+	if err := os.MkdirAll(gomodCacheDir, 0o755); err != nil {
+		return fmt.Errorf("create Go module cache directory: %w", err)
+	}
+
 	cmd := exec.Command("go", args...)
 	cmd.Dir = repoDir
-	cmd.Env = append(os.Environ(), "GOMODCACHE="+filepath.Join(repoDir, ".gomodcache"))
+	cmd.Env = append(os.Environ(), "GOMODCACHE="+gomodCacheDir)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	cmd.Stdout = &stderr
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("%w: %s", err, strings.TrimSpace(stderr.String()))
 	}
+
+	// Fix permissions on the Go module cache directory and its contents
+	if err := fixGomodCachePermissions(gomodCacheDir); err != nil {
+		// Log warning but don't fail the build
+		fmt.Fprintf(os.Stderr, "Warning: Failed to fix Go cache permissions: %v\n", err)
+	}
+
 	return nil
+}
+
+// fixGomodCachePermissions ensures the Go module cache directory and its contents
+// have proper permissions for the user to clean up
+func fixGomodCachePermissions(gomodCacheDir string) error {
+	// Set permissions on the main cache directory
+	if err := os.Chmod(gomodCacheDir, 0o755); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("chmod gomodcache directory: %w", err)
+	}
+
+	// Recursively set permissions on all files and subdirectories
+	return filepath.Walk(gomodCacheDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			if os.IsNotExist(err) {
+				return nil // Skip if file doesn't exist (race condition)
+			}
+			return err
+		}
+
+		// Set appropriate permissions based on file type
+		if info.IsDir() {
+			if err := os.Chmod(path, 0o755); err != nil {
+				return fmt.Errorf("chmod directory %s: %w", path, err)
+			}
+		} else {
+			if err := os.Chmod(path, 0o644); err != nil {
+				return fmt.Errorf("chmod file %s: %w", path, err)
+			}
+		}
+
+		return nil
+	})
 }
 
 func shortSHA(sha string) string {
