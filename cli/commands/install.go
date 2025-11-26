@@ -67,10 +67,10 @@ func RunInstall(args []string) error {
 		local    bool
 		noCache  bool
 		services []string
-		versions map[string]string
+		versions map[string][]string
 	)
 
-	versions = make(map[string]string)
+	versions = make(map[string][]string)
 
 	// Parse arguments to handle service[version] syntax (e.g., "php8.3")
 	i := 0
@@ -100,14 +100,20 @@ func RunInstall(args []string) error {
 				// Next argument looks like a version (not a flag)
 				nextArg := args[i+1]
 				if isValidPHPVersion(nextArg) {
-					versions[arg] = nextArg
-					services = append(services, arg)
+					versions[arg] = append(versions[arg], nextArg)
+					// Only add to services if not already added
+					if !containsService(services, arg) {
+						services = append(services, arg)
+					}
 					i += 2
 					continue
 				}
 			}
 
-			services = append(services, arg)
+			// Only add to services if not already added (for non-versioned services)
+			if !containsService(services, arg) {
+				services = append(services, arg)
+			}
 			i++
 		}
 	}
@@ -130,12 +136,31 @@ func RunInstall(args []string) error {
 		return err
 	}
 
-	for _, name := range services {
+	for i, name := range services {
+		// Print separator between services (except before first service)
+		if i > 0 {
+			logger.PrintSeparator()
+		}
+
 		if name == "php" {
-			// Handle PHP installation with version support
-			version := versions["php"]
-			if err := runPHPInstall(version, force, local, noCache); err != nil {
-				return err
+			// Handle PHP installation with multiple version support
+			phpVersions := versions["php"]
+			if len(phpVersions) == 0 {
+				// No version specified, show interactive selection
+				if err := runPHPInstall("", force, local, noCache); err != nil {
+					return err
+				}
+			} else {
+				// Install each specified PHP version
+				for j, version := range phpVersions {
+					// Print separator between PHP versions (except before first one)
+					if j > 0 {
+						logger.PrintSeparator()
+					}
+					if err := runPHPInstall(version, force, local, noCache); err != nil {
+						return err
+					}
+				}
 			}
 		} else if name == "composer" {
 			// Handle Composer installation
@@ -195,6 +220,18 @@ func RunInstall(args []string) error {
 	}
 
 	return nil
+}
+
+/**
+ * containsService checks if a service is already in the services slice.
+ */
+func containsService(services []string, service string) bool {
+	for _, s := range services {
+		if s == service {
+			return true
+		}
+	}
+	return false
 }
 
 /**
@@ -621,6 +658,7 @@ Service Installation:
   chauf install nginx            Install latest nginx (auto-cached).
   chauf install composer          Install Composer (auto-cached).
   chauf install php 8.3          Install specific PHP version (auto-cached).
+  chauf install php 8.3 php 7.4  Install multiple PHP versions.
   chauf install php 8.3 --local   Use local tarball for PHP 8.3.
   chauf install composer --force  Reinstall selected service.
   chauf install php --no-cache   Install without caching downloads.
@@ -634,6 +672,7 @@ Smart Caching System (enabled by default):
 Example Workflows:
   chauf install php 8.4        # First download, auto-cached
   chauf install php 8.4        # Instant - uses cached file
+  chauf install php 8.4 php 8.3 php 7.4  # Install multiple PHP versions
   chauf install nginx            # First download, auto-cached
   chauf install nginx            # Instant - uses cached file
   chauf install composer         # First download, auto-cached

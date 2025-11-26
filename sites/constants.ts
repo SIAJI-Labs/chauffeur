@@ -42,8 +42,8 @@ export const CLI_COMMANDS: CommandDefinition[] = [
   {
     command: 'chauf install',
     category: 'services',
-    description: 'Install Chauffeur-managed services (nginx, php, composer).',
-    usage: 'chauf install <service> [--force] [--local] [--no-cache] [version]',
+    description: 'Install Chauffeur-managed services with visual separators; supports multiple PHP versions in a single command.',
+    usage: 'chauf install <service> [version...] [--force] [--local] [--no-cache]',
     keyFlags: [
       { flag: '--force', description: 'Reinstall even if already present', required: false, default: 'false' },
       { flag: '--local', description: 'Use local PHP tarball (PHP only)', required: false, default: 'false' },
@@ -52,10 +52,14 @@ export const CLI_COMMANDS: CommandDefinition[] = [
     examples: [
       { name: 'Install nginx', description: 'Install nginx web server', command: 'chauf install nginx', output: '✓ nginx installed successfully' },
       { name: 'Install composer', description: 'Install Composer dependency manager', command: 'chauf install composer', output: '✓ composer installed successfully' },
-      { name: 'Install PHP version', description: 'Install specific PHP version', command: 'chauf install php 8.2', output: '✓ PHP 8.2 installed successfully' }
+      { name: 'Install PHP version', description: 'Install specific PHP version', command: 'chauf install php 8.2', output: '✓ PHP 8.2 installed successfully' },
+      { name: 'Install multiple PHP versions', description: 'Install multiple PHP versions with visual separators', command: 'chauf install php 8.3 php 7.4', output: '✓ PHP 8.3 installed successfully\n─────────────────────────────────────────────────\n✓ PHP 7.4 installed successfully' },
+      { name: 'Install all services', description: 'Install nginx, multiple PHP versions, and composer', command: 'chauf install nginx php 8.3 php 7.4 composer', output: '✓ nginx installed successfully\n─────────────────────────────────────────────────\n✓ PHP 8.3 installed successfully\n─────────────────────────────────────────────────\n✓ PHP 7.4 installed successfully\n─────────────────────────────────────────────────\n✓ composer installed successfully' }
     ],
     notes: [
       'Service parameter is required. Available services: nginx, php, composer',
+      'Supports multiple PHP versions in one command: chauf install php 8.3 php 7.4',
+      'Visual separators clearly distinguish between different service installations',
       'Creates example project during chauf init, automatically links when nginx and php are installed',
       'Example project provides immediate testing environment with welcome page and phpinfo()',
       'Project location: ~/.chauffeur/projects/example-project'

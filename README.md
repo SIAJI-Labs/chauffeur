@@ -101,7 +101,7 @@ Chauffeur provides **project-level PHP-FPM control** to balance resource efficie
 | `chauf secure` | — | Add SSL certificate to current linked project. |
 | `chauf unsecure` | — | Remove SSL certificate from current linked project. |
 | `chauf doctor` | `--check-all`, `--check-deps`, `--check-php`, `--check-ssl`, `--check-network`, `--check-dns`, `--fix`, `--auto-fix`, `--verbose`, `--quiet` | Perform comprehensive health checks with auto-fix suggestions and execution. |
-| `chauf install <service> [ver]` | `--force`, `--local`, `--no-cache` | Install services with intelligent caching (php, composer, nginx). |
+| `chauf install <service> [ver...]` | `--force`, `--local`, `--no-cache` | Install services with visual separators; supports multiple PHP versions. |
 | `chauf php install <ver>` | `--force`, `--no-ext`, `--from` | Install PHP runtimes into the workspace. |
 | `chauf php use <ver>` | — | Set global default PHP version. |
 | `chauf logs [service]` | `--follow`, `--lines`, `--level`, `--context`, `--verbose` | View and follow logs from nginx, PHP-FPM, and other services. |
@@ -224,6 +224,9 @@ The doctor provides package commands tailored to your distribution:
    chauf install php 8.3        # First download - auto-cached for future
    chauf install nginx           # Instant if cached, downloads if not
    chauf install composer        # Reuses cached PHAR when available
+
+   # Install multiple PHP versions in one command:
+   chauf install php 8.3 php 7.4 composer
    ```
 5. **Link projects** (shared FPM by default, dedicated when needed):
    ```bash
@@ -392,6 +395,9 @@ Chauffeur includes a universal intelligent caching system that dramatically spee
 chauf install php 8.3          # Downloads and caches for next time
 chauf install php 8.3          # Instant - reuses cached file
 
+# Install multiple PHP versions in one command
+chauf install php 8.3 php 7.4  # Downloads and caches both versions
+
 # Skip caching (useful for testing)
 chauf install --no-cache nginx   # Download without caching
 
@@ -401,6 +407,39 @@ chauf install php 8.3 --local    # Prompt for local tarball path
 # Force reinstall (ignores cache for download)
 chauf install composer --force   # Fresh download, updates cache
 ```
+
+### Enhanced Installation Experience
+
+When installing multiple services or PHP versions, Chauffeur provides **visual separators** to clearly distinguish between installation phases:
+
+```bash
+# Multiple services installation output example
+chauf install nginx php 8.3 php 7.4 composer
+
+[ install ] Installing nginx (source build from nginx.org release)...
+[ nginx ] ✓ nginx built and installed (/home/siegg/.chauffeur/nginx)
+[ install ] ✓ Installed nginx successfully
+
+[ install ] ────────────────────────────────────────────────────────────
+[ install ] Installing PHP 8.3...
+[ php ] ✓ PHP 8.3 built and installed to /home/siegg/.chauffeur/php/8.3
+[ install ] ✓ Installed PHP 8.3 successfully
+
+[ install ] ────────────────────────────────────────────────────────────
+[ install ] Installing PHP 7.4...
+[ php ] ✓ PHP 7.4 built and installed to /home/siegg/.chauffeur/php/7.4
+[ install ] ✓ Installed PHP 7.4 successfully
+
+[ install ] ────────────────────────────────────────────────────────────
+[ install ] Installing Composer (PHP dependency manager)...
+[ composer ] ✓ Composer installed successfully (Uses Chauffeur PHP version isolation)
+```
+
+**Visual separators provide:**
+- **Clear boundaries** between different service installations
+- **Better progress tracking** during multi-service operations
+- **Reduced confusion** when installing multiple PHP versions
+- **Professional output** that's easy to scan and understand
 
 ### Example Project Feature
 
@@ -413,6 +452,9 @@ chauf init
 
 # 2. Install services (links example project)
 chauf install nginx php
+
+# Or install multiple PHP versions with all services:
+chauf install nginx php 8.3 php 7.4 composer
 # Example project linked successfully at: example-project.test
 
 # 3. Start services

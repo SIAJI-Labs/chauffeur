@@ -59,6 +59,14 @@ func TestPrintSection(t *testing.T) {
 	logger.PrintSection("Test Section")
 }
 
+// TestPrintSeparator tests separator printing
+func TestPrintSeparator(t *testing.T) {
+	logger := NewCommandLogger("test")
+
+	// This should not panic
+	logger.PrintSeparator()
+}
+
 // TestPrintSummary tests summary printing
 func TestPrintSummary(t *testing.T) {
 	logger := NewCommandLogger("test")
