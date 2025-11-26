@@ -294,6 +294,11 @@ func (c *Cleaner) cleanCache(options *CleanOptions) error {
 		filepath.Join(os.TempDir(), "chauffeur-cache"),
 	}
 
+	// Add Go module cache from self-update source directory
+	srcDir := filepath.Join(c.workspaceDir, "src", "chauffeur")
+	gomodCache := filepath.Join(srcDir, ".gomodcache")
+	cacheDirs = append(cacheDirs, gomodCache)
+
 	// PHP cache directories
 	phpDir := filepath.Join(c.workspaceDir, "php")
 	if phpInfo, err := os.Stat(phpDir); err == nil && phpInfo.IsDir() {
