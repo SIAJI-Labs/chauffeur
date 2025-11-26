@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/siaji/chauffeur/cli/commands"
@@ -17,6 +18,7 @@ var version = ""
 var (
 	buildTimestamp = "unknown"
 	buildCommit    = "unknown"
+	buildDir       = "" // Set during self-update to track which repo we're building from
 )
 
 func usage() {
@@ -56,34 +58,50 @@ Usage:
 
 // getVersion fetches the current version, with fallback to build metadata
 func getVersion() string {
-	// Try to get version from current build (if available from build flags)
+	// First priority: Try to get version from git repository
+	if gitVersion, err := getGitVersion(); err == nil && gitVersion != "" {
+		// For production builds from main branch, use latest release version
+		if strings.Contains(gitVersion, "main-") {
+			if latestVersion, err := utils.GetLatestVersion(); err == nil {
+				return strings.TrimPrefix(latestVersion, "v")
+			}
+			// Fallback to main branch format if API fails
+			return gitVersion
+		}
+		// For other branches (develop, feature branches), use branch-commit format
+		return gitVersion
+	}
+
+	// Second priority: Try version from build flags (if available)
 	if version != "" {
 		return version
 	}
 
-	// Try to get version from git repository (if in development)
-	if gitVersion, err := getGitVersion(); err == nil && gitVersion != "" {
-		return gitVersion
-	}
-
-	// Fallback: try to get latest release from GitHub
+	// Third priority: try to get latest release from GitHub
 	if latestVersion, err := utils.GetLatestVersion(); err == nil {
-		return strings.TrimPrefix(latestVersion, "v") + "-dev"
+		return strings.TrimPrefix(latestVersion, "v")
 	}
 
 	// Ultimate fallback
 	return "unknown"
 }
 
-// getGitVersion gets version from current git repository
+// getGitVersion gets version from git repository, with fallback to buildDir
 func getGitVersion() (string, error) {
+	// Use buildDir if available (set during self-update)
+	checkDir := "."
+	if buildDir != "" {
+		checkDir = buildDir
+	}
+
 	// Check if we're in a git repository
-	if _, err := os.Stat(".git"); os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(checkDir, ".git")); os.IsNotExist(err) {
 		return "", fmt.Errorf("not a git repository")
 	}
 
 	// Get current branch
 	cmd := exec.Command("git", "branch", "--show-current")
+	cmd.Dir = checkDir
 	output, err := cmd.Output()
 	if err != nil {
 		return "", err
@@ -92,6 +110,7 @@ func getGitVersion() (string, error) {
 
 	// Get commit hash
 	cmd = exec.Command("git", "rev-parse", "HEAD")
+	cmd.Dir = checkDir
 	output, err = cmd.Output()
 	if err != nil {
 		return "", err

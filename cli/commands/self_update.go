@@ -225,6 +225,7 @@ type gitSelfUpdater struct {
 	currentSHA    string
 	targetVersion string
 	logger        *lib.Logger
+	buildFromRepo string
 }
 
 func newGitSelfUpdater(logger *lib.Logger) (*gitSelfUpdater, error) {
@@ -276,6 +277,7 @@ func newGitSelfUpdater(logger *lib.Logger) (*gitSelfUpdater, error) {
 		executable:    target,
 		targetVersion: getCLIVersion(),
 		logger:        logger,
+		buildFromRepo: repoDir, // Add this to track which repo we're building from
 	}, nil
 }
 
@@ -498,6 +500,8 @@ func defaultGoBuild(repoDir, output, buildTimestamp string) error {
 	if commit, err := revParseHEAD(repoDir); err == nil && commit != "" {
 		ldflags = append(ldflags, fmt.Sprintf("-X main.buildCommit=%s", commit))
 	}
+	// Pass the build directory for version detection
+	ldflags = append(ldflags, fmt.Sprintf("-X main.buildDir=%s", repoDir))
 	if len(ldflags) > 0 {
 		args = append(args, "-ldflags", strings.Join(ldflags, " "))
 	}

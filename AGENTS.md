@@ -360,12 +360,19 @@ Chauffeur provides **project-level PHP-FPM control** to balance resource efficie
 
 ## 17. Commit Policy for AI Agents
 
-### 🚫 **NO UNAUTHORIZED COMMITS OR PUSHES**
+### 🚫 **NO UNAUTHORIZED COMMITS OR PUSHES** - STRICT PROHIBITION
 
 **AI agents MUST NOT**:
 - Make git commits without explicit user instruction
 - Push changes to remote repositories without explicit user permission
 - Use `git add`, `git commit`, or `git push` commands autonomously
+- Run any git operations that modify repository state without user consent
+
+### ⚠️ **IMMEDIATE POLICY REMINDER**
+- **CRITICAL**: AI agents MUST ask for explicit permission before any git operations
+- **NEVER** assume git operations are allowed, even for "obvious" changes
+- **ALWAYS** present changes for user review before committing/pushing
+- **STOP** immediately if unsure about git operation permissions
 
 ### ✅ **APPROVED WORKFLOW**
 
