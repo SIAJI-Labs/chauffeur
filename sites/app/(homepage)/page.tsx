@@ -57,7 +57,7 @@ const LandingPage: React.FC = () => {
       {/* Dev Warning Banner */}
       <div className="bg-amber-500/10 border-b border-amber-500/20 px-4 py-2 text-amber-200/90 text-xs md:text-sm font-medium flex items-center justify-center gap-2 relative z-60">
         <AlertTriangle size={14} className="text-amber-400" />
-        <span>Development Preview: Chauffeur is currently tested on Arch Linux. Support for other distributions is experimental.</span>
+        <span>Development Preview: Chauffeur is currently tested on limited distributions. Support for other distributions is experimental.</span>
       </div>
 
       {/* Navbar */}

@@ -17,7 +17,7 @@ export const SearchInitializer: React.FC<SearchInitializerProps> = ({ children }
     addToSearchIndex({
       title: "Installation",
       slug: "getting-started/installation",
-      content: "Install Chauffeur on Linux. Chauffeur provides an installer script that automatically downloads, builds, and installs the binary. The installer detects your system and installs Chauffeur to ~/.chauffeur. Quick install: curl -fsSL https://chauffeur.siaji.com/install.sh | bash. Manual install: git clone https://github.com/SIAJI-Labs/chauffeur.git && cd chauffeur && go build -o ~/.chauffeur/bin/chauf ./cli/main.go.",
+      content: "Install Chauffeur on Linux. Chauffeur provides an installer script that automatically downloads, builds, and installs the binary. The installer detects your system and installs Chauffeur to ~/.chauffeur. Quick install: curl -fsSL https://chauffeur.siaji.com/install | bash. Manual install: git clone https://github.com/SIAJI-Labs/chauffeur.git && cd chauffeur && go build -o ~/.chauffeur/bin/chauf ./cli/main.go. Chauffeur includes dynamic version checking that automatically detects newer versions from GitHub and shows update availability.",
       section: "Getting Started",
       category: "Getting Started"
     });

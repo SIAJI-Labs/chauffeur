@@ -100,14 +100,14 @@ Chauffeur provides **project-level PHP-FPM control** to balance resource efficie
 | `chauf unlink` | `--alias`, `--slug`, `--site`, `--project`, `--all`, `--force` | Remove registrations or specific aliases; defaults to current directory. |
 | `chauf secure` | — | Add SSL certificate to current linked project. |
 | `chauf unsecure` | — | Remove SSL certificate from current linked project. |
-| `chauf doctor` | `--check-deps`, `--check-php`, `--check-ssl`, `--check-network`, `--verbose`, `--fix` | Perform health checks and diagnose system issues. |
+| `chauf doctor` | `--check-all`, `--check-deps`, `--check-php`, `--check-ssl`, `--check-network`, `--check-dns`, `--fix`, `--auto-fix`, `--verbose`, `--quiet` | Perform comprehensive health checks with auto-fix suggestions and execution. |
 | `chauf install <service> [ver]` | `--force`, `--local`, `--no-cache` | Install services with intelligent caching (php, composer, nginx). |
 | `chauf php install <ver>` | `--force`, `--no-ext`, `--from` | Install PHP runtimes into the workspace. |
 | `chauf php use <ver>` | — | Set global default PHP version. |
 | `chauf logs [service]` | `--follow`, `--lines`, `--level`, `--context`, `--verbose` | View and follow logs from nginx, PHP-FPM, and other services. |
 | `chauf clean [target]` | `--dry-run`, `--force`, `--older-than`, `--keep-versions` | Clean workspace files (logs, cache, temp, old versions, SSL certs, projects). |
 | `chauf migrate <project> <workspace>` | `--backup`, `--no-backup`, `--dry-run`, `--force` | Migrate projects between workspaces with safety validation. |
-| `chauf doctor` | `--check-*`, `--fix`, `--verbose` | System health checks with auto-fix suggestions for dependencies. |
+| `chauf doctor` | `--check-*`, `--fix`, `--auto-fix`, `--verbose` | System health checks with fix plan review and automatic execution. |
 | `chauf php isolate <ver>` | — | Pin the current linked project to a version. |
 | `chauf remove <service> [ver]` | `--force` | Remove installed runtimes with cache management (php/nginx/composer). |
 | `chauf install composer` | — | Download Composer PHAR + shim. |
@@ -115,8 +115,88 @@ Chauffeur provides **project-level PHP-FPM control** to balance resource efficie
 | `chauf uninstall` | `--purge` | Remove workspace (optionally runtimes/caches). |
 | `chauf info` | — | Show workspace paths, installed services, port config, plus GitHub release/commit drift checks. |
 
+## System Health & Dependencies
+
+### 🔧 `chauf doctor` - Comprehensive Health Checking
+
+Chauffeur includes a powerful health-checking system that validates all dependencies and provides automatic fixes:
+
+```bash
+# Quick health check
+chauf doctor
+
+# Show fix suggestions
+chauf doctor --fix
+
+# Review fix plan before execution (recommended)
+chauf doctor --auto-fix
+
+# Target specific areas
+chauf doctor --check-ssl --check-php
+chauf doctor --check-network --check-dns
+
+# Detailed diagnostics
+chauf doctor --verbose
+```
+
+#### What `chauf doctor` checks:
+
+**System Dependencies:**
+- `git`, `curl`, `tar` - Core tools for installation
+- `gcc`, `make`, `pkg-config` - Build tools for PHP compilation
+- Provides distro-specific install commands
+
+**PHP Build Dependencies:**
+- `libzip`, `libjpeg`, `libpng`, `freetype` - Image and ZIP support
+- `libxml2`, `libcurl`, `zlib` - XML and HTTP support
+- `readline`, `libxslt`, `MagickWand`, `gmp` - Extended functionality
+- Validates via `pkg-config --modversion` before PHP builds
+
+**SSL Certificate Dependencies:**
+- `openssl` - SSL/TLS toolkit availability
+- `mkcert` - Local trusted certificates (optional but recommended)
+- Shows appropriate package commands for each distribution
+
+**Network & Port Dependencies:**
+- `iptables` - Port forwarding for privileged ports (80→8080, 443→8443)
+- Port availability - Default Chauffeur ports (8080, 8443, 9000)
+- Conflict detection with running services
+
+**DNS Resolution Dependencies:**
+- `dnsmasq` - Local DNS server for `.test` domains
+- `.test` domain resolution - Validates DNS configuration
+
+#### Auto-Fix Workflow:
+
+```bash
+chauf doctor --auto-fix
+```
+
+The auto-fix process:
+
+1. **Collects all issues** across dependency categories
+2. **Shows fix plan** with detailed breakdown:
+   ```
+   🔧 Fix Plan
+   Found 1 fixable issue(s): 0 errors, 1 warnings
+
+   SSL Certificate Dependencies:
+     ⚠️ mkcert: Local trusted certificate authority
+       Command: sudo dnf install -y mkcert
+   ```
+3. **User confirmation** - No surprise package installations
+4. **Safe execution** - Only runs fixes after approval
+5. **Progress feedback** - Shows execution results and verification
+
+#### Distribution-Specific Fixes:
+
+The doctor provides package commands tailored to your distribution:
+- **Fedora**: `sudo dnf install -y mkcert`
+- **Ubuntu/Debian**: `sudo apt update && sudo apt install -y mkcert`
+- **Arch**: `sudo pacman -S mkcert`
+
 ## Getting Started
-1. **Install prerequisites**: Go 1.22+, git, curl, build tools (gcc/make/pkg-config), openssl headers.
+1. **Install prerequisites**: Run `chauf doctor` to check what's needed, or install Go 1.22+, git, curl, build tools (gcc/make/pkg-config), openssl headers.
 
 2. **Install Chauffeur** (installs `chauf` under `~/.chauffeur/bin`):
 

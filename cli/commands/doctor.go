@@ -43,6 +43,15 @@ type DoctorOptions struct {
 	Quiet        bool
 }
 
+// FixPlan represents a fix that needs to be executed
+type FixPlan struct {
+	Name        string
+	Description string
+	Command     string
+	Category    string
+	Priority    int // 1=error, 2=warning
+}
+
 // RunDoctor performs health checks and dependency validation
 func RunDoctor(args []string) error {
 	options := parseDoctorArgs(args)
@@ -73,11 +82,12 @@ func RunDoctor(args []string) error {
 	var allChecks []DependencyCheck
 	var hasErrors bool
 	var hasWarnings bool
+	var fixPlans []FixPlan
 
 	// Run dependency checks
 	if options.CheckDeps {
 		logger.PrintSection("System Dependencies")
-		checks, errs, warns := checkSystemDependencies(options)
+		checks, errs, warns := checkSystemDependencies(options, &fixPlans)
 		allChecks = append(allChecks, checks...)
 		if errs > 0 {
 			hasErrors = true
@@ -90,7 +100,7 @@ func RunDoctor(args []string) error {
 	// Run PHP build dependency checks
 	if options.CheckPHP {
 		logger.PrintSection("PHP Build Dependencies")
-		checks, errs, warns := checkPHPBuildDependencies(options)
+		checks, errs, warns := checkPHPBuildDependencies(options, &fixPlans)
 		allChecks = append(allChecks, checks...)
 		if errs > 0 {
 			hasErrors = true
@@ -103,7 +113,7 @@ func RunDoctor(args []string) error {
 	// Run SSL dependency checks
 	if options.CheckSSL {
 		logger.PrintSection("SSL Certificate Dependencies")
-		checks, errs, warns := checkSSLDependencies(options)
+		checks, errs, warns := checkSSLDependencies(options, &fixPlans)
 		allChecks = append(allChecks, checks...)
 		if errs > 0 {
 			hasErrors = true
@@ -116,7 +126,7 @@ func RunDoctor(args []string) error {
 	// Run network dependency checks
 	if options.CheckNetwork {
 		logger.PrintSection("Network & Port Dependencies")
-		checks, errs, warns := checkNetworkDependencies(options)
+		checks, errs, warns := checkNetworkDependencies(options, &fixPlans)
 		allChecks = append(allChecks, checks...)
 		if errs > 0 {
 			hasErrors = true
@@ -129,13 +139,21 @@ func RunDoctor(args []string) error {
 	// Run DNS dependency checks
 	if options.CheckDNS {
 		logger.PrintSection("DNS Resolution Dependencies")
-		checks, errs, warns := checkDNSDependencies(options)
+		checks, errs, warns := checkDNSDependencies(options, &fixPlans)
 		allChecks = append(allChecks, checks...)
 		if errs > 0 {
 			hasErrors = true
 		}
 		if warns > 0 {
 			hasWarnings = true
+		}
+	}
+
+	// Execute auto-fix if requested
+	if options.AutoFix && len(fixPlans) > 0 {
+		if executeFixPlan(logger, fixPlans, options.Quiet) {
+			// Mark that we've executed fixes so the summary reflects the attempt
+			logger.Info("Auto-fix completed. Run 'chauf doctor' again to verify all issues were resolved.")
 		}
 	}
 
@@ -244,7 +262,7 @@ Description:
 }
 
 // checkSystemDependencies validates core system dependencies
-func checkSystemDependencies(options DoctorOptions) ([]DependencyCheck, int, int) {
+func checkSystemDependencies(options DoctorOptions, fixPlans *[]FixPlan) ([]DependencyCheck, int, int) {
 	logger := lib.NewCommandLogger("doctor")
 
 	dependencies := []struct {
@@ -265,8 +283,7 @@ func checkSystemDependencies(options DoctorOptions) ([]DependencyCheck, int, int
 			description: "Version control system",
 			fixCommands: map[string]string{
 				"ubuntu/debian": "sudo apt update && sudo apt install -y git",
-				"centos/rhel":   "sudo yum install -y git",
-				"arch":          "sudo pacman -S git",
+								"arch":          "sudo pacman -S git",
 				"fedora":        "sudo dnf install -y git",
 			},
 		},
@@ -279,8 +296,7 @@ func checkSystemDependencies(options DoctorOptions) ([]DependencyCheck, int, int
 			description: "HTTP client for downloads",
 			fixCommands: map[string]string{
 				"ubuntu/debian": "sudo apt update && sudo apt install -y curl",
-				"centos/rhel":   "sudo yum install -y curl",
-				"arch":          "sudo pacman -S curl",
+								"arch":          "sudo pacman -S curl",
 				"fedora":        "sudo dnf install -y curl",
 			},
 		},
@@ -293,8 +309,7 @@ func checkSystemDependencies(options DoctorOptions) ([]DependencyCheck, int, int
 			description: "Archive extraction tool",
 			fixCommands: map[string]string{
 				"ubuntu/debian": "sudo apt update && sudo apt install -y tar",
-				"centos/rhel":   "sudo yum install -y tar",
-				"arch":          "sudo pacman -S tar",
+								"arch":          "sudo pacman -S tar",
 				"fedora":        "sudo dnf install -y tar",
 			},
 		},
@@ -307,8 +322,7 @@ func checkSystemDependencies(options DoctorOptions) ([]DependencyCheck, int, int
 			description: "C compiler for building PHP",
 			fixCommands: map[string]string{
 				"ubuntu/debian": "sudo apt update && sudo apt install -y build-essential",
-				"centos/rhel":   "sudo yum groupinstall -y 'Development Tools'",
-				"arch":          "sudo pacman -S base-devel",
+								"arch":          "sudo pacman -S base-devel",
 				"fedora":        "sudo dnf groupinstall -y 'Development Tools'",
 			},
 		},
@@ -321,8 +335,7 @@ func checkSystemDependencies(options DoctorOptions) ([]DependencyCheck, int, int
 			description: "Build automation tool",
 			fixCommands: map[string]string{
 				"ubuntu/debian": "sudo apt update && sudo apt install -y make",
-				"centos/rhel":   "sudo yum install -y make",
-				"arch":          "sudo pacman -S make",
+								"arch":          "sudo pacman -S make",
 				"fedora":        "sudo dnf install -y make",
 			},
 		},
@@ -335,8 +348,7 @@ func checkSystemDependencies(options DoctorOptions) ([]DependencyCheck, int, int
 			description: "Package configuration tool for PHP builds",
 			fixCommands: map[string]string{
 				"ubuntu/debian": "sudo apt update && sudo apt install -y pkg-config",
-				"centos/rhel":   "sudo yum install -y pkgconfig",
-				"arch":          "sudo pacman -S pkgconf",
+								"arch":          "sudo pacman -S pkgconf",
 				"fedora":        "sudo dnf install -y pkgconfig",
 			},
 		},
@@ -391,41 +403,15 @@ func checkSystemDependencies(options DoctorOptions) ([]DependencyCheck, int, int
 
 		checks = append(checks, check)
 
-		// Print check result
-		if !options.Quiet {
-			if len(check.Errors) > 0 {
-				logger.Error(check.Status, check.Name)
-				if options.Verbose {
-					for _, err := range check.Errors {
-						logger.Error("  ├─ Error", err)
-					}
-				}
-				if options.Fix && check.FixCommand != "" {
-					logger.Info(fmt.Sprintf("  └─ Fix: %s", check.FixCommand))
-				}
-			} else if len(check.Warnings) > 0 {
-				logger.Warn(check.Status, check.Name)
-				if options.Verbose {
-					for _, warn := range check.Warnings {
-						logger.Warn("  ├─ Warning", warn)
-					}
-				}
-			} else {
-				if !options.Quiet {
-					logger.Success(check.Status, check.Name)
-					if options.Verbose && check.Version != "" {
-						logger.Info(fmt.Sprintf("  └─ Version: %s", check.Version))
-					}
-				}
-			}
-		}
+		// Print check result and collect fix plans
+		printCheckResult(logger, check, options, &errorCount, &warningCount, fixPlans, "System Dependencies")
 	}
 
 	return checks, errorCount, warningCount
 }
 
 // checkPHPBuildDependencies validates PHP-specific build dependencies
-func checkPHPBuildDependencies(options DoctorOptions) ([]DependencyCheck, int, int) {
+func checkPHPBuildDependencies(options DoctorOptions, fixPlans *[]FixPlan) ([]DependencyCheck, int, int) {
 	logger := lib.NewCommandLogger("doctor")
 
 	// PHP build dependencies based on AGENTS.md requirements
@@ -443,8 +429,7 @@ func checkPHPBuildDependencies(options DoctorOptions) ([]DependencyCheck, int, i
 			required:    true,
 			fixCommands: map[string]string{
 				"ubuntu/debian": "sudo apt install -y libzip-dev",
-				"centos/rhel":   "sudo yum install -y libzip-devel",
-				"arch":          "sudo pacman -S libzip",
+								"arch":          "sudo pacman -S libzip",
 				"fedora":        "sudo dnf install -y libzip-devel",
 			},
 		},
@@ -455,8 +440,7 @@ func checkPHPBuildDependencies(options DoctorOptions) ([]DependencyCheck, int, i
 			required:    true,
 			fixCommands: map[string]string{
 				"ubuntu/debian": "sudo apt install -y libjpeg-dev",
-				"centos/rhel":   "sudo yum install -y libjpeg-turbo-devel",
-				"arch":          "sudo pacman -S libjpeg-turbo",
+								"arch":          "sudo pacman -S libjpeg-turbo",
 				"fedora":        "sudo dnf install -y libjpeg-turbo-devel",
 			},
 		},
@@ -467,8 +451,7 @@ func checkPHPBuildDependencies(options DoctorOptions) ([]DependencyCheck, int, i
 			required:    true,
 			fixCommands: map[string]string{
 				"ubuntu/debian": "sudo apt install -y libpng-dev",
-				"centos/rhel":   "sudo yum install -y libpng-devel",
-				"arch":          "sudo pacman -S libpng",
+								"arch":          "sudo pacman -S libpng",
 				"fedora":        "sudo dnf install -y libpng-devel",
 			},
 		},
@@ -479,8 +462,7 @@ func checkPHPBuildDependencies(options DoctorOptions) ([]DependencyCheck, int, i
 			required:    true,
 			fixCommands: map[string]string{
 				"ubuntu/debian": "sudo apt install -y libfreetype6-dev",
-				"centos/rhel":   "sudo yum install -y freetype-devel",
-				"arch":          "sudo pacman -S freetype2",
+								"arch":          "sudo pacman -S freetype2",
 				"fedora":        "sudo dnf install -y freetype-devel",
 			},
 		},
@@ -491,8 +473,7 @@ func checkPHPBuildDependencies(options DoctorOptions) ([]DependencyCheck, int, i
 			required:    true,
 			fixCommands: map[string]string{
 				"ubuntu/debian": "sudo apt install -y libxml2-dev",
-				"centos/rhel":   "sudo yum install -y libxml2-devel",
-				"arch":          "sudo pacman -S libxml2",
+								"arch":          "sudo pacman -S libxml2",
 				"fedora":        "sudo dnf install -y libxml2-devel",
 			},
 		},
@@ -503,8 +484,7 @@ func checkPHPBuildDependencies(options DoctorOptions) ([]DependencyCheck, int, i
 			required:    true,
 			fixCommands: map[string]string{
 				"ubuntu/debian": "sudo apt install -y libcurl4-openssl-dev",
-				"centos/rhel":   "sudo yum install -y libcurl-devel",
-				"arch":          "sudo pacman -S curl",
+								"arch":          "sudo pacman -S curl",
 				"fedora":        "sudo dnf install -y libcurl-devel",
 			},
 		},
@@ -515,8 +495,7 @@ func checkPHPBuildDependencies(options DoctorOptions) ([]DependencyCheck, int, i
 			required:    true,
 			fixCommands: map[string]string{
 				"ubuntu/debian": "sudo apt install -y zlib1g-dev",
-				"centos/rhel":   "sudo yum install -y zlib-devel",
-				"arch":          "sudo pacman -S zlib",
+								"arch":          "sudo pacman -S zlib",
 				"fedora":        "sudo dnf install -y zlib-devel",
 			},
 		},
@@ -527,8 +506,7 @@ func checkPHPBuildDependencies(options DoctorOptions) ([]DependencyCheck, int, i
 			required:    true,
 			fixCommands: map[string]string{
 				"ubuntu/debian": "sudo apt install -y libreadline-dev",
-				"centos/rhel":   "sudo yum install -y readline-devel",
-				"arch":          "sudo pacman -S readline",
+								"arch":          "sudo pacman -S readline",
 				"fedora":        "sudo dnf install -y readline-devel",
 			},
 		},
@@ -539,8 +517,7 @@ func checkPHPBuildDependencies(options DoctorOptions) ([]DependencyCheck, int, i
 			required:    true,
 			fixCommands: map[string]string{
 				"ubuntu/debian": "sudo apt install -y libxslt1-dev",
-				"centos/rhel":   "sudo yum install -y libxslt-devel",
-				"arch":          "sudo pacman -S libxslt",
+								"arch":          "sudo pacman -S libxslt",
 				"fedora":        "sudo dnf install -y libxslt-devel",
 			},
 		},
@@ -551,8 +528,7 @@ func checkPHPBuildDependencies(options DoctorOptions) ([]DependencyCheck, int, i
 			required:    false, // Optional but recommended
 			fixCommands: map[string]string{
 				"ubuntu/debian": "sudo apt install -y libmagickwand-dev",
-				"centos/rhel":   "sudo yum install -y ImageMagick-devel",
-				"arch":          "sudo pacman -S imagemagick",
+								"arch":          "sudo pacman -S imagemagick",
 				"fedora":        "sudo dnf install -y ImageMagick-devel",
 			},
 		},
@@ -563,8 +539,7 @@ func checkPHPBuildDependencies(options DoctorOptions) ([]DependencyCheck, int, i
 			required:    true,
 			fixCommands: map[string]string{
 				"ubuntu/debian": "sudo apt install -y libgmp-dev",
-				"centos/rhel":   "sudo yum install -y gmp-devel",
-				"arch":          "sudo pacman -S gmp",
+								"arch":          "sudo pacman -S gmp",
 				"fedora":        "sudo dnf install -y gmp-devel",
 			},
 		},
@@ -633,41 +608,15 @@ func checkPHPBuildDependencies(options DoctorOptions) ([]DependencyCheck, int, i
 
 		checks = append(checks, check)
 
-		// Print check result
-		if !options.Quiet {
-			if len(check.Errors) > 0 {
-				logger.Error(check.Status, check.Name)
-				if options.Verbose {
-					for _, err := range check.Errors {
-						logger.Error("  ├─ Error", err)
-					}
-				}
-				if options.Fix && check.FixCommand != "" {
-					logger.Info(fmt.Sprintf("  └─ Fix: %s", check.FixCommand))
-				}
-			} else if len(check.Warnings) > 0 {
-				logger.Warn(check.Status, check.Name)
-				if options.Verbose {
-					for _, warn := range check.Warnings {
-						logger.Warn("  ├─ Warning", warn)
-					}
-				}
-			} else {
-				if !options.Quiet {
-					logger.Success(check.Status, check.Name)
-					if options.Verbose && check.Version != "" {
-						logger.Info(fmt.Sprintf("  └─ Version: %s", check.Version))
-					}
-				}
-			}
-		}
+		// Print check result and collect fix plans
+		printCheckResult(logger, check, options, &errorCount, &warningCount, fixPlans, "PHP Build Dependencies")
 	}
 
 	return checks, errorCount, warningCount
 }
 
 // checkSSLDependencies validates SSL certificate dependencies
-func checkSSLDependencies(options DoctorOptions) ([]DependencyCheck, int, int) {
+func checkSSLDependencies(options DoctorOptions, fixPlans *[]FixPlan) ([]DependencyCheck, int, int) {
 	logger := lib.NewCommandLogger("doctor")
 
 	var checks []DependencyCheck
@@ -710,48 +659,22 @@ func checkSSLDependencies(options DoctorOptions) ([]DependencyCheck, int, int) {
 		mkcertCheck.Installed = false
 		mkcertCheck.Status = "⚠️ Not available (will use self-signed certificates)"
 		mkcertCheck.Warnings = append(mkcertCheck.Warnings, "mkcert recommended for trusted SSL certificates")
-		mkcertCheck.FixCommand = "go install -r filippo.io/mkcert@latest && mkcert -install"
+		mkcertCheck.FixCommand = getDistroCommand(detectDistribution(), "mkcert")
 		warningCount++
 	}
 
 	checks = append(checks, mkcertCheck)
 
-	// Print results
+	// Print results and collect fix plans
 	for _, check := range checks {
-		if !options.Quiet {
-			if len(check.Errors) > 0 {
-				logger.Error(check.Status, check.Name)
-				if options.Verbose {
-					for _, err := range check.Errors {
-						logger.Error("  ├─ Error", err)
-					}
-				}
-				if options.Fix && check.FixCommand != "" {
-					logger.Info(fmt.Sprintf("  └─ Fix: %s", check.FixCommand))
-				}
-			} else if len(check.Warnings) > 0 {
-				logger.Warn(check.Status, check.Name)
-				if options.Verbose {
-					for _, warn := range check.Warnings {
-						logger.Warn("  ├─ Warning", warn)
-					}
-				}
-			} else {
-				if !options.Quiet {
-					logger.Success(check.Status, check.Name)
-					if options.Verbose && check.Version != "" {
-						logger.Info(fmt.Sprintf("  └─ Version: %s", check.Version))
-					}
-				}
-			}
-		}
+		printCheckResult(logger, check, options, &errorCount, &warningCount, fixPlans, "SSL Certificate Dependencies")
 	}
 
 	return checks, errorCount, warningCount
 }
 
 // checkNetworkDependencies validates network and port dependencies
-func checkNetworkDependencies(options DoctorOptions) ([]DependencyCheck, int, int) {
+func checkNetworkDependencies(options DoctorOptions, fixPlans *[]FixPlan) ([]DependencyCheck, int, int) {
 	logger := lib.NewCommandLogger("doctor")
 
 	var checks []DependencyCheck
@@ -806,39 +729,16 @@ func checkNetworkDependencies(options DoctorOptions) ([]DependencyCheck, int, in
 
 	checks = append(checks, portCheck)
 
-	// Print results
+	// Print results and collect fix plans
 	for _, check := range checks {
-		if !options.Quiet {
-			if len(check.Errors) > 0 {
-				logger.Error(check.Status, check.Name)
-				if options.Verbose {
-					for _, err := range check.Errors {
-						logger.Error("  ├─ Error", err)
-					}
-				}
-				if options.Fix && check.FixCommand != "" {
-					logger.Info(fmt.Sprintf("  └─ Fix: %s", check.FixCommand))
-				}
-			} else if len(check.Warnings) > 0 {
-				logger.Warn(check.Status, check.Name)
-				if options.Verbose {
-					for _, warn := range check.Warnings {
-						logger.Warn("  ├─ Warning", warn)
-					}
-				}
-			} else {
-				if !options.Quiet {
-					logger.Success(check.Status, check.Name)
-				}
-			}
-		}
+		printCheckResult(logger, check, options, &errorCount, &warningCount, fixPlans, "Network & Port Dependencies")
 	}
 
 	return checks, errorCount, warningCount
 }
 
 // checkDNSDependencies validates DNS resolution for .test domains
-func checkDNSDependencies(options DoctorOptions) ([]DependencyCheck, int, int) {
+func checkDNSDependencies(options DoctorOptions, fixPlans *[]FixPlan) ([]DependencyCheck, int, int) {
 	logger := lib.NewCommandLogger("doctor")
 
 	var checks []DependencyCheck
@@ -885,35 +785,116 @@ func checkDNSDependencies(options DoctorOptions) ([]DependencyCheck, int, int) {
 
 	checks = append(checks, dnsCheck)
 
-	// Print results
+	// Print results and collect fix plans
 	for _, check := range checks {
-		if !options.Quiet {
-			if len(check.Errors) > 0 {
-				logger.Error(check.Status, check.Name)
-				if options.Verbose {
-					for _, err := range check.Errors {
-						logger.Error("  ├─ Error", err)
-					}
-				}
-				if options.Fix && check.FixCommand != "" {
-					logger.Info(fmt.Sprintf("  └─ Fix: %s", check.FixCommand))
-				}
-			} else if len(check.Warnings) > 0 {
-				logger.Warn(check.Status, check.Name)
-				if options.Verbose {
-					for _, warn := range check.Warnings {
-						logger.Warn("  ├─ Warning", warn)
-					}
-				}
-			} else {
-				if !options.Quiet {
-					logger.Success(check.Status, check.Name)
-				}
+		printCheckResult(logger, check, options, &errorCount, &warningCount, fixPlans, "DNS Resolution Dependencies")
+	}
+
+	return checks, errorCount, warningCount
+}
+
+// executeFixPlan shows the fix plan and asks for user confirmation before executing
+func executeFixPlan(logger *lib.Logger, fixPlans []FixPlan, quiet bool) bool {
+	if len(fixPlans) == 0 {
+		return true
+	}
+
+	// Sort fixes by priority (errors first)
+	for i := 0; i < len(fixPlans); i++ {
+		for j := i + 1; j < len(fixPlans); j++ {
+			if fixPlans[i].Priority > fixPlans[j].Priority {
+				fixPlans[i], fixPlans[j] = fixPlans[j], fixPlans[i]
 			}
 		}
 	}
 
-	return checks, errorCount, warningCount
+	logger.PrintSection("🔧 Fix Plan")
+
+	// Count errors vs warnings
+	errorCount := 0
+	warningCount := 0
+	for _, plan := range fixPlans {
+		if plan.Priority == 1 {
+			errorCount++
+		} else {
+			warningCount++
+		}
+	}
+
+	logger.Info(fmt.Sprintf("Found %d fixable issue(s): %d errors, %d warnings", len(fixPlans), errorCount, warningCount))
+	logger.Info("")
+
+	// Group fixes by category
+	categories := make(map[string][]FixPlan)
+	for _, plan := range fixPlans {
+		categories[plan.Category] = append(categories[plan.Category], plan)
+	}
+
+	// Show fixes by category
+	for category, plans := range categories {
+		logger.Info(fmt.Sprintf("%s:", category))
+		for _, plan := range plans {
+			priorityIcon := "❌"
+			if plan.Priority == 2 {
+				priorityIcon = "⚠️"
+			}
+			logger.Info(fmt.Sprintf("  %s %s: %s", priorityIcon, plan.Name, plan.Description))
+			logger.Info(fmt.Sprintf("    Command: %s", plan.Command))
+		}
+		logger.Info("")
+	}
+
+	// Ask for confirmation
+	logger.Info("This will execute the above commands to fix the identified issues.")
+	logger.Warn("⚠️ Some commands may require sudo privileges.", "")
+
+	fmt.Print("Do you want to proceed with these fixes? [y/N] ")
+
+	var response string
+	fmt.Scanln(&response)
+
+	response = strings.ToLower(strings.TrimSpace(response))
+	if response != "y" && response != "yes" {
+		logger.Info("Auto-fix cancelled by user.")
+		return false
+	}
+
+	// Execute fixes
+	logger.Info("")
+	logger.Info("Executing fixes...")
+
+	successCount := 0
+	for i, plan := range fixPlans {
+		logger.Info(fmt.Sprintf("[%d/%d] Fixing %s...", i+1, len(fixPlans), plan.Name))
+
+		cmd := exec.Command("sh", "-c", plan.Command)
+		output, err := cmd.CombinedOutput()
+
+		if err != nil {
+			logger.Error(fmt.Sprintf("  ✗ Failed: %v", err), "")
+			if len(output) > 0 {
+				logger.Error(fmt.Sprintf("    Output: %s", strings.TrimSpace(string(output))), "")
+			}
+		} else {
+			logger.Success("  ✓ Fixed", "")
+			successCount++
+			if len(output) > 0 && !quiet {
+				logger.Info(fmt.Sprintf("    Output: %s", strings.TrimSpace(string(output))))
+			}
+		}
+	}
+
+	// Show summary
+	logger.Info("")
+	logger.Info(fmt.Sprintf("Fix summary: %d/%d successful", successCount, len(fixPlans)))
+
+	if successCount == len(fixPlans) {
+		logger.Success("All fixes completed successfully!", "")
+	} else {
+		logger.Warn(fmt.Sprintf("%d fix(es) failed. You may need to run them manually.", len(fixPlans)-successCount), "")
+	}
+
+	return true
 }
 
 // Helper functions
@@ -957,10 +938,7 @@ func detectDistribution() string {
 	if _, err := os.Stat("/etc/debian_version"); err == nil {
 		return "ubuntu/debian"
 	}
-	if _, err := os.Stat("/etc/centos-release"); err == nil {
-		return "centos/rhel"
-	}
-	if _, err := os.Stat("/etc/arch-release"); err == nil {
+		if _, err := os.Stat("/etc/arch-release"); err == nil {
 		return "arch"
 	}
 	if _, err := os.Stat("/etc/fedora-release"); err == nil {
@@ -973,21 +951,23 @@ func getDistroCommand(distro, package_ string) string {
 	commands := map[string]map[string]string{
 		"pkg-config": {
 			"ubuntu/debian": "sudo apt update && sudo apt install -y pkg-config",
-			"centos/rhel":   "sudo yum install -y pkgconfig",
-			"arch":          "sudo pacman -S pkgconf",
+						"arch":          "sudo pacman -S pkgconf",
 			"fedora":        "sudo dnf install -y pkgconfig",
 		},
 		"openssl": {
 			"ubuntu/debian": "sudo apt update && sudo apt install -y openssl",
-			"centos/rhel":   "sudo yum install -y openssl-devel",
-			"arch":          "sudo pacman -S openssl",
+						"arch":          "sudo pacman -S openssl",
 			"fedora":        "sudo dnf install -y openssl-devel",
 		},
 		"dnsmasq": {
 			"ubuntu/debian": "sudo apt update && sudo apt install -y dnsmasq",
-			"centos/rhel":   "sudo yum install -y dnsmasq",
-			"arch":          "sudo pacman -S dnsmasq",
+						"arch":          "sudo pacman -S dnsmasq",
 			"fedora":        "sudo dnf install -y dnsmasq",
+		},
+		"mkcert": {
+			"ubuntu/debian": "sudo apt update && sudo apt install -y mkcert",
+						"arch":          "sudo pacman -S mkcert",
+			"fedora":        "sudo dnf install -y mkcert",
 		},
 	}
 
@@ -1138,4 +1118,108 @@ func countErrors(checks []DependencyCheck) int {
 		}
 	}
 	return count
+}
+
+// executeFix attempts to run a fix command
+func executeFix(logger *lib.Logger, command, packageName string, quiet bool) error {
+	logger.Info(fmt.Sprintf("    Running fix for %s...", packageName))
+
+	cmd := exec.Command("sh", "-c", command)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("command failed: %v\nOutput: %s", err, string(output))
+	}
+
+	if len(output) > 0 && !quiet {
+		logger.Info(fmt.Sprintf("    Output: %s", strings.TrimSpace(string(output))))
+	}
+
+	return nil
+}
+
+// validateFix re-checks a dependency after attempting to fix it
+func validateFix(check DependencyCheck) DependencyCheck {
+	// Re-run the version check for the package
+	var cmd string
+	switch check.Name {
+	case "git", "curl", "tar", "gcc", "make", "pkg-config":
+		cmd = fmt.Sprintf("%s --version", check.Name)
+	case "mkcert":
+		cmd = "mkcert -version"
+	case "openssl":
+		cmd = "openssl version"
+	case "dnsmasq":
+		cmd = "dnsmasq --version"
+	default:
+		// For pkg-config based dependencies, try to check with pkg-config
+		cmd = fmt.Sprintf("pkg-config --modversion %s 2>/dev/null", check.Name)
+	}
+
+	if output, err := runDoctorCommandOutput(cmd); err == nil {
+		check.Installed = true
+		check.Version = extractVersion(output, check.Name)
+	}
+
+	return check
+}
+
+// printCheckResult handles the unified printing of dependency checks and collects fix plans
+func printCheckResult(logger *lib.Logger, check DependencyCheck, options DoctorOptions, errorCount, warningCount *int, fixPlans *[]FixPlan, category string) {
+	if !options.Quiet {
+		if len(check.Errors) > 0 {
+			logger.Error(check.Status, check.Name)
+			if options.Verbose {
+				for _, err := range check.Errors {
+					logger.Error("  ├─ Error", err)
+				}
+			}
+			if options.Fix && check.FixCommand != "" {
+				if options.AutoFix && check.CanFix {
+					// Collect fix plan instead of executing immediately
+					fixPlan := FixPlan{
+						Name:        check.Name,
+						Description: check.Description,
+						Command:     check.FixCommand,
+						Category:    category,
+						Priority:    1, // Error priority
+					}
+					*fixPlans = append(*fixPlans, fixPlan)
+					logger.Info(fmt.Sprintf("  └─ Will fix: %s", check.FixCommand))
+				} else {
+					logger.Info(fmt.Sprintf("  └─ Fix: %s", check.FixCommand))
+				}
+			}
+		} else if len(check.Warnings) > 0 {
+			logger.Warn(check.Status, check.Name)
+			if options.Verbose {
+				for _, warn := range check.Warnings {
+					logger.Warn("  ├─ Warning", warn)
+				}
+			}
+			// Show fix suggestions for warnings with --fix, and collect with --auto-fix
+			if options.Fix && check.CanFix && check.FixCommand != "" && !check.Installed {
+				if options.AutoFix {
+					// Collect fix plan instead of executing immediately
+					fixPlan := FixPlan{
+						Name:        check.Name,
+						Description: check.Description,
+						Command:     check.FixCommand,
+						Category:    category,
+						Priority:    2, // Warning priority
+					}
+					*fixPlans = append(*fixPlans, fixPlan)
+					logger.Info(fmt.Sprintf("  └─ Will fix: %s", check.FixCommand))
+				} else {
+					logger.Info(fmt.Sprintf("  └─ Fix: %s", check.FixCommand))
+				}
+			}
+		} else {
+			if !options.Quiet {
+				logger.Success(check.Status, check.Name)
+				if options.Verbose && check.Version != "" {
+					logger.Info(fmt.Sprintf("  └─ Version: %s", check.Version))
+				}
+			}
+		}
+	}
 }

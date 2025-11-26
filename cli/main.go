@@ -3,11 +3,15 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
+	"strings"
 
 	"github.com/siaji/chauffeur/cli/commands"
+	"github.com/siaji/chauffeur/internal/utils"
 )
 
-const version = "0.1.0"
+// Version will be fetched dynamically from GitHub
+var version = ""
 
 // build metadata overridden via -ldflags "-X main.buildTimestamp=... -X main.buildCommit=..."
 var (
@@ -50,9 +54,67 @@ Usage:
 `)
 }
 
+// getVersion fetches the current version, with fallback to build metadata
+func getVersion() string {
+	// Try to get version from current build (if available from build flags)
+	if version != "" {
+		return version
+	}
+
+	// Try to get version from git repository (if in development)
+	if gitVersion, err := getGitVersion(); err == nil && gitVersion != "" {
+		return gitVersion
+	}
+
+	// Fallback: try to get latest release from GitHub
+	if latestVersion, err := utils.GetLatestVersion(); err == nil {
+		return strings.TrimPrefix(latestVersion, "v") + "-dev"
+	}
+
+	// Ultimate fallback
+	return "unknown"
+}
+
+// getGitVersion gets version from current git repository
+func getGitVersion() (string, error) {
+	// Check if we're in a git repository
+	if _, err := os.Stat(".git"); os.IsNotExist(err) {
+		return "", fmt.Errorf("not a git repository")
+	}
+
+	// Get current branch
+	cmd := exec.Command("git", "branch", "--show-current")
+	output, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	branch := strings.TrimSpace(string(output))
+
+	// Get commit hash
+	cmd = exec.Command("git", "rev-parse", "HEAD")
+	output, err = cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	commit := strings.TrimSpace(string(output))
+
+	// Return version based on branch
+	if commit != "" {
+		if len(commit) >= 7 {
+			commit = commit[:7]
+		}
+		return fmt.Sprintf("%s-%s", branch, commit), nil
+	}
+
+	return branch, nil
+}
+
 func main() {
+	// Initialize version dynamically
+	dynamicVersion := getVersion()
+
 	args := os.Args[1:]
-	commands.SetCLIVersion(version)
+	commands.SetCLIVersion(dynamicVersion)
 	commands.SetBuildTimestamp(buildTimestamp)
 	commands.SetBuildCommit(buildCommit)
 
@@ -63,7 +125,7 @@ func main() {
 
 	switch args[0] {
 	case "--version", "-v", "-V", "version":
-		fmt.Printf("chauf %s (built %s, commit %s)\n", version, buildTimestamp, buildCommit)
+		fmt.Printf("chauf %s (built %s, commit %s)\n", dynamicVersion, buildTimestamp, buildCommit)
 	case "--help", "-h", "help":
 		usage()
 	case "init":
