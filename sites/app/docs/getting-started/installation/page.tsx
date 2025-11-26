@@ -76,7 +76,11 @@ export default function InstallationPage() {
             <Link href="#verify" onClick={(e) => scrollToId(e, 'verify')} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-primary cursor-pointer">#</Link>
           </h2>
           <p className="text-slate-400 mb-4">Verify the installation by checking the version:</p>
-          <CodeBlock code="$ chauf --version\nChauffeur v0.1.0-beta (linux/amd64)" />
+          <CodeBlock code="$ chauf --version
+chauf develop-90b3218 (built 2025-11-26T03:36:34Z, commit 90b32186784f4989b7a05d03ae8f62580bdb2e4c)
+Latest version: v1.3.6
+Update available: Run 'chauf self-update' to upgrade" />
+          <p className="text-slate-400 mt-4">The version command shows your current version with build info, latest release version, and update availability. Chauffeur dynamically detects if you're using the latest version.</p>
         </section>
 
         {/* Page Footer Navigation */}

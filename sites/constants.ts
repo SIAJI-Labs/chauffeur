@@ -340,14 +340,21 @@ export const CLI_COMMANDS: CommandDefinition[] = [
   {
     command: 'chauf self-update',
     category: 'system',
-    description: 'Update binary from git or rebuild from current repo.',
+    description: 'Update binary from git or rebuild from current repo with dynamic version checking.',
     usage: 'chauf self-update [--dev]',
     keyFlags: [
-      { flag: '--dev', description: 'Rebuild from current repo', required: false }
+      { flag: '--dev', description: 'Rebuild from current git repository', required: false }
     ],
     examples: [
-      { name: 'Update Chauffeur', description: 'Update to latest version', command: 'chauf self-update', output: '✓ Updated to v1.2.0' },
-      { name: 'Development rebuild', description: 'Rebuild from current source', command: 'chauf self-update --dev', output: '✓ Rebuilt from current source' }
+      { name: 'Check for updates', description: 'Check if newer version is available', command: 'chauf self-update', output: 'You are already using the latest version (chauf 1.3.6)' },
+      { name: 'Update to latest', description: 'Update when newer version available', command: 'chauf self-update', output: 'Update available: chauffeur 1.3.5 → 1.3.6' },
+      { name: 'Development rebuild', description: 'Rebuild from current source', command: 'chauf self-update --dev', output: '✓ Dev rebuild complete (commit 90b3218)' }
+    ],
+    notes: [
+      'Automatically checks for newer versions from GitHub before updating',
+      'Shows version comparison when updates are available',
+      'Development builds use branch-commit format (e.g., develop-90b3218)',
+      'Production builds use semantic versioning (e.g., 1.3.6)'
     ]
   },
   {
@@ -444,12 +451,14 @@ export const CLI_COMMANDS: CommandDefinition[] = [
       { flag: '--help, -h', description: 'Show this help message', required: false }
     ],
     examples: [
-      { name: 'Full health check', description: 'Run all health checks', command: 'chauf doctor', output: '[ doctor ] 🩺 Chauffeur Doctor\n[ doctor ] Performing health checks...\n[ doctor ] ✓ Overall Status (✅ All systems healthy)\n[ doctor ] ✓ Doctor completed (All checks passed - system is healthy!)' },
-      { name: 'Check dependencies only', description: 'Check only system dependencies', command: 'chauf doctor --check-deps', output: '[ doctor ] ✅ System dependencies OK' },
-      { name: 'Fix issues automatically', description: 'Auto-fix detected issues', command: 'chauf doctor --auto-fix', output: '[ doctor ] ✅ Issues auto-fixed' }
+      { name: 'Full health check', description: 'Run all health checks', command: 'chauf doctor', output: '[ doctor ] 🩺 Chauffeur Doctor\n[ doctor ] ✓ Overall Status (✅ All systems healthy)\n[ doctor ] ✓ Doctor completed (All checks passed - system is healthy!)' },
+      { name: 'Show fix suggestions', description: 'Check system and show fix suggestions', command: 'chauf doctor --fix', output: '[ doctor ] ⚠️ mkcert: Local trusted certificate authority\n[ doctor ]   └─ Fix: sudo dnf install -y mkcert' },
+      { name: 'Auto-fix with confirmation', description: 'Review fix plan before execution', command: 'chauf doctor --auto-fix', output: '[ doctor ] 🔧 Fix Plan\n[ doctor ] Found 1 fixable issue(s): 0 errors, 1 warnings\n[ doctor ] SSL Certificate Dependencies:\n[ doctor ]   ⚠️ mkcert: Local trusted certificate authority\n[ doctor ]     Command: sudo dnf install -y mkcert\n[ doctor ] Do you want to proceed with these fixes? [y/N]' },
+      { name: 'Check specific areas', description: 'Check only SSL and network dependencies', command: 'chauf doctor --check-ssl --check-network', output: '[ doctor ] ✓ SSL Certificate Dependencies: openssl available\n[ doctor ] ✓ Network Dependencies: iptables available' },
+      { name: 'Verbose diagnostics', description: 'Run with detailed output', command: 'chauf doctor --verbose', output: '[ doctor ] ✅ Installed (2.51.1) (git)\n[ doctor ]   └─ Version: 2.51.1' }
     ],
     notes: [
-      'Cross-platform support (Ubuntu/Debian, CentOS/RHEL, Arch, Fedora)',
+      'Cross-platform support (Ubuntu/Debian, Arch, Fedora)',
       'Validates build dependencies for PHP compilation',
       'Checks SSL certificate setup (mkcert, OpenSSL)',
       'Validates network configuration and port availability',
@@ -684,6 +693,12 @@ export const COMMAND_EXAMPLES: CommandExample[] = [
     output: "✅ All systems healthy"
   },
   {
+    name: "Auto-Fix Issues",
+    description: "Fix system issues with confirmation",
+    command: "chauf doctor --auto-fix",
+    output: "🔧 Fix plan shown, waiting for confirmation"
+  },
+  {
     name: "View Logs",
     description: "View nginx logs",
     command: "chauf logs nginx --follow",
@@ -715,6 +730,7 @@ export const DOCS_NAVIGATION = [
     items: [
       { title: "CLI Commands", slug: "reference/commands", badge: "Updated" },
       { title: "Configuration", slug: "reference/configuration" },
+      { title: "Dependencies", slug: "reference/dependencies", badge: "New" },
       { title: "Troubleshooting", slug: "reference/troubleshooting" }
     ]
   }

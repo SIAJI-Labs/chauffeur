@@ -12,6 +12,7 @@ import (
 
 	"github.com/siaji/chauffeur/cli/internal/workspace"
 	"github.com/siaji/chauffeur/cli/lib"
+	"github.com/siaji/chauffeur/internal/utils"
 )
 
 const (
@@ -191,6 +192,20 @@ func RunSelfUpdate(args []string) error {
 
 	if isDev {
 		return runDevUpdate(logger)
+	}
+
+	// Check if there's a newer version available
+	currentVersion := getCLIVersion()
+	if isUpdate, latestVersion, err := utils.IsUpdateAvailable(currentVersion); err == nil {
+		if !isUpdate {
+			logger.Info(fmt.Sprintf("You're already using the latest version (chauf %s)", strings.TrimPrefix(latestVersion, "v")))
+			logger.Info("Run with --dev to rebuild from current source")
+			return nil
+		}
+		logger.Info(fmt.Sprintf("Update available: chauffeur %s → %s", strings.TrimPrefix(currentVersion, "v"), strings.TrimPrefix(latestVersion, "v")))
+	} else if err != nil {
+		// If we can't check for updates, just continue with the update process
+		logger.Warn("Unable to check for updates", err.Error())
 	}
 
 	updater, err := newGitSelfUpdater(logger)

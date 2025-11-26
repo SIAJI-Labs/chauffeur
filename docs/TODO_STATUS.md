@@ -123,13 +123,16 @@ _A living status board for features, debt, and priorities. Keep this in sync wit
 **Recently Completed Commands**:
 - ✅ `chauf doctor` - Comprehensive health check and troubleshooting command with:
   - System dependencies validation (git, curl, tar, gcc, make, pkg-config)
-  - PHP build dependencies checking (libzip, libjpeg, libpng, freetype, libxml2, libonig, libsodium, libcurl)
-  - SSL certificate management verification (openssl, mkcert, certbot)
-  - Network and firewall dependencies (iptables, ufw, firewalld, port availability)
+  - PHP build dependencies checking (libzip, libjpeg, libpng, freetype, libxml2, libxslt, readline, MagickWand, gmp, libcurl)
+  - SSL certificate management verification (openssl, mkcert with trusted certificates)
+  - Network and firewall dependencies (iptables, port availability, conflict detection)
   - DNS configuration validation (dnsmasq, .test domain resolution)
   - Smart port detection that ignores Chauffeur-managed services
-  - Auto-fix capabilities with guided installation commands
-  - Cross-platform support (Ubuntu/Debian, CentOS/RHEL, Arch, Fedora)
+  - **Enhanced auto-fix workflow** with fix plan collection, user confirmation, and safe execution
+  - Distribution-specific package commands (Fedora: dnf, Ubuntu/Debian: apt, Arch: pacman)
+  - Priority-based fix execution (errors first, then warnings)
+  - Comprehensive flag support (--check-all, --check-*, --fix, --auto-fix, --verbose, --quiet)
+  - Cross-platform support with detailed fix suggestions for each Linux distribution
 
 ## 5. Future Plans 🔮
 *Low priority items that will be addressed in future releases - no ETA.*
