@@ -65,7 +65,7 @@ export default function InstallationPage() {
             <Link href="#quick-install" onClick={(e) => scrollToId(e, 'quick-install')} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-primary cursor-pointer">#</Link>
           </h2>
           <p className="text-slate-400 mb-4">The easiest way to install Chauffeur is via our installer script. This will detect your distribution, install dependencies (Nginx, PHP, dnsmasq), and configure the environment.</p>
-          <CodeBlock code="curl -sL https://chauffeur.siaji.com/install | bash" />
+          <CodeBlock code="curl -sSL https://chauffeur.siaji.com/install | bash" />
           <p className="text-slate-400 mt-4">Once completed, the installer will ask you to restart your session to add the binary to your path.</p>
         </section>
 

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -28,6 +29,7 @@ type Config struct {
 	Version   int
 	Path      string
 	PHP       string
+	Category  string `yaml:"category,omitempty"` // Project category (defaults to "Uncategorized")
 	Site      *Site
 	Domains   *Domains `yaml:"domains,omitempty"`
 	Runtime   Runtime
@@ -62,6 +64,11 @@ type Runtime struct {
 	PHPFPM string
 	FPM    *FPM `yaml:"fpm"`
 }
+
+// Constants for categorization
+const (
+	DefaultCategory = "Uncategorized"
+)
 
 // Layout captures important directories for a project slug.
 type Layout struct {
@@ -564,4 +571,58 @@ func FindByDomain(baseDir, domain string) (Config, Layout, error) {
 	}
 
 	return Config{}, Layout{}, fmt.Errorf("%w: domain %s", ErrProjectNotFound, domain)
+}
+
+// GetCategory returns the project's category, defaulting to DefaultCategory if not set
+func (c *Config) GetCategory() string {
+	if c.Category == "" {
+		return DefaultCategory
+	}
+	return c.Category
+}
+
+// SetCategory updates the project's category with validation
+func (c *Config) SetCategory(category string) error {
+	if err := validateCategoryName(category); err != nil {
+		return err
+	}
+	c.Category = category
+	return nil
+}
+
+// validateCategoryName ensures category names are safe and properly formatted
+func validateCategoryName(category string) error {
+	if category == "" {
+		return fmt.Errorf("category name cannot be empty")
+	}
+
+	// Allow spaces, hyphens, underscores, and alphanumeric characters
+	validPattern := regexp.MustCompile(`^[a-zA-Z0-9\s\-_]+$`)
+	if !validPattern.MatchString(category) {
+		return fmt.Errorf("invalid category name: only letters, numbers, spaces, hyphens, and underscores are allowed")
+	}
+
+	// Length limit
+	if len(category) > 50 {
+		return fmt.Errorf("category name too long (max 50 characters)")
+	}
+
+	// Trim whitespace
+	trimmed := strings.TrimSpace(category)
+	if trimmed == "" {
+		return fmt.Errorf("category name cannot be only whitespace")
+	}
+
+	return nil
+}
+
+// IsProtectedCategory checks if a category is protected (cannot be renamed or deleted)
+func IsProtectedCategory(category string) bool {
+	protected := []string{DefaultCategory}
+	for _, protectedCat := range protected {
+		if strings.EqualFold(strings.TrimSpace(category), protectedCat) {
+			return true
+		}
+	}
+	return false
 }

@@ -115,7 +115,7 @@ source ~/.zshrc`} />
               </h3>
               <p className="text-slate-400 text-sm mb-2">Installer fails due to insufficient permissions.</p>
               <CodeBlock code="# Run installer with proper permissions
-curl -sL https://chauffeur.siaji.com/install | sudo bash
+curl -sSL https://chauffeur.siaji.com/install | sudo bash
 
 # Or ensure your user has proper permissions
 sudo usermod -aG docker $USER  # If using Docker features (not Chauffeur)
@@ -519,7 +519,7 @@ chauf info" />
               </h3>
               <ul className="text-slate-400 space-y-2">
                 <li>• <strong>GitHub Issues:</strong> <a href="https://github.com/SIAJI-Labs/chauffeur/issues" className="text-primary hover:underline">Report bugs and feature requests</a></li>
-                <li>• <strong>Documentation:</strong> <a href="https://docs.chauffeur.dev" className="text-primary hover:underline">Full documentation</a></li>
+                <li>• <strong>Documentation:</strong> <a href="https://chauffeur.siaji.com/docs" className="text-primary hover:underline">Full documentation</a></li>
                 <li>• <strong>Discussions:</strong> <a href="https://github.com/SIAJI-Labs/chauffeur/discussions" className="text-primary hover:underline">Community discussions</a></li>
                 <li>• <strong>Wiki:</strong> <a href="https://github.com/SIAJI-Labs/chauffeur/wiki" className="text-primary hover:underline">Community guides and tips</a></li>
               </ul>

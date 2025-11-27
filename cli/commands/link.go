@@ -128,6 +128,9 @@ func RunLink(args []string) error {
 		httpsPort    int
 		aliases      []string
 		addAlias     bool
+		category     string
+		update       bool
+		slugFlag     string
 	)
 
 	logger := lib.NewCommandLogger("link")
@@ -203,12 +206,38 @@ func RunLink(args []string) error {
 		case "--add-alias":
 			addAlias = true
 			i++
+		case "--category":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--category requires a category name")
+			}
+			category = strings.TrimSpace(args[i+1])
+			if category == "" {
+				return fmt.Errorf("category name cannot be empty")
+			}
+			i += 2
+		case "--update":
+			update = true
+			i++
+		case "--slug":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--slug requires a project slug")
+			}
+			slugFlag = strings.TrimSpace(args[i+1])
+			if slugFlag == "" {
+				return fmt.Errorf("project slug cannot be empty")
+			}
+			i += 2
 		default:
 			if strings.HasPrefix(arg, "-") {
 				return fmt.Errorf("unknown flag for link: %s", arg)
 			}
 			return fmt.Errorf("unexpected argument: %s", arg)
 		}
+	}
+
+	// Handle update mode for existing projects
+	if update {
+		return handleUpdateLink(category, slugFlag)
 	}
 
 	// SSL now works with both explicit and default .test domains
@@ -337,6 +366,16 @@ func RunLink(args []string) error {
 			FPM:    fpmConfig,
 		},
 		CreatedAt: time.Now().UTC(),
+	}
+
+	// Set category - default to "Uncategorized" if not specified
+	if category == "" {
+		category = projects.DefaultCategory
+	}
+
+	// Validate and set category name
+	if err := proj.SetCategory(category); err != nil {
+		return fmt.Errorf("invalid category name: %w", err)
 	}
 
 	proj.Site = &projects.Site{
@@ -496,8 +535,9 @@ func printLinkUsage() {
 	fmt.Print(`Chauffeur Project Linking
 
 Usage:
-  chauf link [--site <domain>] [--secure] [--php <version>] [--dedicated-fpm] [--http-port <port>] [--https-port <port>] [--alias <domain>]... [--force]
+  chauf link [--site <domain>] [--secure] [--php <version>] [--dedicated-fpm] [--http-port <port>] [--https-port <port>] [--alias <domain>]... [--category <name>] [--force]
   chauf link --add-alias --alias <domain> [--alias <domain>]...    # Add aliases to existing project
+  chauf link --update --category <name> [--slug <project>]     # Update existing project's category
 
 Flags:
   --site <domain>           Register a local domain for the project (default: <slug>.test).
@@ -508,6 +548,9 @@ Flags:
   --https-port <port>       Override Nginx HTTPS port for this project (default: from config).
   --alias <domain>          Add alias domains that point to the same project (can be used multiple times).
   --add-alias               Add aliases to an existing linked project (use with --alias).
+  --category <name>         Set project category (default: Uncategorized).
+  --update                  Update mode for existing projects (requires --category).
+  --slug <project>          Specify project by slug for update operations.
   --force                   Overwrite existing project configuration.
 
 Port Management:
@@ -534,6 +577,18 @@ Add-alias Mode:
   Use --add-alias to add new domains to an already linked project without
   recreating it. This command automatically regenerates nginx configuration
   and restarts the service to apply changes.
+
+Category Examples:
+  # Link project with category
+  chauf link --category "Work"
+  chauf link --category "Personal: Blogging"
+  chauf link --category "Client: ABC Corp"
+
+  # Update project category (current directory)
+  chauf link --update --category "New Category"
+
+  # Update specific project by slug
+  chauf link --update --slug my-project --category "Client Work"
 
 Note:
   When --site is not specified, the project is automatically assigned a .test domain
@@ -979,4 +1034,78 @@ func provideSSLUsageGuidance(logger *lib.Logger, domain string, httpsPort int, c
 	logger.Info("Certificate location:")
 	certPath := filepath.Join(os.Getenv("HOME"), ".chauffeur", "nginx", "certs", fmt.Sprintf("%s.crt", domain))
 	logger.Info(fmt.Sprintf("  Certificate: %s", certPath))
+}
+
+// handleUpdateLink handles updating an existing project's category
+func handleUpdateLink(category, slugFlag string) error {
+	logger := lib.NewCommandLogger("link")
+
+	cfg, err := config.Load()
+	if err != nil {
+		return fmt.Errorf("load configuration: %w", err)
+	}
+
+	// Validate that category is provided
+	if category == "" {
+		return fmt.Errorf("--category is required when using --update")
+	}
+
+	// Validate category name
+	tempConfig := &projects.Config{}
+	if err := tempConfig.SetCategory(category); err != nil {
+		return fmt.Errorf("invalid category name: %w", err)
+	}
+
+	var projectSlug string
+
+	// Determine which project to update
+	if slugFlag != "" {
+		// Update specific project by slug
+		projectSlug = slugFlag
+	} else {
+		// Update current directory project
+		cwd, err := os.Getwd()
+		if err != nil {
+			return fmt.Errorf("get current directory: %w", err)
+		}
+
+		// Find project by current directory
+		_, layout, err := projects.FindByPath(cfg.ProjectsDir, cwd)
+		if err != nil {
+			return fmt.Errorf("project not found in current directory: %w", err)
+		}
+
+		// Extract slug from layout path
+		projectSlug = filepath.Base(layout.Root)
+	}
+
+	// Load the existing project configuration
+	layout, err := projects.EnsureLayout(cfg.ProjectsDir, projectSlug)
+	if err != nil {
+		return fmt.Errorf("ensure project layout: %w", err)
+	}
+
+	projConfig, err := projects.LoadConfig(layout.ConfigPath)
+	if err != nil {
+		return fmt.Errorf("load project config: %w", err)
+	}
+
+	// Get current category for display
+	oldCategory := projConfig.GetCategory()
+
+	// Update the category
+	if err := projConfig.SetCategory(category); err != nil {
+		return fmt.Errorf("set category: %w", err)
+	}
+
+	// Save the updated configuration (force=true since we're updating)
+	if err := projects.WriteConfig(projConfig, layout.ConfigPath, true); err != nil {
+		return fmt.Errorf("save project config: %w", err)
+	}
+
+	// Success message
+	logger.Success("Project category updated",
+		fmt.Sprintf("Project '%s' moved from '%s' to '%s'", projectSlug, oldCategory, category))
+
+	return nil
 }

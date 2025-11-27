@@ -33,20 +33,55 @@ Design themes borrowed from Valet/Herd:
 5. **Go-first implementation**: CLI is written in Go 1.22+, with helpers in `cli/lib` and `cli/internal/**`.
 6. **Documentation synchronization**: README, docs/TODO_STATUS.md, and AGENTS.md must describe the current code behavior—no aspirational features marked as done.
 
-## Feature Overview
-| Area | Status | Notes |
-|------|--------|-------|
-| Workspace bootstrap (`chauf init`) | ✅ | Creates `~/.chauffeur` directories, default config, PATH guidance. |
-| Project linking (`chauf link/links/unlink`) | ✅ | Multi-domain support with SSL certificates, alias management, enhanced UI. |
-| PHP runtimes (`chauf php install/use/isolate`) | ✅ | Full PHP 7.4-8.4 support with smart caching; sodium extension support for legacy PHP 7.4/8.0 (resolves composer ext-sodium requirements); enhanced upload limits (256MB); modern library compatibility (libxml2 2.15+, libcurl 8.0+, ImageMagick 7.1+); GD extension infrastructure in place (modern PHP ✅, legacy PHP 🚧). |
-| Service orchestration (`chauf start/stop/status/restart`) | ✅ | Full process management with service-specific and project-specific restarts; dnsmasq integration working. |
-| Composer integration | ✅ | Installs Composer PHAR tied to Chauffeur's PHP shim. |
-| Logging system | ✅ | Enhanced `chauf logs` command for viewing and following service logs; all user-facing commands route output through `lib.Logger`. |
-| Workspace maintenance | ✅ | Comprehensive `chauf clean` command for logs, cache, temp files, old PHP versions, stale SSL certificates, and unlinked projects. |
-| Project migration | ✅ | `chauf migrate` command for moving projects between workspaces with backup and validation. |
-| Health checking | ✅ | `chauf doctor` command for system dependency validation and auto-fix suggestions. |
-| Smart caching system | ✅ | Universal download cache with auto-detection and user control. |
-| Testing | ✅ | Comprehensive test coverage across all packages including unit tests for installers, logging, projects, services, system, templates, nginx templates, and new commands; integration tests cover CLI workflows; CI enforces `go test ./...` on PRs to `main`. |
+## Quick Start
+
+```bash
+# Install Chauffeur
+curl -sSL https://chauffeur.siaji.com/install | bash
+
+# Initialize workspace
+chauf init
+
+# Install services
+chauf install nginx php 8.3 composer
+
+# Link and serve your project
+cd my-project
+chauf link --secure
+
+# Visit https://my-project.test
+```
+
+## Core Features
+
+| Feature | Description |
+|---------|-------------|
+| **Workspace Isolation** | Per-project PHP-FPM pools and nginx configurations in `~/.chauffeur` |
+| **Multi-Version PHP** | Run PHP 7.4-8.4 simultaneously with project-specific isolation |
+| **Zero-Config Routing** | Automatic `.test` domain resolution with dnsmasq |
+| **One-Click SSL** | Generate trusted certificates with `chauf secure` |
+| **Smart Service Management** | Start/stop/restart services per-project or globally |
+| **Health & Diagnostics** | Comprehensive system checks with `chauf doctor` |
+
+## Documentation
+
+📖 **Complete Command Reference**: [chauffeur.siaji.com/docs/reference/commands](https://chauffeur.siaji.com/docs/reference/commands)
+
+**Essential Commands**:
+- `chauf init` - Initialize workspace
+- `chauf link` - Register current directory as project
+- `chauf start/stop` - Manage services
+- `chauf doctor` - System health check
+- `chauf logs` - View service logs
+
+## Status & Development
+
+- **Current State**: Early adopter preview, works on major Linux distributions
+- **Development**: Go 1.22+ with comprehensive test coverage
+- **Philosophy**: Manual project registration, minimal host impact, idempotent operations
+- **AI-Assisted**: Codebase developed with AI agents following `AGENTS.md` contracts
+
+See the [documentation site](https://chauffeur.siaji.com/docs) for complete guides, troubleshooting, and API reference.
 
 ## Architecture at a Glance
 ```
@@ -202,7 +237,7 @@ The doctor provides package commands tailored to your distribution:
 
    **Option A: Quick Install (Recommended)**
    ```bash
-   curl -sL https://chauffeur.siaji.com/install | bash
+   curl -sSL https://chauffeur.siaji.com/install | bash
    ```
 
    **Option B: Manual Clone**
