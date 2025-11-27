@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -18,9 +19,11 @@ func RunLinks(args []string) error {
 
 	var slugFlag string
 	var siteFlag string
+	var categoryFlag string
 	flagSet := lib.NewFlagSet("links", logger)
 	flagSet.StringVar(&slugFlag, "slug", "", "Display detailed information for a specific project by slug.")
 	flagSet.StringVar(&siteFlag, "site", "", "Display detailed information for a specific project by site domain.")
+	flagSet.StringVar(&categoryFlag, "category", "", "Filter projects by category.")
 
 	if err := flagSet.Parse(args); err != nil {
 		if err == lib.ErrHelpRequested {
@@ -33,6 +36,9 @@ func RunLinks(args []string) error {
 	// Validate mutually exclusive flags
 	if slugFlag != "" && siteFlag != "" {
 		return fmt.Errorf("flags --slug and --site are mutually exclusive, please provide only one")
+	}
+	if (slugFlag != "" || siteFlag != "") && categoryFlag != "" {
+		return fmt.Errorf("detail view flags (--slug, --site) cannot be combined with --category")
 	}
 
 	cfg, err := config.Load()
@@ -59,6 +65,22 @@ func RunLinks(args []string) error {
 		logger.Info("No projects linked yet.")
 		logger.Info("Use 'chauf link' in a project directory to register it.")
 		return nil
+	}
+
+	// Filter by category if --category flag is provided
+	if categoryFlag != "" {
+		var filteredProjects []linkedProject
+		for _, project := range allProjects {
+			if strings.EqualFold(project.Category, categoryFlag) {
+				filteredProjects = append(filteredProjects, project)
+			}
+		}
+		allProjects = filteredProjects
+
+		if len(allProjects) == 0 {
+			logger.Info(fmt.Sprintf("No projects found in category '%s'.", categoryFlag))
+			return nil
+		}
 	}
 
 	// Handle detail view if --slug or --site is provided
@@ -118,74 +140,9 @@ func RunLinks(args []string) error {
 		return nil
 	}
 
-	logger.PrintSection(fmt.Sprintf("Linked Projects (%d)", len(allProjects)))
+	printProjectsByCategory(logger, allProjects)
 
-	maxPath := 20
-	maxSlug := 10
-	maxAliasCount := 8 // Default width for "ALIASES" (e.g., "Count (X)")
-
-	// First pass to determine column widths
-	for _, project := range allProjects {
-		if len(project.Path) > maxPath {
-			maxPath = len(project.Path)
-		}
-		if len(project.Slug) > maxSlug {
-			maxSlug = len(project.Slug)
-		}
-		// Adjust maxAliasCount for the string representation of the count
-		aliasCountStr := fmt.Sprintf("%d", project.AliasCount)
-		if len(aliasCountStr) > maxAliasCount {
-			maxAliasCount = len(aliasCountStr)
-		}
-	}
-
-	header := fmt.Sprintf("%-*s  %-*s  %-*s  %-*s  %-3s  %-4s  %s",
-		maxSlug, "SLUG",
-		maxPath, "PATH",
-		maxSlug+5, "DOMAIN", // Domain column will be wider
-		maxAliasCount, "ALIASES",
-		"SSL", "PHP", "CREATED")
-	divider := fmt.Sprintf("%s  %s  %s  %s  ---  ----  %s",
-		strings.Repeat("-", maxSlug),
-		strings.Repeat("-", maxPath),
-		strings.Repeat("-", maxSlug+5),
-		strings.Repeat("-", maxAliasCount),
-		strings.Repeat("-", 19))
-
-	logger.Info(header)
-	logger.Info(divider)
-
-	// Project rows
-	for _, project := range allProjects {
-		ssl := " "
-		if project.SSL {
-			ssl = "*"
-		}
-
-		created := project.CreatedAt.Format("2006-01-02 15:04")
-
-		domainDisplay := ""
-		if project.Site != nil {
-			domainDisplay = project.Site.Domain
-		}
-
-		// Add indicator for example project
-		slugDisplay := project.Slug
-		if project.Slug == "example-project" {
-			slugDisplay = project.Slug + " 📁" // Add folder icon to indicate example
-		}
-
-		row := fmt.Sprintf("%-*s  %-*s  %-*s  %-*d  %-3s  %-4s  %s",
-		maxSlug, slugDisplay,
-		maxPath, project.Path,
-		maxSlug+5, domainDisplay,
-		maxAliasCount, project.AliasCount,
-		ssl,
-		project.PHP,
-		created)
-		logger.Info(row)
-	}
-
+	
 	return nil
 }
 
@@ -193,12 +150,144 @@ type linkedProject struct {
 	Slug        string
 	Path        string
 	PHP         string
+	Category    string
 	Site        *projects.Site
 	AliasCount  int // Number of alias domains
 	SSL         bool
 	CreatedAt   time.Time
 	FPMType     string // Shared or Dedicated
 	FPMSocket   string // Path to the FPM socket
+}
+
+// printProjectsByCategory displays projects grouped by category with formatted tables.
+func printProjectsByCategory(logger *lib.Logger, projects []linkedProject) {
+	if len(projects) == 0 {
+		return
+	}
+
+	// Group projects by category
+	categories := make(map[string][]linkedProject)
+	for _, project := range projects {
+		categories[project.Category] = append(categories[project.Category], project)
+	}
+
+	// Sort categories alphabetically (put "Uncategorized" last)
+	sortedCategories := make([]string, 0, len(categories))
+	for category := range categories {
+		sortedCategories = append(sortedCategories, category)
+	}
+	sort.Slice(sortedCategories, func(i, j int) bool {
+		if sortedCategories[j] == "Uncategorized" {
+			return true
+		}
+		if sortedCategories[i] == "Uncategorized" {
+			return false
+		}
+		return strings.ToLower(sortedCategories[i]) < strings.ToLower(sortedCategories[j])
+	})
+
+	totalProjects := len(projects)
+	logger.PrintSection(fmt.Sprintf("Linked Projects (%d projects, %d categories)", totalProjects, len(categories)))
+
+	for _, category := range sortedCategories {
+		categoryProjects := categories[category]
+
+		// Print category header with separator
+		if len(sortedCategories) > 1 {
+			logger.PrintSeparator()
+			categoryDisplay := category
+			if category == "Uncategorized" {
+				categoryDisplay = category + " 📋"
+			}
+			logger.Info(fmt.Sprintf("📁 %s (%d project%s)", categoryDisplay, len(categoryProjects), func() string {
+				if len(categoryProjects) != 1 {
+					return "s"
+				}
+				return ""
+			}()))
+		}
+
+		// Calculate column widths for this category
+		maxPath := 15
+		maxSlug := 8
+		maxAliasCount := 6
+
+		for _, project := range categoryProjects {
+			if len(project.Path) > maxPath {
+				maxPath = len(project.Path)
+			}
+			if len(project.Slug) > maxSlug {
+				maxSlug = len(project.Slug)
+			}
+			aliasCountStr := fmt.Sprintf("%d", project.AliasCount)
+			if len(aliasCountStr) > maxAliasCount {
+				maxAliasCount = len(aliasCountStr)
+			}
+		}
+
+		// Print table header
+		header := fmt.Sprintf("%-*s  %-*s  %-*s  %-*s  %-3s  %-4s  %s",
+			maxSlug, "SLUG",
+			maxPath, "PATH",
+			maxSlug+5, "DOMAIN",
+			maxAliasCount, "ALIASES",
+			"SSL", "PHP", "CREATED")
+		divider := fmt.Sprintf("%s  %s  %s  %s  ---  ----  %s",
+			strings.Repeat("-", maxSlug),
+			strings.Repeat("-", maxPath),
+			strings.Repeat("-", maxSlug+5),
+			strings.Repeat("-", maxAliasCount),
+			strings.Repeat("-", 19))
+
+		logger.Info(header)
+		logger.Info(divider)
+
+		// Print project rows
+		for _, project := range categoryProjects {
+			ssl := " "
+			if project.SSL {
+				ssl = "*"
+			}
+
+			created := project.CreatedAt.Format("2006-01-02 15:04")
+
+			domainDisplay := ""
+			if project.Site != nil {
+				domainDisplay = project.Site.Domain
+			}
+
+			// Add indicator for example project
+			slugDisplay := project.Slug
+			if project.Slug == "example-project" {
+				slugDisplay = project.Slug + " 📁"
+			}
+
+			row := fmt.Sprintf("%-*s  %-*s  %-*s  %-*d  %-3s  %-4s  %s",
+				maxSlug, slugDisplay,
+				maxPath, project.Path,
+				maxSlug+5, domainDisplay,
+				maxAliasCount, project.AliasCount,
+				ssl,
+				project.PHP,
+				created)
+			logger.Info(row)
+		}
+	}
+
+	// Print summary if there are multiple categories
+	if len(categories) > 1 {
+		logger.PrintSeparator()
+		var summary []string
+		for _, category := range sortedCategories {
+			count := len(categories[category])
+			categoryDisplay := category
+			if category == "Uncategorized" {
+				categoryDisplay = category + " 📋"
+			}
+			summary = append(summary, fmt.Sprintf("%s: %d", categoryDisplay, count))
+		}
+		logger.Info(fmt.Sprintf("Summary: %s", strings.Join(summary, ", ")))
+	}
 }
 
 // printProjectDetails displays detailed information for a single project.
@@ -305,6 +394,7 @@ func listAllProjects(projectsDir string) ([]linkedProject, error) {
 			Slug:       slug,
 			Path:       cfg.Path,
 			PHP:        cfg.PHP,
+			Category:   cfg.GetCategory(),
 			Site:       cfg.Site,
 			AliasCount: aliasCount,
 			SSL:        cfg.HasSSLEnabled(),
@@ -321,18 +411,27 @@ func printLinksUsage() {
 	fmt.Fprintf(lib.CurrentStdout, `Chauffeur Project Listing
 
 Usage:
-  chauf links                        List all registered projects and their configurations.
+  chauf links                        List all registered projects grouped by category.
   chauf links --slug <project-slug>  Display detailed information for a specific project.
   chauf links --site <domain>        Display detailed information for a specific project by one of its domains.
+  chauf links --category <name>      List projects from a specific category only.
 
 Output:
+  Projects are automatically grouped by category and displayed with visual separators.
   The DOMAIN column shows the primary domain for each project.
   The ALIASES column shows the number of alias domains configured for the project.
   An asterisk (*) in the SSL column indicates that SSL/TLS is enabled for at least one domain.
+  Uncategorized projects are shown in the "Uncategorized 📋" category.
+
+Categories:
+  Projects are automatically categorized when linked using 'chauf link --category <name>'.
+  Use 'chauf link --update --category <name> --slug <slug>' to change an existing project's category.
+  Each category shows a project count and summary when multiple categories exist.
 
 Flags:
   --slug string       Display detailed information for a specific project by its slug.
   --site string       Display detailed information for a specific project by one of its domains (primary or alias).
+  --category string   Filter projects to show only those in the specified category.
   --help, -h          Show this help message.
 `)
 }

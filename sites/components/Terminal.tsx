@@ -23,7 +23,7 @@ export const Terminal: React.FC<TerminalProps> = ({ lines, className = "", autoP
 
   // Handle Copy
   const handleCopy = () => {
-    navigator.clipboard.writeText("curl -sL https://chauffeur.siaji.com/install | bash");
+    navigator.clipboard.writeText("curl -sSL https://chauffeur.siaji.com/install | bash");
     setIsCopied(true);
     setTimeout(() => setIsCopied(false), 2000);
   };

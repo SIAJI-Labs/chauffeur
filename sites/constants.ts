@@ -153,6 +153,28 @@ export const CLI_COMMANDS: CommandDefinition[] = [
     notes: ['Supports Laravel, WordPress, and general project detection', 'Creates nginx configuration and restarts services', 'Multi-domain SSL certificates supported']
   },
   {
+    command: 'chauf category',
+    category: 'projects',
+    description: 'List all projects grouped by category with alphabetical sorting and "Uncategorized" at bottom.',
+    usage: 'chauf category [--sort <method>] [--show-empty]',
+    keyFlags: [
+      { flag: '--sort <method>', description: 'Sorting method: alphabetical (default) or count', required: false },
+      { flag: '--show-empty', description: 'Show empty categories', required: false }
+    ],
+    examples: [
+      { name: 'List projects by category', description: 'Show projects grouped by category, sorted alphabetically with "Uncategorized" at bottom', command: 'chauf category', output: '[ category ] Projects by Category (3 categories)\n[ category ] \n[ category ] E-commerce (2)\n[ category ] └── shop.test\n[ category ] └── store.test\n[ category ] \n[ category ] Laravel (3)\n[ category ] └── blog.test\n[ category ] └── admin.test\n[ category ] └── api.test\n[ category ] \n[ category ] Uncategorized (1)\n[ category ] └── misc-project.test' },
+      { name: 'Sort by project count', description: 'Show categories sorted by number of projects', command: 'chauf category --sort count', output: '[ category ] Projects by Category (3 categories)\n[ category ] \n[ category ] Laravel (3)\n[ category ] └── blog.test\n[ category ] └── admin.test\n[ category ] └── api.test\n[ category ] \n[ category ] E-commerce (2)\n[ category ] └── shop.test\n[ category ] └── store.test\n[ category ] \n[ category ] Uncategorized (1)\n[ category ] └── misc-project.test' },
+      { name: 'Show empty categories', description: 'Include empty categories in output', command: 'chauf category --show-empty', output: '[ category ] Projects by Category (4 categories)\n[ category ] \n[ category ] E-commerce (2)\n[ category ] └── shop.test\n[ category ] └── store.test\n[ category ] \n[ category ] Laravel (3)\n[ category ] └── blog.test\n[ category ] └── admin.test\n[ category ] └── api.test\n[ category ] \n[ category ] WordPress (0)\n[ category ] \n[ category ] Uncategorized (1)\n[ category ] └── misc-project.test' }
+    ],
+    notes: [
+      'Categories are sorted alphabetically by default with "Uncategorized" always at the bottom',
+      'Use --sort count to order categories by number of projects (descending)',
+      'Projects within each category are sorted alphabetically',
+      'Empty categories are hidden by default unless --show-empty is used',
+      'Uncategorized projects are automatically grouped at the bottom for better organization'
+    ]
+  },
+  {
     command: 'chauf links',
     category: 'projects',
     description: 'List all registered projects in a formatted table with detailed view support.',
@@ -162,7 +184,7 @@ export const CLI_COMMANDS: CommandDefinition[] = [
       { flag: '--site <domain>', description: 'Display detailed information for a specific project by site domain', required: false }
     ],
     examples: [
-      { name: 'List projects', description: 'Show all linked projects', command: 'chauf links', output: '[ links ] Linked Projects (6)\n[ links ] SLUG             PATH                                             DOMAIN                ALIASES   SSL  PHP   CREATED\n[ links ] ---------------  -----------------------------------------------  --------------------  --------  ---  ----  -------------------\n[ links ] example-project 📁  /home/user/.chauffeur/projects/example-project  example-project.test  0              8.3   2025-11-23 03:02' },
+      { name: 'List projects', description: 'Show all linked projects sorted alphabetically by category', command: 'chauf links', output: '[ links ] Linked Projects (6)\n[ links ] SLUG             PATH                                             DOMAIN                ALIASES   SSL  PHP   CREATED\n[ links ] ---------------  -----------------------------------------------  --------------------  --------  ---  ----  -------------------\n[ links ] example-project 📁  /home/user/.chauffeur/projects/example-project  example-project.test  0              8.3   2025-11-23 03:02' },
       { name: 'View project details', description: 'Show detailed project information', command: 'chauf links --slug my-project', output: '[ links ] Project Details: my-project' }
     ],
     notes: ['--slug and --site flags are mutually exclusive', 'Shows SSL indicators (*) for secured sites', 'Displays primary domain and all aliases']

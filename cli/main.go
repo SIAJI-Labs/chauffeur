@@ -192,6 +192,11 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
+	case "category":
+		if err := commands.RunCategory(args[1:]); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
 	case "unlink":
 		if err := commands.RunUnlink(args[1:]); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)

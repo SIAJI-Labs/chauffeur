@@ -75,7 +75,7 @@ release:
 
       ### Quick Install
       ```bash
-      curl -sL https://chauffeur.siaji.com/install | bash
+      curl -sSL https://chauffeur.siaji.com/install | bash
       ```
 
       ### Manual Install
