@@ -26,7 +26,7 @@ import { TerminalLine } from '@/types';
 // Constants
 const INSTALL_COMMAND_LINES: TerminalLine[] = [
   { text: "#!/bin/bash", type: "info" },
-  { text: "curl -sL https://chauffeur.siaji.com/install | bash", type: "command" },
+  { text: "curl -sSL https://chauffeur.siaji.com/install | bash", type: "command" },
   { text: "", type: "info" },
   { text: "🔧 Installing Chauffeur...", type: "info", delay: 200 },
   { text: "📋 Detected current directory is not a Chauffeur git repo", type: "info", delay: 400 },
@@ -50,7 +50,7 @@ export default function InstallPage() {
   const [installStarted, setInstallStarted] = useState(false);
 
   const handleCopyInstall = () => {
-    navigator.clipboard.writeText("curl -sL https://chauffeur.siaji.com/install | bash");
+    navigator.clipboard.writeText("curl -sSL https://chauffeur.siaji.com/install | bash");
     setCopied("main");
     setTimeout(() => setCopied(null), 2000);
   };
@@ -62,7 +62,7 @@ export default function InstallPage() {
   };
 
   const handleCopyDirect = () => {
-    navigator.clipboard.writeText('curl -sL https://chauffeur.siaji.com/install | bash');
+    navigator.clipboard.writeText('curl -sSL https://chauffeur.siaji.com/install | bash');
     setCopied("direct");
     setTimeout(() => setCopied(null), 2000);
   };
@@ -111,7 +111,7 @@ export default function InstallPage() {
             <div className="mb-12">
               <div className="inline-flex items-center w-full max-w-2xl bg-slate-800 border border-slate-700 rounded-lg p-1 group hover:border-slate-600 transition-all">
                 <code className="flex-1 px-4 py-3 font-mono text-sm text-emerald-400 select-none">
-                  curl -sL https://chauffeur.siaji.com/install | bash
+                  curl -sSL https://chauffeur.siaji.com/install | bash
                 </code>
                 <button
                   onClick={handleCopyInstall}
@@ -176,7 +176,7 @@ export default function InstallPage() {
               <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
                 <div className="p-4 border-b border-slate-800">
                   <p className="text-sm text-slate-400 font-mono">
-                    ~/projects $ <span className="text-emerald-400">curl -sL https://chauffeur.siaji.com/install | bash</span>
+                    ~/projects $ <span className="text-emerald-400">curl -sSL https://chauffeur.siaji.com/install | bash</span>
                   </p>
                 </div>
                 <TerminalComponent lines={INSTALL_COMMAND_LINES} className="border-0" />
@@ -221,7 +221,7 @@ cd chauffeur
                   >
                     <div className="flex items-center justify-between gap-4">
                       <pre className="text-xs font-mono min-w-0 flex-1">
-curl -sL https://chauffeur.siaji.com/install | bash
+curl -sSL https://chauffeur.siaji.com/install | bash
                       </pre>
                       <button className="text-xs bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 px-2 py-1 rounded border border-emerald-500/30 transition-colors whitespace-nowrap flex-shrink-0">
                         {copied === "direct" ? 'Copied!' : 'Copy'}

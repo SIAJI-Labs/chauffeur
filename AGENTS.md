@@ -97,30 +97,21 @@ runtime:
 created_at: 2025-10-30T12:00:00+07:00
 ```
 
-## 6. Command Surface (authoritative)
-| Command | Key Flags | Summary |
-|---------|-----------|---------|
-| `chauf init` | `--force`, `--quiet` | Bootstrap workspace under `~/.chauffeur/`. Idempotent. |
-| `chauf start` | `--project <path>`, `--all`, `--dry-run` | Start nginx/PHP-FPM plus dnsmasq validation. |
-| `chauf stop` | same flags as start | Stop services and clean port-forward rules. |
-| `chauf restart` | `--project <slug>`, `--all`, `--dry-run` | Restart services (equivalent to stop then start, preserves configuration). |
-| `chauf status` | `[service-type]`, `--project`, `--detail`, `-v` | Show status for global or per-project services. |
-| `chauf link` | `--site`, `--secure`, `--php`, `--http-port`, `--https-port`, `--alias`, `--add-alias`, `--force` | Register current directory, detect template (Laravel/WordPress/general), generate configs with multi-domain support. |
-| `chauf links` | — | List all registered projects in a formatted table. |
-| `chauf unlink` | `--slug`, `--site`, `--project`, `--alias`, `--all`, `--force` | Remove registrations or specific aliases. Defaults to current dir. |
-| `chauf secure` | — | Add SSL certificate to current linked project. Must be run from linked project directory. |
-| `chauf unsecure` | — | Remove SSL certificate from current linked project. Must be run from linked project directory. |
-| `chauf php install <ver>` | `--force`, `--no-ext`, `--from` | Build/install PHP runtime under workspace. |
-| `chauf php use <ver>` | — | Set global default PHP. |
-| `chauf php isolate <ver>` | — | Pin current linked project to a version. |
-| `chauf php current` | — | Show current PHP version for directory or global default. |
-| `chauf remove <service> [version]` | `--force` | Remove installed runtimes (php, nginx, composer). |
-| `chauf uninstall` | `--purge` | Remove workspace (and runtimes with `--purge`). |
-| `chauf self-update` | `--dev` | Update binary from git or rebuild from current repo. |
-| `chauf install composer` | — | Fetch verified composer PHAR and shims. |
-| `chauf logs [service] [version]` | `--follow`, `-f`, `--lines`, `-n`, `--level`, `--context`, `-c`, `--verbose`, `-v`, `--quiet`, `-q` | View and follow service logs with interactive version selection. |
-| `chauf clean [target]` | `--dry-run`, `--force`, `--older-than`, `--keep-versions`, `--what` | Clean workspace files with file size display and accurate reporting. |
-| `chauf info` | — | Show workspace paths, installed services, versions, port config. |
+## 6. Command Surface Overview
+
+**Complete CLI Reference**: See `sites/constants.ts` for authoritative command definitions and documentation.
+
+**Core Command Categories**:
+- **Workspace**: `init`, `uninstall`, `self-update`, `info`
+- **Projects**: `link`, `links`, `unlink`, `secure`, `unsecure`, `category`
+- **Services**: `install`, `start`, `stop`, `restart`, `status`
+- **PHP**: `php install/use/isolate/current`, `composer`
+- **Utilities**: `doctor`, `logs`, `clean`, `migrate`, `hello-world`
+
+**Key Architecture Rules**:
+- All detailed command documentation lives in `sites/constants.ts`
+- Documentation site renders from this single source of truth
+- This handbook focuses on implementation patterns and constraints
 
 ## 7. PHP & Composer Behavior
 - PHP shims always prefer the project’s isolated version (from `project.yaml`). Outside linked projects they use the global default (`chauf php use`) and fall back to 8.3 if nothing is configured.
@@ -306,17 +297,74 @@ Checklist (do not skip):
 - Generated files (templates, configs) must be reproducible. If a command generates files, include instructions/tests to verify them.
 - Releases should be performed by building from clean git state and tagging. Document the steps in README when they change.
 
-## 15. Implementation Workflow for Agents
+## 15. Development Environment & Binary Building
+
+### 15.1 Isolated Development Workspace
+
+**CRITICAL**: During development, always build and test in an isolated temporary workspace to avoid interfering with your production Chauffeur configuration.
+
+#### **Required Development Workflow**:
+1. **Create temporary workspace**: `export CHAUFFEUR_TEMP_WS=$(mktemp -d)`
+2. **Set test environment**: `export HOME=$CHAUFFEUR_TEMP_WS`
+3. **Build development binary**: `go build -o $CHAUFFEUR_TEMP_WS/chauf cli/main.go`
+4. **Use development binary**: `$CHAUFFEUR_TEMP_WS/chauf [command]`
+
+#### **Complete Development Example**:
+```bash
+# Create isolated development environment
+export CHAUFFEUR_TEMP_WS=$(mktemp -d)
+export HOME=$CHAUFFEUR_TEMP_WS
+
+# Build development binary in temp workspace
+go build -o $CHAUFFEUR_TEMP_WS/chauf cli/main.go
+
+# Test your changes safely
+$CHAUFFEUR_TEMP_WS/chauf init
+$CHAUFFEUR_TEMP_WS/chauf link --category "Test Category"
+$CHAUFFEUR_TEMP_WS/chauf category list
+
+# Cleanup when done
+rm -rf $CHAUFFEUR_TEMP_WS
+unset CHAUFFEUR_TEMP_WS
+```
+
+#### **Why This Matters**:
+- **Production safety**: Prevents accidental changes to your real `~/.chauffeur/` workspace
+- **Clean testing**: Each development session starts with a pristine environment
+- **Isolation**: Development binaries won't interfere with your installed Chauffeur
+- **Reproducible bugs**: Clean environment makes debugging easier
+
+#### **Alternative: Directory-Based Isolation**:
+```bash
+# Create dedicated development directory
+mkdir -p /tmp/chauffeur-dev
+export HOME=/tmp/chauffeur-dev
+
+# Build and test
+go build -o /tmp/chauffeur-dev/chauf cli/main.go
+/tmp/chauffeur-dev/chauf [commands]
+```
+
+### 15.2 Binary Building Guidelines
+
+- **Development builds**: Always use `go build -o <path>/chauf cli/main.go` for testing
+- **Never install to system**: Avoid `sudo make install` or system-wide installation during development
+- **Keep workspace separate**: Development workspace (`/tmp/chauffeur-*`) must be separate from production workspace (`~/.chauffeur/`)
+- **Test in isolation**: All feature testing must happen in the temporary environment first
+- **Production verification**: After testing, verify changes work with your production installation if needed
+
+## 16. Implementation Workflow for Agents
 1. **Read docs first**: Before coding, skim README and docs/TODO_STATUS to understand current state.
-2. **Plan**: Break work into verifiable steps. Call out doc updates early.
-3. **Work inside workspace**: Respect Host Impact Policy and workspace layout.
-4. **Keep build dirs when debugging**: Export `CHAUFFEUR_KEEP_BUILD_DIR=1` before running `chauf install php …` if you need the extracted PHP sources to stick around under `/tmp` for manual inspection; unset it to restore automatic cleanup.
-5. **Offline tarballs**: When network access is blocked, set `CHAUFFEUR_PHP_TARBALL`, `CHAUFFEUR_PHP_SIGNATURE`, and `CHAUFFEUR_PHP_KEYRING` to point at local files so the installer can reuse cached PHP artifacts while still verifying signatures.
-6. **Use helpers**: Logging, downloads, checksum, port allocation all have established helpers—use them.
-7. **Test & lint**: Run `go test ./...` and relevant linters before marking tasks complete.
-8. **Update docs**: Apply the synchronization checklist.
-9. **Review output**: Ensure logs look clean, colors degrade gracefully, and errors cite log file locations.
-10. **Final verification**: Re-run key commands (e.g., `chauf link --dry-run`) to validate the new behavior shown in docs.
+2. **Setup isolated workspace**: Create temporary workspace and build development binary (see 15.1).
+3. **Plan**: Break work into verifiable steps. Call out doc updates early.
+4. **Work inside workspace**: Respect Host Impact Policy and workspace layout (use temporary workspace for development).
+5. **Keep build dirs when debugging**: Export `CHAUFFEUR_KEEP_BUILD_DIR=1` before running `chauf install php …` if you need the extracted PHP sources to stick around under `/tmp` for manual inspection; unset it to restore automatic cleanup.
+6. **Offline tarballs**: When network access is blocked, set `CHAUFFEUR_PHP_TARBALL`, `CHAUFFEUR_PHP_SIGNATURE`, and `CHAUFFEUR_PHP_KEYRING` to point at local files so the installer can reuse cached PHP artifacts while still verifying signatures.
+7. **Use helpers**: Logging, downloads, checksum, port allocation all have established helpers—use them.
+8. **Test & lint**: Run `go test ./...` and relevant linters before marking tasks complete.
+9. **Update docs**: Apply the synchronization checklist.
+10. **Review output**: Ensure logs look clean, colors degrade gracefully, and errors cite log file locations.
+11. **Final verification**: Re-run key commands (e.g., `chauf link --dry-run`) to validate the new behavior shown in docs.
 
 ## 16. PHP-FPM Architecture
 

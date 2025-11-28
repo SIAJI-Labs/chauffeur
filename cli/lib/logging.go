@@ -340,6 +340,11 @@ func (l *Logger) PrintSection(title string) {
 	fmt.Fprintf(CurrentStdout, "\n%s %s\n", l.prefix(), l.bold(title))
 }
 
+// PrintSeparator prints a visual separator line
+func (l *Logger) PrintSeparator() {
+	fmt.Fprintf(CurrentStdout, "\n%s %s\n", l.prefix(), l.cyan(strings.Repeat("─", 60)))
+}
+
 // PrintSummary prints a summary section with items
 func (l *Logger) PrintSummary(items []SummaryItem) {
 	fmt.Fprintf(CurrentStdout, "\n%s Summary:\n", l.prefix())

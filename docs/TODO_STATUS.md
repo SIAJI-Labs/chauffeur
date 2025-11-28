@@ -110,6 +110,8 @@ _A living status board for features, debt, and priorities. Keep this in sync wit
 | P4 | CLI command expansion and enhancement | Add new commands and flags for improved user experience and functionality |
 
 **CLI Enhancement**: ✅ Added `-v` shorthand for `--version` flag in main command
+**Multiple PHP Version Support**: ✅ Added support for installing multiple PHP versions in a single command (`chauf install php 8.3 php 7.4`)
+**Visual Installation Experience**: ✅ Added visual separators between service installations for better progress tracking and UX
 
 **Potential Command Enhancements**:
 - `chauf logs <service>` - View service logs (nginx, PHP-FPM errors)
@@ -411,4 +413,4 @@ The following commands were documented but **never implemented** in the actual C
 - Document real-world setups (distro, Go version, dnsmasq config) in issues to broaden coverage
 - Review AGENTS.md and propose clarifications before building new features
 
-_Last updated: 2025-11-19T21:58:00Z_
+_Last updated: 2025-11-26T12:00:00Z_

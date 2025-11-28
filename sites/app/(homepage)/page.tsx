@@ -39,7 +39,7 @@ const LandingPage: React.FC = () => {
   }, []);
 
   const handleCopyInstall = () => {
-    navigator.clipboard.writeText("curl -sL https://chauffeur.siaji.com/install | bash");
+    navigator.clipboard.writeText("curl -sSL https://chauffeur.siaji.com/install | bash");
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -136,7 +136,7 @@ const LandingPage: React.FC = () => {
                    onClick={handleCopyInstall}
                  >
                     <code className="px-4 py-2 font-mono text-sm text-emerald-400 select-all">
-                      curl -sL https://chauffeur.siaji.com/install | bash
+                      curl -sSL https://chauffeur.siaji.com/install | bash
                     </code>
                     <button className="p-2 hover:bg-slate-700 rounded text-slate-400 hover:text-white transition-colors">
                        {copied ? <Check size={16} className="text-emerald-400" /> : <Copy size={16} />}
@@ -236,7 +236,7 @@ const LandingPage: React.FC = () => {
               className="flex items-center gap-2"
             >
               <TerminalIcon size={20} />
-              {copied ? 'Copied!' : 'curl -sL https://chauffeur.siaji.com/install | bash'}
+              {copied ? 'Copied!' : 'curl -sSL https://chauffeur.siaji.com/install | bash'}
               {copied ? <Check size={16} /> : <Copy size={16} />}
             </Button>
             <Link href="/docs" className="w-full sm:w-auto">
