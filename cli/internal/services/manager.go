@@ -466,6 +466,11 @@ func (sm *ServiceManager) GetStatus(service Service) (string, error) {
 	return fmt.Sprintf("running (pid %s)", pid), nil
 }
 
+// GetServiceStatus returns status and error separately to handle "already running" case gracefully
+func (sm *ServiceManager) GetServiceStatus(service Service) (bool, error) {
+	return sm.IsRunning(service)
+}
+
 // generateNginxConfig creates a basic nginx configuration with custom ports
 func (sm *ServiceManager) generateNginxConfig() error {
 	nginxDir := filepath.Join(sm.workspaceDir, "nginx")

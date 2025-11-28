@@ -12,6 +12,7 @@ import (
 
 	"github.com/siaji/chauffeur/cli/internal/config"
 	"github.com/siaji/chauffeur/cli/internal/projects"
+	"github.com/siaji/chauffeur/cli/internal/services"
 	"github.com/siaji/chauffeur/cli/internal/templates"
 	"github.com/siaji/chauffeur/cli/lib"
 )
@@ -252,8 +253,8 @@ func RunLink(args []string) error {
 		return fmt.Errorf("load configuration: %w", err)
 	}
 
-	// Create port validator
-	validator, err := lib.NewPortValidator(cfg)
+	// Create port validator (skip auto restart during linking)
+	validator, err := lib.NewPortValidatorWithOpts(cfg, true)
 	if err != nil {
 		return fmt.Errorf("create port validator: %w", err)
 	}
@@ -485,6 +486,24 @@ func RunLink(args []string) error {
 	} else {
 		templateSpin.Success("nginx templates generated")
 	}
+	
+	// Restart nginx to apply the new project configuration
+	manager, err := services.NewServiceManager()
+	if err != nil {
+		logger.Warn("Unable to restart nginx after linking", err.Error())
+	} else {
+		nginxServices := manager.ListGlobalServices()
+		for _, service := range nginxServices {
+			if strings.Contains(service.Name, "nginx") {
+				if err := manager.Restart(service); err != nil {
+					logger.Warn("Failed to restart nginx after linking", err.Error())
+				} else {
+					logger.Success("Nginx restarted to apply new project configuration", "")
+				}
+				break
+			}
+		}
+	}
 
 	// Provide SSL usage guidance if SSL was generated
 	if proj.Site != nil && proj.Site.SSL {
@@ -498,6 +517,29 @@ func RunLink(args []string) error {
 	logger.Info(fmt.Sprintf("Template: %s", templateType))
 	logger.Info(fmt.Sprintf("Nginx HTTP: %d", cfg.Nginx.HTTPPort))
 	logger.Info(fmt.Sprintf("Nginx HTTPS: %d", cfg.Nginx.HTTPSPort))
+	
+	// Show dedicated FPM information if applicable
+	if dedicatedFPM {
+		logger.Info("")
+		logger.Info("PHP-FPM Configuration:")
+		logger.Info("✓ Dedicated PHP-FPM pool created for this project")
+		logger.Info(fmt.Sprintf("✓ FPM Socket: %s", proj.Runtime.FPM.Socket))
+		logger.Info("✓ FPM Pool Name: chauf-" + slug)
+		logger.Info("")
+		logger.Info("Dedicated FPM Benefits:")
+		logger.Info("  • Isolated PHP configuration (php.ini, extensions)")
+		logger.Info("  • Custom memory and process limits")
+		logger.Info("  • Independent restart capability")
+		logger.Info("")
+		logger.Info("FPM Configuration Location:")
+		logger.Info(fmt.Sprintf("  • Config: %s/runtime/php-fpm/php-fpm.conf", layout.Root))
+		logger.Info(fmt.Sprintf("  • PID file: %s/runtime/php-fpm/php-fpm.pid", layout.Root))
+		logger.Info(fmt.Sprintf("  • Log directory: %s/logs", layout.Root))
+		logger.Info("")
+		logger.Info("To modify FPM settings:")
+		logger.Info(fmt.Sprintf("  • Edit: %s/runtime/php-fpm/php-fpm.conf", layout.Root))
+		logger.Info("  • Restart: chauf stop && chauf start")
+	}
 
 	// Access URLs - always show domain (now default to <slug>.test)
 	if proj.Site != nil && proj.Site.Domain != "" {

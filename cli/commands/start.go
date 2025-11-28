@@ -272,7 +272,15 @@ func RunStart(args []string) error {
 			}
 			projectServices, err := manager.ListProjectServices(projectSlug)
 			if err != nil {
-				logger.Warn(fmt.Sprintf("Could not load services for project %s", projectSlug), fmt.Sprintf("error: %v", err))
+				// If it's an "already running" error, handle gracefully
+				if strings.Contains(err.Error(), "already running") {
+					// Service is already running, add to services but don't treat as error
+					logger.Warn(fmt.Sprintf("Project %s PHP-FPM is already running", projectSlug), "")
+					servicesToStart = append(servicesToStart, projectServices...)
+					continue
+				}
+				// Other errors should be treated as actual errors
+				logger.Warn(fmt.Sprintf("Could not load services for project %s: %v", projectSlug, err), "")
 				continue
 			}
 			servicesToStart = append(servicesToStart, projectServices...)
@@ -307,7 +315,7 @@ func RunStart(args []string) error {
 					for _, projectSlug := range projects {
 						projectServices, err := manager.ListProjectServices(projectSlug)
 						if err != nil {
-							logger.Warn(fmt.Sprintf("Could not load services for project %s", projectSlug), fmt.Sprintf("error: %v", err))
+							logger.Warn(fmt.Sprintf("Could not load services for project %s: %v", projectSlug, err), "")
 							continue
 						}
 						servicesToStart = append(servicesToStart, projectServices...)
@@ -384,6 +392,17 @@ func RunStart(args []string) error {
 		}
 	}
 
+	// Remove duplicate services (shared PHP-FPM for multiple projects)
+	seen := make(map[string]bool)
+	var uniqueServices []services.Service
+	for _, service := range servicesToStart {
+		if !seen[service.Name] {
+			seen[service.Name] = true
+			uniqueServices = append(uniqueServices, service)
+		}
+	}
+	servicesToStart = uniqueServices
+
 	if dryRun {
 		logger.Info(fmt.Sprintf("Would start %d services:", len(servicesToStart)))
 		for _, service := range servicesToStart {
@@ -398,7 +417,7 @@ func RunStart(args []string) error {
 		// Check if service is already running
 		status, err := manager.GetStatus(service)
 		if err != nil {
-			logger.Warn(fmt.Sprintf("Could not check status of %s", service.Name), fmt.Sprintf("error: %v", err))
+			logger.Warn(fmt.Sprintf("Could not check status of %s: %v", service.Name, err), "")
 		} else if status != "stopped" {
 			logger.Success(fmt.Sprintf("%s already %s", service.Name, status), "")
 			continue
