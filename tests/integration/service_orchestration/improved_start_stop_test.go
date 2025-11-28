@@ -68,11 +68,7 @@ func TestImprovedStartStopWithVariousPortScenarios(t *testing.T) {
 				t.Fatalf("Failed to create projects directory: %v", err)
 			}
 			
-			// Debug: log what we're creating
-			t.Logf("Created projects directory: %s", projectsDir)
-			if _, err := os.Stat(projectsDir); err != nil {
-				t.Fatalf("Projects directory not found after creation: %v", err)
-			}
+			
 
 			// Create config for this scenario
 			configContent := `version: 1
