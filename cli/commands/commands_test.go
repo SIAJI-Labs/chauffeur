@@ -3,6 +3,7 @@ package commands
 import (
 	"os"
 	"os/exec"
+	"path/filepath"
 	"testing"
 
 	"github.com/siaji/chauffeur/cli/lib" // Import the lib package for CommandExecutor
@@ -82,6 +83,26 @@ func TestHelpCommands(t *testing.T) {
 
 // TestDryRunCommands tests dry-run functionality
 func TestDryRunCommands(t *testing.T) {
+	// Create temporary workspace for testing
+	tempDir := t.TempDir()
+	originalHome := os.Getenv("HOME")
+	os.Setenv("HOME", tempDir)
+	defer os.Setenv("HOME", originalHome)
+
+	// Initialize workspace in temp directory
+	wsDir := filepath.Join(tempDir, ".chauffeur")
+	err := os.MkdirAll(wsDir, 0755)
+	if err != nil {
+		t.Fatalf("Failed to create workspace directory: %v", err)
+	}
+
+	// Create projects directory to prevent stop command failures
+	projectsDir := filepath.Join(wsDir, "projects")
+	err = os.MkdirAll(projectsDir, 0755)
+	if err != nil {
+		t.Fatalf("Failed to create projects directory: %v", err)
+	}
+
 	// Mock exec.Command to prevent actual iptables calls
 	lib.SetCommandExecutor(func(name string, arg ...string) *exec.Cmd {
 		cs := []string{"-test.run=TestHelperProcess", "--", name}
@@ -93,7 +114,7 @@ func TestDryRunCommands(t *testing.T) {
 	defer lib.ResetCommandExecutor()
 
 	// Test that dry-run commands don't fail due to missing services
-	err := RunStart([]string{"--dry-run"})
+	err = RunStart([]string{"--dry-run"})
 	// This might fail due to missing workspace/services, but shouldn't crash
 	if err != nil {
 		t.Logf("Start dry-run returned error (may be expected): %v", err)
