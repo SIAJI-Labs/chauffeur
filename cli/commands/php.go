@@ -136,8 +136,14 @@ func runPHPIsolate(version string) error {
 	}
 	
 	projectCfg.PHP = version
-	if projectCfg.Runtime.PHPFPM == "" {
-		projectCfg.Runtime.PHPFPM = layout.SocketPath
+	// Always update the PHP-FPM socket path when changing PHP versions
+	// to ensure it points to the correct PHP version socket
+	newSocketPath := filepath.Join(prefix, "php", version, "runtime", "php-fpm", "php-fpm.sock")
+	projectCfg.Runtime.PHPFPM = newSocketPath
+
+	// Also update the FPM socket if it exists
+	if projectCfg.Runtime.FPM != nil {
+		projectCfg.Runtime.FPM.Socket = newSocketPath
 	}
 
 	if err := projects.WriteConfig(projectCfg, layout.ConfigPath, true); err != nil {

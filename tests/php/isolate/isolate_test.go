@@ -1,7 +1,9 @@
 package isolate_test
 
 import (
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/siaji/chauffeur/cli/commands"
@@ -31,4 +33,19 @@ func TestPHPIsolateUpdatesProjectConfig(t *testing.T) {
 
 	projectConfig := filepath.Join(workspace, "projects", "isolated-app", "project.yaml")
 	helpers.AssertFileContains(t, projectConfig, `php: "8.2"`)
+
+	// Test that PHP-FPM socket paths are also updated (critical bug fix)
+	expectedSocketPath := filepath.Join(workspace, "php", "8.2", "runtime", "php-fpm", "php-fpm.sock")
+	helpers.AssertFileContains(t, projectConfig, `phpfpm: `+expectedSocketPath)
+	helpers.AssertFileContains(t, projectConfig, `socket: `+expectedSocketPath)
+
+	// Verify the socket path doesn't contain the old PHP version
+	oldSocketPath := filepath.Join(workspace, "php", "8.3", "runtime", "php-fpm", "php-fpm.sock")
+	data, err := os.ReadFile(projectConfig)
+	if err != nil {
+		t.Fatalf("read %s: %v", projectConfig, err)
+	}
+	if strings.Contains(string(data), oldSocketPath) {
+		t.Fatalf("expected %s not to contain %q", projectConfig, oldSocketPath)
+	}
 }
