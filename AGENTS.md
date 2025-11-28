@@ -406,6 +406,27 @@ Chauffeur provides **project-level PHP-FPM control** to balance resource efficie
 - ✅ **Backward compatibility**: Existing projects continue using shared FPM
 - ✅ **Simple management**: Clear project-level control via flag during linking
 
+## 16. Link Command User Experience Improvements
+
+### Service Restart Timing
+- **Fixed premature restarts**: Port validation no longer restarts nginx during link process
+- **Restart after configuration**: Nginx is restarted only once after successful project linking
+- **Clear messaging**: Shows "will reload after linking" during validation, "restarted to apply configuration" after linking
+
+### Dedicated FPM Information Display
+- **Comprehensive output**: When using `--dedicated-fpm`, shows:
+  - Confirmation of dedicated pool creation
+  - Exact socket path location
+  - FPM pool name
+  - Benefits of dedicated FPM (isolation, custom limits, independent restart)
+  - Configuration file locations (config, PID, logs)
+  - Instructions for customization
+
+### Service Deduplication
+- **Fixed duplicate listings**: `start`, `stop`, and `status` commands now show unique services
+- **Efficient operations**: Shared PHP-FPM services listed once per PHP version
+- **Accurate status**: Project-specific and global services properly categorized
+
 ## 17. Commit Policy for AI Agents
 
 ### 🚫 **NO UNAUTHORIZED COMMITS OR PUSHES** - STRICT PROHIBITION

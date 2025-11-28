@@ -16,10 +16,16 @@ type PortValidator struct {
 	logger            *Logger
 	serviceManager    *services.ServiceManager
 	restartedServices map[string]bool
+	skipAutoRestart   bool // Skip automatic service restarts during linking
 }
 
 // NewPortValidator creates a new port validator instance
 func NewPortValidator(cfg config.Config) (*PortValidator, error) {
+	return NewPortValidatorWithOpts(cfg, false)
+}
+
+// NewPortValidatorWithOpts creates a new port validator instance with options
+func NewPortValidatorWithOpts(cfg config.Config, skipAutoRestart bool) (*PortValidator, error) {
 	// Validate port range configuration
 	pm := NewPortManager(cfg.Ports.StartRange, cfg.Ports.EndRange, cfg.Ports.ConflictResolution)
 	if err := pm.ValidatePortRange(); err != nil {
@@ -41,6 +47,7 @@ func NewPortValidator(cfg config.Config) (*PortValidator, error) {
 		logger:            logger,
 		serviceManager:    svcManager,
 		restartedServices: make(map[string]bool),
+		skipAutoRestart:   skipAutoRestart,
 	}, nil
 }
 
@@ -352,6 +359,13 @@ func (pv *PortValidator) handleManagedPortUsage(serviceName string, port int) (b
 	}
 	if !running {
 		return false, nil
+	}
+
+	// Skip automatic restart during link process
+	if pv.skipAutoRestart {
+		pv.logger.Info(fmt.Sprintf("Port %d is used by %s (will reload after linking)", port, target))
+		pv.restartedServices[target] = true // Mark as handled to avoid duplicate messages
+		return true, nil
 	}
 
 	pv.logger.Info(fmt.Sprintf("Port %d is used by %s; restarting to reload configuration", port, target))

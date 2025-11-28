@@ -25,6 +25,13 @@ func TestStartStopBasic(t *testing.T) {
 		t.Fatalf("Failed to create workspace directory: %v", err)
 	}
 
+	// Create projects directory structure to prevent config loading errors
+	projectsDir := filepath.Join(wsDir, "projects")
+	err = os.MkdirAll(projectsDir, 0755)
+	if err != nil {
+		t.Fatalf("Failed to create projects directory: %v", err)
+	}
+
 	// Create minimal config
 	configContent := `version: 1
 nginx:
@@ -85,6 +92,13 @@ func TestStartStopWithMockedPortForwarding(t *testing.T) {
 	err := os.MkdirAll(wsDir, 0755)
 	if err != nil {
 		t.Fatalf("Failed to create workspace directory: %v", err)
+	}
+
+	// Create projects directory structure to prevent config loading errors
+	projectsDir := filepath.Join(wsDir, "projects")
+	err = os.MkdirAll(projectsDir, 0755)
+	if err != nil {
+		t.Fatalf("Failed to create projects directory: %v", err)
 	}
 
 	// Create config with non-privileged ports to avoid port forwarding

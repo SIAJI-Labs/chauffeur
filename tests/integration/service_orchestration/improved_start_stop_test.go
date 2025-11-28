@@ -61,6 +61,15 @@ func TestImprovedStartStopWithVariousPortScenarios(t *testing.T) {
 				t.Fatalf("Failed to create workspace directory: %v", err)
 			}
 
+			// Create projects directory structure to prevent config loading errors
+			projectsDir := filepath.Join(wsDir, "projects")
+			err = os.MkdirAll(projectsDir, 0755)
+			if err != nil {
+				t.Fatalf("Failed to create projects directory: %v", err)
+			}
+			
+			
+
 			// Create config for this scenario
 			configContent := `version: 1
 nginx:
@@ -129,6 +138,13 @@ func TestErrorHandlingInStartStop(t *testing.T) {
 	err := os.MkdirAll(wsDir, 0755)
 	if err != nil {
 		t.Fatalf("Failed to create workspace directory: %v", err)
+	}
+
+	// Create projects directory structure to prevent config loading errors
+	projectsDir := filepath.Join(wsDir, "projects")
+	err = os.MkdirAll(projectsDir, 0755)
+	if err != nil {
+		t.Fatalf("Failed to create projects directory: %v", err)
 	}
 
 	// Test with invalid configurations
