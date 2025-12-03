@@ -438,7 +438,15 @@ func RunStatus(args []string) error {
 	}
 
 	// Deduplicate services (remove duplicates with same name)
-	servicesToCheck = deduplicateServices(servicesToCheck)
+	seen := make(map[string]bool)
+	var uniqueServices []services.Service
+	for _, service := range servicesToCheck {
+		if !seen[service.Name] {
+			seen[service.Name] = true
+			uniqueServices = append(uniqueServices, service)
+		}
+	}
+	servicesToCheck = uniqueServices
 
 	if len(servicesToCheck) == 0 {
 		if projectSlug != "" {
@@ -575,20 +583,7 @@ func serviceTypeToString(serviceType services.ServiceType) string {
 	}
 }
 
-// deduplicateServices removes duplicate services with the same name, keeping the first occurrence
-func deduplicateServices(serviceList []services.Service) []services.Service {
-	seen := make(map[string]bool)
-	var result []services.Service
 
-	for _, service := range serviceList {
-		if !seen[service.Name] {
-			seen[service.Name] = true
-			result = append(result, service)
-		}
-	}
-
-	return result
-}
 
 /**
  * printStatusUsage renders CLI help for the status command.

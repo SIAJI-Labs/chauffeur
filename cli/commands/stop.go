@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -129,11 +130,27 @@ func RunStop(args []string) error {
 		servicesToStop = append(servicesToStop, globalServices...)
 
 		// Add all project services
-		projects, err := findAllLinkedProjects()
+		cfg, err := config.Load()
 		if err != nil {
-			return fmt.Errorf("find linked projects: %w", err)
+			return fmt.Errorf("load config: %w", err)
 		}
-		for _, projectSlug := range projects {
+		
+		entries, err := os.ReadDir(cfg.ProjectsDir)
+		if err != nil {
+			return fmt.Errorf("read projects directory: %w", err)
+		}
+		
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				continue
+			}
+			
+			projectSlug := entry.Name()
+			projectPath := filepath.Join(cfg.ProjectsDir, projectSlug)
+			configPath := filepath.Join(projectPath, "project.yaml")
+			if _, err := os.Stat(configPath); err != nil {
+				continue
+			}
 			projectServices, err := manager.ListProjectServices(projectSlug)
 			if err != nil {
 				logger.Warn("Could not load project services", fmt.Sprintf("%s: %v", projectSlug, err))
@@ -142,6 +159,17 @@ func RunStop(args []string) error {
 			servicesToStop = append(servicesToStop, projectServices...)
 		}
 	}
+
+	// Remove duplicate services (shared PHP-FPM for multiple projects)
+	seen := make(map[string]bool)
+	var uniqueServices []services.Service
+	for _, svc := range servicesToStop {
+		if !seen[svc.Name] {
+			seen[svc.Name] = true
+			uniqueServices = append(uniqueServices, svc)
+		}
+	}
+	servicesToStop = uniqueServices
 
 	if len(servicesToStop) == 0 {
 		logger.Info("No services to stop.")

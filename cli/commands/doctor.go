@@ -6,12 +6,15 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 
 	"github.com/siaji/chauffeur/cli/internal/config"
+	"github.com/siaji/chauffeur/cli/installers"
 	"github.com/siaji/chauffeur/cli/internal/services"
+	"github.com/siaji/chauffeur/cli/internal/workspace"
 	"github.com/siaji/chauffeur/cli/lib"
 )
 
@@ -219,6 +222,33 @@ func parseDoctorArgs(args []string) DoctorOptions {
 		case "--quiet", "-q":
 			options.Quiet = true
 			i++
+		case "--internal-fix-openssl":
+			// Handle internal OpenSSL configuration generation
+			if i+2 >= len(args) {
+				fmt.Printf("Internal fix-openssl requires --php-version and --workspace-dir flags\n")
+				os.Exit(1)
+			}
+			phpVersion := ""
+			workspaceDir := ""
+			// Parse the additional flags for internal use
+			for j := i + 1; j < len(args) && j < i+3; j++ {
+				if strings.HasPrefix(args[j], "--php-version=") {
+					phpVersion = strings.TrimPrefix(args[j], "--php-version=")
+				} else if strings.HasPrefix(args[j], "--workspace-dir=") {
+					workspaceDir = strings.TrimPrefix(args[j], "--workspace-dir=")
+				}
+			}
+			if phpVersion == "" || workspaceDir == "" {
+				fmt.Printf("Internal fix-openssl requires --php-version and --workspace-dir flags\n")
+				os.Exit(1)
+			}
+			// Call the OpenSSL configuration function
+			if err := installers.WriteOpenSSLConf(workspaceDir, phpVersion); err != nil {
+				fmt.Printf("Failed to generate OpenSSL configuration: %v\n", err)
+				os.Exit(1)
+			}
+			fmt.Printf("✓ OpenSSL configuration generated for PHP %s\n", phpVersion)
+			os.Exit(0)
 		default:
 			fmt.Printf("Unknown flag: %s\n\n", arg)
 			printDoctorUsage()
@@ -664,6 +694,99 @@ func checkSSLDependencies(options DoctorOptions, fixPlans *[]FixPlan) ([]Depende
 	}
 
 	checks = append(checks, mkcertCheck)
+
+	// Check OpenSSL Configuration for PHP
+	opensslConfigCheck := DependencyCheck{
+		Name:        "php-openssl-config",
+		Description: "PHP OpenSSL configuration with CA certificates",
+		CanFix:      true,
+	}
+
+	// Check if any PHP installations exist and validate OpenSSL configuration
+	workspaceDir, err := workspace.Dir()
+	if err == nil {
+		phpDir := filepath.Join(workspaceDir, "php")
+		if phpInstallations, err := os.ReadDir(phpDir); err == nil && len(phpInstallations) > 0 {
+			// Found PHP installations, check OpenSSL configuration
+			configIssues := []string{}
+			configuredVersions := []string{}
+
+			for _, phpVersionDir := range phpInstallations {
+				if !phpVersionDir.IsDir() {
+					continue
+				}
+
+				version := phpVersionDir.Name()
+				opensslConfPath := filepath.Join(workspaceDir, "php", version, "etc", "conf.d", "openssl.ini")
+
+				if _, err := os.Stat(opensslConfPath); err != nil {
+					configIssues = append(configIssues, fmt.Sprintf("PHP %s: openssl.ini missing", version))
+				} else {
+					// Validate configuration content
+					if content, err := os.ReadFile(opensslConfPath); err == nil {
+						configStr := string(content)
+						if strings.Contains(configStr, "openssl.cafile") && strings.Contains(configStr, "openssl.capath") {
+							configuredVersions = append(configuredVersions, version)
+						} else {
+							configIssues = append(configIssues, fmt.Sprintf("PHP %s: openssl.ini incomplete", version))
+						}
+					}
+				}
+			}
+
+			if len(configIssues) > 0 {
+				opensslConfigCheck.Installed = false
+				opensslConfigCheck.Status = "❌ OpenSSL configuration issues found"
+				opensslConfigCheck.Errors = append(opensslConfigCheck.Errors, configIssues...)
+				// Add fix plan for each PHP version that needs OpenSSL configuration
+				for _, issue := range configIssues {
+					if strings.Contains(issue, "missing") || strings.Contains(issue, "incomplete") {
+						version := strings.TrimPrefix(issue, "PHP ")
+						version = strings.TrimSuffix(version, ": openssl.ini missing")
+						version = strings.TrimSuffix(version, ": openssl.ini incomplete")
+						*fixPlans = append(*fixPlans, FixPlan{
+							Name:        fmt.Sprintf("Generate OpenSSL config for PHP %s", version),
+							Description: "Create openssl.ini with proper CA certificate paths",
+							Command:     fmt.Sprintf("chauf doctor --fix-openssl --php-version %s", version),
+							Category:    "SSL Certificate Dependencies",
+							Priority:    2, // Warning level
+						})
+					}
+				}
+				errorCount++
+			} else if len(configuredVersions) > 0 {
+				opensslConfigCheck.Installed = true
+				opensslConfigCheck.Version = fmt.Sprintf("configured for PHP %s", strings.Join(configuredVersions, ", "))
+				opensslConfigCheck.Status = fmt.Sprintf("✅ Available (%s)", opensslConfigCheck.Version)
+			} else {
+				opensslConfigCheck.Installed = false
+				opensslConfigCheck.Status = "⚠️ No OpenSSL configuration found"
+				opensslConfigCheck.Warnings = append(opensslConfigCheck.Warnings, "PHP OpenSSL configuration recommended for secure connections")
+				// Add fix plan to generate OpenSSL config for all PHP versions
+				for _, phpVersionDir := range phpInstallations {
+					if !phpVersionDir.IsDir() {
+						continue
+					}
+					version := phpVersionDir.Name()
+					*fixPlans = append(*fixPlans, FixPlan{
+						Name:        fmt.Sprintf("Generate OpenSSL config for PHP %s", version),
+						Description: "Create openssl.ini with proper CA certificate paths",
+						Command:     fmt.Sprintf("chauf doctor --internal-fix-openssl --php-version %s --workspace-dir %s", version, workspaceDir),
+						Category:    "SSL Certificate Dependencies",
+						Priority:    2, // Warning level
+					})
+				}
+				warningCount++
+			}
+		} else {
+			opensslConfigCheck.Status = "ℹ️ No PHP installations found"
+		}
+	} else {
+		opensslConfigCheck.Status = "⚠️ Could not access Chauffeur workspace"
+		opensslConfigCheck.Warnings = append(opensslConfigCheck.Warnings, "Unable to validate OpenSSL configuration")
+	}
+
+	checks = append(checks, opensslConfigCheck)
 
 	// Print results and collect fix plans
 	for _, check := range checks {
