@@ -652,6 +652,24 @@ If your distribution splits libraries differently, install the equivalent dev pa
 
 All compiled runtimes include GNU Readline via `--with-readline`, which fixes cursor navigation inside PsySH/`php artisan tinker` and provides persistent line editing in `php -a`. Chauffeur also enables `mysqli`, `PDO_MySQL`, `mysqlnd`, the PECL `imagick` extension, and math extensions `gmp` and `bcmath` by default so database-heavy, image-processing, and mathematics-intensive apps work immediately after `chauf install php`.
 
+## OpenSSL Certificate Configuration
+
+**Automatic OpenSSL Configuration**: Each PHP installation now includes automatic OpenSSL configuration with distribution-aware certificate authority paths, ensuring secure connections work immediately.
+
+**Features**:
+- **Distribution Detection**: Automatically detects Linux distribution (Fedora, Ubuntu, Arch, openSUSE, etc.)
+- **CA Path Management**: Sets appropriate certificate bundle paths for each distribution
+- **SSL Verification**: Enables PHP streams (HTTPS APIs, SMTP over SSL, Composer secure downloads)
+- **Per-Version Configuration**: Each PHP version gets its own `openssl.ini` in `etc/conf.d/`
+
+**Certificate Paths by Distribution**:
+- **RHEL/Family** (Fedora, CentOS, Rocky): `/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem`
+- **Debian/Ubuntu**: `/etc/ssl/certs/ca-certificates.crt`
+- **Arch Linux**: `/etc/ssl/certs/ca-certificates.crt`
+- **openSUSE**: `/etc/ssl/ca-bundle.pem`
+
+**Doctor Integration**: `chauf doctor` now validates OpenSSL configuration and can auto-generate missing configuration files with `chauf doctor --auto-fix`.
+
 Refer to `AGENTS.md` for the authoritative workspace layout, dnsmasq instructions, and logging spec.
 
 ## Development & Contribution
