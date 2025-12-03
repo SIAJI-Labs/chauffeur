@@ -502,6 +502,12 @@ func InstallPHPSource(version string, opts InstallOptions) (err error) {
 	}
 	finalizeLogger.Success("PHP upload limits configured (256MB)", "")
 
+	finalizeLogger.Info("Setting up OpenSSL certificate configuration")
+	if err := WriteOpenSSLConf(opts.Prefix, version); err != nil {
+		return err
+	}
+	finalizeLogger.Success("OpenSSL certificate verification configured", "")
+
 	return nil
 }
 
@@ -2784,5 +2790,124 @@ func PromptGDExtension(version string, logger *lib.Logger, force bool) (bool, er
 	default:
 		logger.Warn("Invalid choice", "Skipping GD extension")
 		return false, nil
+	}
+}
+
+/**
+ * writeOpenSSLConf creates OpenSSL configuration with proper CA bundle paths.
+ * This automatically detects the Linux distribution and sets appropriate certificate paths.
+ *
+ * @param prefix Installation prefix directory
+ * @param version PHP version
+ * @return error if configuration creation fails
+ */
+func WriteOpenSSLConf(prefix, version string) error {
+	phpDir := filepath.Join(prefix, "php", version)
+
+	// Create conf.d directory if it doesn't exist
+	confDDir := filepath.Join(phpDir, "etc", "conf.d")
+	if err := os.MkdirAll(confDDir, 0o755); err != nil {
+		return fmt.Errorf("failed to create extension config directory: %w", err)
+	}
+
+	// Detect Linux distribution and get appropriate CA bundle paths
+	caBundlePath, caDirPath := getCAPaths()
+
+	// Create OpenSSL configuration with proper certificate paths
+	opensslConfContent := fmt.Sprintf(`; Chauffeur OpenSSL Configuration for PHP %s
+; Auto-generated for %s distribution
+;
+; Certificate Authority settings for SSL/TLS verification
+; This configuration enables secure connections to remote services
+; including SMTP servers, HTTPS APIs, and other TLS-enabled services
+;
+
+; Path to the CA bundle file containing trusted root certificates
+openssl.cafile = %s
+
+; Path to the directory containing CA certificates
+openssl.capath = %s
+
+; Additional SSL/TLS security settings (optional but recommended)
+; These settings enhance security for SSL/TLS connections
+
+; Minimum TLS version (modern secure setting)
+; Uncomment the line below to require TLS 1.2 or higher
+; openssl.ciphers = HIGH:!aNULL:!MD5
+
+; Enable strict certificate verification by default
+; This is now the default in modern PHP versions
+; openssl.verify_peer = 1
+; openssl.verify_peer_name = 1
+`, version, detectLinuxDistribution(), caBundlePath, caDirPath)
+
+	opensslConfPath := filepath.Join(confDDir, "openssl.ini")
+	if err := os.WriteFile(opensslConfPath, []byte(opensslConfContent), 0o644); err != nil {
+		return fmt.Errorf("failed to create openssl.ini: %w", err)
+	}
+
+	return nil
+}
+
+/**
+ * detectLinuxDistribution detects the current Linux distribution.
+ *
+ * @return distribution name as string
+ */
+func detectLinuxDistribution() string {
+	if _, err := os.Stat("/etc/os-release"); err == nil {
+		data, readErr := os.ReadFile("/etc/os-release")
+		if readErr == nil {
+			lines := strings.Split(string(data), "\n")
+			for _, line := range lines {
+				if strings.HasPrefix(line, "ID=") {
+					return strings.TrimPrefix(line, "ID=")
+				}
+			}
+		}
+	}
+
+	// Fallback detection methods
+	if _, err := os.Stat("/etc/redhat-release"); err == nil {
+		return "rhel"
+	}
+	if _, err := os.Stat("/etc/debian_version"); err == nil {
+		return "debian"
+	}
+
+	return "unknown"
+}
+
+/**
+ * getCAPaths returns the appropriate CA bundle and CA directory paths
+ * based on the detected Linux distribution.
+ *
+ * @return caBundlePath, caDirPath
+ */
+func getCAPaths() (string, string) {
+	distro := detectLinuxDistribution()
+
+	switch distro {
+	case "fedora", "rhel", "centos", "rocky", "almalinux":
+		return "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem", "/etc/pki/tls/certs"
+	case "ubuntu", "debian":
+		return "/etc/ssl/certs/ca-certificates.crt", "/etc/ssl/certs"
+	case "arch":
+		return "/etc/ssl/certs/ca-certificates.crt", "/etc/ssl/certs"
+	case "opensuse", "sles":
+		return "/etc/ssl/ca-bundle.pem", "/etc/ssl/certs"
+	default:
+		// Fallback: try common locations
+		for _, path := range []string{
+			"/etc/pki/tls/cert.pem",
+			"/etc/ssl/certs/ca-certificates.crt",
+			"/etc/ssl/ca-bundle.pem",
+		} {
+			if _, err := os.Stat(path); err == nil {
+				return path, "/etc/ssl/certs"
+			}
+		}
+		// Default fallback
+		return "/etc/ssl/certs/ca-certificates.crt", "/etc/ssl/certs"
 	}
 }

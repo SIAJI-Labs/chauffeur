@@ -487,6 +487,7 @@ export const CLI_COMMANDS: CommandDefinition[] = [
       'Cross-platform support (Ubuntu/Debian, Arch, Fedora)',
       'Validates build dependencies for PHP compilation',
       'Checks SSL certificate setup (mkcert, OpenSSL)',
+      'Validates PHP OpenSSL configuration with distribution-aware CA paths',
       'Validates network configuration and port availability',
       'Tests DNS resolution for .test domains',
       'Provides distro-specific fix commands'

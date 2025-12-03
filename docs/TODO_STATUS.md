@@ -65,6 +65,7 @@ _A living status board for features, debt, and priorities. Keep this in sync wit
 - Laravel-required PHP extensions (gd, zip, exif, freetype, imagick) enabled during builds
 - Documented host packages (libzip, libjpeg, libpng, freetype, libxml2, curl, zlib, bzip2, readline, libmagickwand, libsodium) required before compiling PHP
 - PHP installer validates `pkg-config` + all required libraries (libzip/libjpeg/libpng/freetype/libxml2/libcurl/zlib/libxslt/readline/MagickWand/libsodium) before starting long builds so users get actionable remediation early
+- **OpenSSL Certificate Configuration**: Automatic OpenSSL configuration with distribution-aware CA certificate paths for all PHP installations. Each PHP version gets `openssl.ini` in `etc/conf.d/` with proper `openssl.cafile` and `openssl.capath` settings for secure TLS connections (HTTPS APIs, SMTP over SSL, Composer secure downloads).
 - PHP runtimes ship with GNU Readline enabled so PsySH / `php artisan tinker` arrow keys and history behave like system PHP builds
 - PHP builds enable mysqlnd-based `mysqli` and `PDO_MySQL` extensions so database-backed apps run immediately after `chauf install php`
 - **Enhanced PHP legacy dependency matrix** with version-specific constraints for PHP 7.4/8.0 (libxml, ImageMagick, libcurl compatibility)
