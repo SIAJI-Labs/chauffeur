@@ -1,17 +1,17 @@
 package commands
 
 import (
-	"fmt"
-	"os"
-	"path/filepath"
-	"strings"
-	"time"
+    "fmt"
+    "os"
+    "path/filepath"
+    "strings"
+    "time"
 
-	"github.com/siaji/chauffeur/cli/internal/config"
-	"github.com/siaji/chauffeur/cli/internal/services"
-	"github.com/siaji/chauffeur/cli/internal/system"
-	"github.com/siaji/chauffeur/cli/internal/workspace"
-	"github.com/siaji/chauffeur/cli/lib"
+    "github.com/siaji/chauffeur/cli/internal/config"
+    "github.com/siaji/chauffeur/cli/internal/services"
+    "github.com/siaji/chauffeur/cli/internal/system"
+    "github.com/siaji/chauffeur/cli/internal/workspace"
+    "github.com/siaji/chauffeur/cli/lib"
 )
 
 /**
@@ -248,7 +248,7 @@ func RunStart(args []string) error {
 	}
 
 	// Create service manager
-	manager, err := services.NewServiceManager()
+	manager, err := newServiceManager()
 	if err != nil {
 		return fmt.Errorf("create service manager: %w", err)
 	}
@@ -484,7 +484,8 @@ func findAllLinkedProjects() ([]string, error) {
  * printStartUsage renders CLI help for the start command.
  */
 func printStartUsage() {
-	fmt.Println(`Usage: chauf start [service...] [--project <slug>] [--all] [--dry-run]
+	logger := lib.NewCommandLogger("start")
+	logger.PrintBlock(`Usage: chauf start [service...] [--project <slug>] [--all] [--dry-run]
 
 Starts Chauffeur services with chauf- prefix to avoid conflicts with system services.
 

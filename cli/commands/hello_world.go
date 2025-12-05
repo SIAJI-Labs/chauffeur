@@ -1,10 +1,6 @@
 package commands
 
-import (
-	"fmt"
-
-	"github.com/siaji/chauffeur/cli/lib"
-)
+import "github.com/siaji/chauffeur/cli/lib"
 
 // RunHelloWorld handles `chauf hello-world` command invocations.
 func RunHelloWorld(args []string) error {
@@ -27,7 +23,8 @@ func RunHelloWorld(args []string) error {
 }
 
 func printHelloWorldUsage() {
-	fmt.Println(`Usage: chauf hello-world
+	logger := lib.NewCommandLogger("hello-world")
+	logger.PrintBlock(`Usage: chauf hello-world
 
 Prints a friendly greeting message.
 

@@ -146,7 +146,8 @@ func RunUninstall(args []string) error {
 }
 
 func printUninstallUsage() {
-	fmt.Println(`Usage: chauf uninstall [--purge]
+	logger := lib.NewCommandLogger("uninstall")
+	logger.PrintBlock(`Usage: chauf uninstall [--purge]
 
 Remove the Chauffeur workspace while preserving valuable cache and runtimes.
 

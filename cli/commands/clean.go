@@ -258,7 +258,7 @@ func (c *Cleaner) cleanLogsInDirectory(dir string, options *CleanOptions) (int64
 			}
 
 			if options.Verbose {
-				fmt.Printf("  Found log: %s (%s)\n", path, c.formatBytes(info.Size()))
+				c.logger.Info(fmt.Sprintf("Found log: %s (%s)", path, c.formatBytes(info.Size())))
 			}
 
 			// Only count files that are actually deleted
@@ -270,7 +270,7 @@ func (c *Cleaner) cleanLogsInDirectory(dir string, options *CleanOptions) (int64
 						totalSize += info.Size()
 						totalFiles++
 						if options.Verbose {
-							fmt.Printf("  Deleted: %s\n", path)
+							c.logger.Info(fmt.Sprintf("Deleted: %s", path))
 						}
 					}
 				}
@@ -430,7 +430,7 @@ func (c *Cleaner) cleanOldVersions(options *CleanOptions) error {
 		}
 
 		if options.Verbose {
-			fmt.Printf("  Old version: %s (%s)\n", filepath.Base(versionDir), c.formatBytes(size))
+			c.logger.Info(fmt.Sprintf("Old version: %s (%s)", filepath.Base(versionDir), c.formatBytes(size)))
 		}
 
 		if !options.DryRun {
@@ -441,7 +441,7 @@ func (c *Cleaner) cleanOldVersions(options *CleanOptions) error {
 					totalSize += size
 					totalRemoved++
 					if options.Verbose {
-						fmt.Printf("  Deleted: %s\n", versionDir)
+						c.logger.Info(fmt.Sprintf("Deleted: %s", versionDir))
 					}
 				}
 			}
@@ -513,7 +513,7 @@ func (c *Cleaner) cleanSSLCerts(options *CleanOptions) error {
 			// Check if this certificate is still active
 			if !activeCerts[domain] {
 				if options.Verbose {
-					fmt.Printf("  Stale certificate: %s (%s)\n", filepath.Base(path), c.formatBytes(info.Size()))
+					c.logger.Info(fmt.Sprintf("Stale certificate: %s (%s)", filepath.Base(path), c.formatBytes(info.Size())))
 				}
 
 				if !options.DryRun {
@@ -524,7 +524,7 @@ func (c *Cleaner) cleanSSLCerts(options *CleanOptions) error {
 							totalSize += info.Size()
 							totalRemoved++
 							if options.Verbose {
-								fmt.Printf("  Deleted: %s\n", path)
+								c.logger.Info(fmt.Sprintf("Deleted: %s", path))
 							}
 						}
 					}
@@ -594,7 +594,7 @@ func (c *Cleaner) cleanProjects(options *CleanOptions) error {
 			}
 
 			if options.Verbose {
-				fmt.Printf("  Unlinked project: %s (%s)\n", projectSlug, c.formatBytes(size))
+				c.logger.Info(fmt.Sprintf("Unlinked project: %s (%s)", projectSlug, c.formatBytes(size)))
 			}
 
 			if !options.DryRun {
@@ -605,7 +605,7 @@ func (c *Cleaner) cleanProjects(options *CleanOptions) error {
 						totalSize += size
 						totalRemoved++
 						if options.Verbose {
-							fmt.Printf("  Deleted: %s\n", projectPath)
+							c.logger.Info(fmt.Sprintf("Deleted: %s", projectPath))
 						}
 					}
 				}
@@ -662,7 +662,7 @@ func (c *Cleaner) cleanDirectory(dir string, options *CleanOptions, recursive bo
 					totalSize += info.Size()
 					totalFiles++
 					if options.Verbose {
-						fmt.Printf("  Deleted: %s\n", path)
+						c.logger.Info(fmt.Sprintf("Deleted: %s", path))
 					}
 				}
 			}
@@ -705,7 +705,8 @@ func (c *Cleaner) confirmDelete(itemType, path string) bool {
 		sizeStr = fmt.Sprintf(" (%s)", c.formatBytes(info.Size()))
 	}
 
-	fmt.Printf("Delete %s: %s%s? [y/N] ", itemType, path, sizeStr)
+	prompt := fmt.Sprintf("Delete %s: %s%s? [y/N]", itemType, path, sizeStr)
+	c.logger.Prompt(prompt, "Type 'y' to confirm")
 	var response string
 	fmt.Scanln(&response)
 	return strings.ToLower(strings.TrimSpace(response)) == "y"
@@ -727,7 +728,8 @@ func (c *Cleaner) formatBytes(bytes int64) string {
 
 // printCleanUsage renders CLI help for the clean command
 func printCleanUsage() {
-	fmt.Println(`Usage: chauf clean [target] [options]
+	logger := lib.NewCommandLogger("clean")
+	logger.PrintBlock(`Usage: chauf clean [target] [options]
 
 Clean up workspace files and free up disk space.
 

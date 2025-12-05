@@ -12,7 +12,6 @@ import (
 
 	"github.com/siaji/chauffeur/cli/internal/config"
 	"github.com/siaji/chauffeur/cli/internal/projects"
-	"github.com/siaji/chauffeur/cli/internal/services"
 	"github.com/siaji/chauffeur/cli/internal/templates"
 	"github.com/siaji/chauffeur/cli/lib"
 )
@@ -486,9 +485,9 @@ func RunLink(args []string) error {
 	} else {
 		templateSpin.Success("nginx templates generated")
 	}
-	
+
 	// Restart nginx to apply the new project configuration
-	manager, err := services.NewServiceManager()
+	manager, err := newServiceManager()
 	if err != nil {
 		logger.Warn("Unable to restart nginx after linking", err.Error())
 	} else {
@@ -517,7 +516,7 @@ func RunLink(args []string) error {
 	logger.Info(fmt.Sprintf("Template: %s", templateType))
 	logger.Info(fmt.Sprintf("Nginx HTTP: %d", cfg.Nginx.HTTPPort))
 	logger.Info(fmt.Sprintf("Nginx HTTPS: %d", cfg.Nginx.HTTPSPort))
-	
+
 	// Show dedicated FPM information if applicable
 	if dedicatedFPM {
 		logger.Info("")
@@ -574,7 +573,8 @@ func RunLink(args []string) error {
 }
 
 func printLinkUsage() {
-	fmt.Print(`Chauffeur Project Linking
+	logger := lib.NewCommandLogger("link")
+	logger.PrintBlock(`Chauffeur Project Linking
 
 Usage:
   chauf link [--site <domain>] [--secure] [--php <version>] [--dedicated-fpm] [--http-port <port>] [--https-port <port>] [--alias <domain>]... [--category <name>] [--force]
@@ -970,11 +970,11 @@ func generateMultiDomainSelfSignedCertificate(logger *lib.Logger, certPath, keyP
 
 	// Create OpenSSL configuration for SAN certificate
 	opensslConfig := createSANConfig(domains)
-	
+
 	// Get workspace directory from certificate path
 	workspaceDir := filepath.Dir(filepath.Dir(certPath)) // ~/.chauffeur from ~/.chauffeur/nginx/certs/file.crt
 	configPath := filepath.Join(workspaceDir, "chauffeur-san.conf")
-	
+
 	if err := os.WriteFile(configPath, []byte(opensslConfig), 0o644); err != nil {
 		return lib.SSLCertificateTypeSelfSigned, fmt.Errorf("write OpenSSL config: %w", err)
 	}

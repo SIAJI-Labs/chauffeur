@@ -592,7 +592,8 @@ func formatDuration(d time.Duration) string {
 }
 
 func printSelfUpdateUsage() {
-	fmt.Print(`Chauffeur Self-Update
+	logger := lib.NewCommandLogger("self-update")
+	logger.PrintBlock(`Chauffeur Self-Update
 
 Usage:
   chauf self-update           Update chauffeur by pulling the latest git changes and rebuilding the CLI binary.

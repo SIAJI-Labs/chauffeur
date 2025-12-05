@@ -101,10 +101,10 @@ type pkgRequirement struct {
 
 // legacyDependency represents version-specific dependency constraints for legacy PHP versions
 type legacyDependency struct {
-	PHPVersion    string
-	PackageName   string
-	MinVersion    string
-	MaxVersion    string // Upper bound for legacy compatibility
+	PHPVersion      string
+	PackageName     string
+	MinVersion      string
+	MaxVersion      string   // Upper bound for legacy compatibility
 	BlockedVersions []string // Versions explicitly blocked for this PHP version
 }
 
@@ -132,32 +132,32 @@ var phpPkgRequirements = []pkgRequirement{
 var legacyDependencyMatrix = []legacyDependency{
 	// PHP 7.4 has stricter compatibility requirements due to age
 	{
-		PHPVersion:     "7.4",
-		PackageName:    "libxml-2.0",
-		MaxVersion:     "2.16.99", // Updated: libxml2 2.15+ works fine with PHP 7.4 with proper compilation
+		PHPVersion:  "7.4",
+		PackageName: "libxml-2.0",
+		MaxVersion:  "2.16.99", // Updated: libxml2 2.15+ works fine with PHP 7.4 with proper compilation
 	},
 	{
-		PHPVersion:     "7.4",
-		PackageName:    "libcurl",
-		MaxVersion:     "9.99.0", // Updated: Newer libcurl versions work fine with PHP 7.4
+		PHPVersion:  "7.4",
+		PackageName: "libcurl",
+		MaxVersion:  "9.99.0", // Updated: Newer libcurl versions work fine with PHP 7.4
 	},
 	{
-		PHPVersion:     "7.4",
-		PackageName:    "MagickWand",
-		MinVersion:     "6.9.0",
-		MaxVersion:     "7.99.0", // Updated: ImageMagick 7.1+ works fine with PHP 7.4
+		PHPVersion:  "7.4",
+		PackageName: "MagickWand",
+		MinVersion:  "6.9.0",
+		MaxVersion:  "7.99.0", // Updated: ImageMagick 7.1+ works fine with PHP 7.4
 	},
 
 	// PHP 8.0 has some constraints but is more flexible than 7.4
 	{
-		PHPVersion:     "8.0",
-		PackageName:    "libxml-2.0",
-		MaxVersion:     "2.16.99", // Updated: PHP 8.0 works well with newer libxml2 versions
+		PHPVersion:  "8.0",
+		PackageName: "libxml-2.0",
+		MaxVersion:  "2.16.99", // Updated: PHP 8.0 works well with newer libxml2 versions
 	},
 	{
-		PHPVersion:     "8.0",
-		PackageName:    "MagickWand",
-		MinVersion:     "6.9.0",
+		PHPVersion:  "8.0",
+		PackageName: "MagickWand",
+		MinVersion:  "6.9.0",
 	},
 }
 
@@ -1100,8 +1100,8 @@ func buildAndInstallPHP(opts InstallOptions, version, sourceDir string, logger *
 			// User wants GD - we'll build it as bundled extension later
 			var filteredArgs []string
 			gdOptions := map[string]bool{
-				"--enable-gd":        true,
-				"--with-jpeg=/usr":  true,
+				"--enable-gd":          true,
+				"--with-jpeg=/usr":     true,
 				"--with-freetype=/usr": true,
 			}
 			for _, arg := range confArgs {
@@ -1115,8 +1115,8 @@ func buildAndInstallPHP(opts InstallOptions, version, sourceDir string, logger *
 			// Remove GD-related options for PHP 8.0 when user doesn't want it
 			var filteredArgs []string
 			gdOptions := map[string]bool{
-				"--enable-gd":        true,
-				"--with-jpeg=/usr":  true,
+				"--enable-gd":          true,
+				"--with-jpeg=/usr":     true,
 				"--with-freetype=/usr": true,
 			}
 			for _, arg := range confArgs {
@@ -1132,8 +1132,8 @@ func buildAndInstallPHP(opts InstallOptions, version, sourceDir string, logger *
 			// User wants GD - we'll build it as bundled extension later
 			var filteredArgs []string
 			gdOptions := map[string]bool{
-				"--enable-gd":        true,
-				"--with-jpeg=/usr":  true,
+				"--enable-gd":          true,
+				"--with-jpeg=/usr":     true,
 				"--with-freetype=/usr": true,
 			}
 			for _, arg := range confArgs {
@@ -1147,8 +1147,8 @@ func buildAndInstallPHP(opts InstallOptions, version, sourceDir string, logger *
 			// Remove GD-related options for PHP 7.4 when user doesn't want it
 			var filteredArgs []string
 			gdOptions := map[string]bool{
-				"--enable-gd":        true,
-				"--with-jpeg=/usr":  true,
+				"--enable-gd":          true,
+				"--with-jpeg=/usr":     true,
 				"--with-freetype=/usr": true,
 			}
 			for _, arg := range confArgs {
@@ -2767,10 +2767,8 @@ func PromptGDExtension(version string, logger *lib.Logger, force bool) (bool, er
 	logger.Info("GD extension enables image processing (uploads, thumbnails, watermarks)")
 	logger.Info("This adds 2-3 minutes to installation time")
 
-	fmt.Printf("\nWould you like to enable GD image processing support?\n")
-	fmt.Printf("  1) Enable GD (recommended for image processing)\n")
-	fmt.Printf("  2) Skip GD (faster installation)\n")
-	fmt.Printf("Enter your choice (1-2, default=2): ")
+	logger.PrintBlock("\nWould you like to enable GD image processing support?\n  1) Enable GD (recommended for image processing)\n  2) Skip GD (faster installation)")
+	logger.Prompt("Enter your choice (1-2, default=2):", "")
 
 	reader := bufio.NewReader(os.Stdin)
 	input, err := reader.ReadString('\n')

@@ -8,6 +8,14 @@ import (
 	"strings"
 )
 
+// Logger defines the minimal logging interface used for workspace prompts.
+type Logger interface {
+	PrintBlock(string)
+	Info(string)
+	Prompt(string, string)
+	Success(string, string)
+}
+
 const workspaceDirName = ".chauffeur"
 
 // Dir returns the root Chauffeur workspace path (defaults to ~/.chauffeur).
@@ -69,9 +77,9 @@ func IsInitialized() bool {
 	return info.IsDir()
 }
 
-// ValidateOrPrompt checks if workspace is initialized, and offers to initialize it if not.
+// ValidateOrPromptWithLogger checks if workspace is initialized, and offers to initialize it if not.
 // Returns true if workspace is ready (either existed or was successfully initialized).
-func ValidateOrPrompt() (bool, error) {
+func ValidateOrPromptWithLogger(logger Logger) (bool, error) {
 	if IsInitialized() {
 		return true, nil
 	}
@@ -81,39 +89,77 @@ func ValidateOrPrompt() (bool, error) {
 		return false, fmt.Errorf("determine workspace path: %w", err)
 	}
 
-	fmt.Printf("Chauffeur workspace not found at %s\n\n", root)
-	fmt.Println("This appears to be your first time using Chauffeur.")
-	fmt.Println("The workspace stores your configurations, projects, and installed services.")
-	fmt.Printf("\nWould you like to initialize the workspace now? [Y/n]: ")
+	printBlock := func(msg string) {
+		if logger != nil {
+			logger.PrintBlock(msg)
+		} else {
+			fmt.Print(msg)
+		}
+	}
+	logInfo := func(msg string) {
+		if logger != nil {
+			logger.Info(msg)
+		} else {
+			fmt.Println(msg)
+		}
+	}
+	logPrompt := func(msg, ctx string) {
+		if logger != nil {
+			logger.Prompt(msg, ctx)
+		} else {
+			fmt.Print(msg)
+		}
+	}
+	logSuccess := func(msg, ctx string) {
+		if logger != nil {
+			logger.Success(msg, ctx)
+		} else {
+			fmt.Println(msg + " " + ctx)
+		}
+	}
+
+	printBlock(fmt.Sprintf("Chauffeur workspace not found at %s\n", root))
+	logInfo("This appears to be your first time using Chauffeur.")
+	logInfo("The workspace stores your configurations, projects, and installed services.")
+	logPrompt("Would you like to initialize the workspace now? [Y/n]:", "Default is yes")
 
 	response := promptUser()
 
 	response = strings.TrimSpace(strings.ToLower(response))
 	if response == "n" || response == "no" {
-		fmt.Println("\nTo initialize manually, run: chauf init")
+		logInfo("To initialize manually, run: chauf init")
 		return false, nil
 	}
 
 	// User wants to initialize
-	fmt.Println("\nInitializing Chauffeur workspace...")
+	logInfo("Initializing Chauffeur workspace...")
 	if err := Ensure(); err != nil {
 		return false, fmt.Errorf("failed to initialize workspace: %w", err)
 	}
 
-	fmt.Printf("✅ Workspace created successfully at %s\n", root)
-	fmt.Println("\nNext steps:")
-	fmt.Println("  chauf install php 8.3    # Install PHP runtime")
-	fmt.Println("  chauf link              # Link your current project")
-	fmt.Println("  chauf start             # Start services")
-	fmt.Println()
-	fmt.Println("For more information, run: chauf --help")
+	logSuccess("Workspace created successfully", root)
+	logInfo("Next steps:")
+	logInfo("  chauf install php 8.3    # Install PHP runtime")
+	logInfo("  chauf link              # Link your current project")
+	logInfo("  chauf start             # Start services")
+	logInfo("For more information, run: chauf --help")
 
 	return true, nil
+}
+
+// ValidateOrPrompt checks if workspace is initialized, and offers to initialize it if not.
+func ValidateOrPrompt() (bool, error) {
+	return ValidateOrPromptWithLogger(nil)
 }
 
 // ValidateForCommand checks workspace initialization for commands that need it.
 // Returns true if workspace is ready, false if command should not proceed.
 func ValidateForCommand(args []string) (bool, error) {
+	return ValidateForCommandWithLogger(args, nil)
+}
+
+// ValidateForCommandWithLogger is the logger-aware variant of ValidateForCommand.
+func ValidateForCommandWithLogger(args []string, logger Logger) (bool, error) {
 	// Check if any help flag is present
 	for _, arg := range args {
 		if arg == "--help" || arg == "-h" {
@@ -121,7 +167,7 @@ func ValidateForCommand(args []string) (bool, error) {
 		}
 	}
 
-	return ValidateOrPrompt()
+	return ValidateOrPromptWithLogger(logger)
 }
 
 // promptUser reads user input from stdin.

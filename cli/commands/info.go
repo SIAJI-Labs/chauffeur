@@ -107,7 +107,8 @@ func RunInfo(args []string) error {
 }
 
 func printInfoUsage() {
-	fmt.Print(`Chauffeur Environment Information
+	logger := lib.NewCommandLogger("info")
+	logger.PrintBlock(`Chauffeur Environment Information
 
 Usage:
   chauf info

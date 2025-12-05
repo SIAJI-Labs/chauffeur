@@ -520,11 +520,8 @@ func promptForLocalTarball(version string, logger *lib.Logger) (string, error) {
 	reader := bufio.NewReader(os.Stdin)
 
 	for {
-		fmt.Printf("\nLocal PHP %s tarball not configured.\n", version)
-		fmt.Println("Options:")
-		fmt.Println("  1) Enter path to local PHP tarball")
-		fmt.Println("  2) Download from internet (default)")
-		fmt.Print("Enter your choice (1-2) or press Enter for internet download: ")
+		logger.PrintBlock(fmt.Sprintf("\nLocal PHP %s tarball not configured.\nOptions:\n  1) Enter path to local PHP tarball\n  2) Download from internet (default)", version))
+		logger.Prompt("Enter your choice (1-2) or press Enter for internet download:", "")
 
 		input, err := reader.ReadString('\n')
 		if err != nil {
@@ -540,7 +537,7 @@ func promptForLocalTarball(version string, logger *lib.Logger) (string, error) {
 
 		if input == "1" {
 			// User wants to provide local path
-			fmt.Print("Enter path to PHP tarball: ")
+			logger.Prompt("Enter path to PHP tarball:", "")
 			pathInput, err := reader.ReadString('\n')
 			if err != nil {
 				return "", fmt.Errorf("failed to read path: %w", err)
@@ -576,10 +573,8 @@ func promptForLocalTarball(version string, logger *lib.Logger) (string, error) {
 			// Validate the tarball
 			if err := validatePHPTarball(absPath, version, logger); err != nil {
 				logger.Warn("Invalid tarball", err.Error())
-				fmt.Println("Would you like to:")
-				fmt.Println("  1) Try a different path")
-				fmt.Println("  2) Download from internet")
-				fmt.Print("Enter your choice (1-2): ")
+				logger.PrintBlock("Would you like to:\n  1) Try a different path\n  2) Download from internet")
+				logger.Prompt("Enter your choice (1-2):", "")
 
 				choiceInput, err := reader.ReadString('\n')
 				if err != nil {
@@ -595,7 +590,7 @@ func promptForLocalTarball(version string, logger *lib.Logger) (string, error) {
 			}
 
 			// Ask if user wants to save this path for future use
-			fmt.Printf("Save this path for future PHP %s installations? (y/N): ", version)
+			logger.Prompt(fmt.Sprintf("Save this path for future PHP %s installations? (y/N):", version), "")
 			saveInput, err := reader.ReadString('\n')
 			if err != nil {
 				logger.Warn("Could not read save preference", err.Error())
@@ -622,7 +617,7 @@ func shouldCreateExampleProject(services []string) bool {
 	// Only check if nginx or php was just installed
 	nginxInstalled := false
 	phpInstalled := false
-	
+
 	for _, service := range services {
 		if service == "nginx" {
 			nginxInstalled = true
@@ -631,14 +626,15 @@ func shouldCreateExampleProject(services []string) bool {
 			phpInstalled = true
 		}
 	}
-	
+
 	// Trigger example project if either nginx or php was installed
 	return nginxInstalled || phpInstalled
 }
 
 // printInstallUsage renders CLI help for the install command.
 func printInstallUsage() {
-	fmt.Println(`Usage: chauf install [--force] [--local] [--no-cache] <service> [<version>...] [<service>...]
+	logger := lib.NewCommandLogger("install")
+	logger.PrintBlock(`Usage: chauf install [--force] [--local] [--no-cache] <service> [<version>...] [<service>...]
 
 Installs one or more Chauffeur-managed services.
 

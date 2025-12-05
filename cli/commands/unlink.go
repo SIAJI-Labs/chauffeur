@@ -474,7 +474,7 @@ func RunUnlink(args []string) error {
 
 	// Remove the project directory
 	projectDir := layout.Root
-	
+
 	// Special handling for example project
 	isExampleProject := (projectSlug == example.ExampleProjectName)
 	if isExampleProject {
@@ -494,7 +494,7 @@ func RunUnlink(args []string) error {
 		}
 		logger.Success("Successfully unlinked project", projectSlug)
 	}
-	
+
 	return nil
 }
 
@@ -723,7 +723,8 @@ func handleRemoveAliases(logger *lib.Logger, cfg *config.Config, aliases []strin
 }
 
 func printUnlinkUsage() {
-	fmt.Print(`Chauffeur Project Unlinking
+	logger := lib.NewCommandLogger("unlink")
+	logger.PrintBlock(`Chauffeur Project Unlinking
 
 Usage:
   chauf unlink                       Unlink current directory (default)
@@ -815,7 +816,7 @@ func provideSSLCertificateRemovalGuidance(logger *lib.Logger, domain string, cer
 }
 
 func restartNginxIfNeeded(logger *lib.Logger) {
-	manager, err := services.NewServiceManager()
+	manager, err := newServiceManager()
 	if err != nil {
 		logger.Warn("Unable to inspect nginx status", err.Error())
 		return

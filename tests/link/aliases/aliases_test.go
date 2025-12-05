@@ -1,4 +1,4 @@
-package linkaliases_test
+package linkaliases
 
 import (
 	"os"
@@ -132,8 +132,6 @@ func TestLinkWithAliasesAndSSL(t *testing.T) {
 		t.Fatalf("expected SSL private key to be generated at %s", keyPath)
 	}
 }
-
-
 
 func TestLinkSingleDomainBackwardCompatibility(t *testing.T) {
 	home, workspace := helpers.SetupTestHome(t)
