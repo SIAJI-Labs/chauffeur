@@ -1,7 +1,10 @@
 package lib
 
 import (
+	"bytes"
+	"strings"
 	"testing"
+	"time"
 )
 
 // TestNewLogger tests logger creation
@@ -127,4 +130,89 @@ func TestTTYDetection(t *testing.T) {
 	// This is testing the behavior, not specific output
 	logger := NewCommandLogger("test")
 	logger.Info("TTY detection test")
+}
+
+// TestPrintBlockNewline ensures PrintBlock appends a newline when missing.
+func TestPrintBlockNewline(t *testing.T) {
+	restore := CurrentStdout
+	defer func() { CurrentStdout = restore }()
+
+	buf := &bytes.Buffer{}
+	CurrentStdout = buf
+
+	logger := NewCommandLogger("block")
+	logger.PrintBlock("hello")
+
+	if got := buf.String(); got != "hello\n" {
+		t.Fatalf("expected trailing newline, got %q", got)
+	}
+}
+
+// TestPrintBlockPreservesExistingNewline ensures existing newline isn't doubled.
+func TestPrintBlockPreservesExistingNewline(t *testing.T) {
+	restore := CurrentStdout
+	defer func() { CurrentStdout = restore }()
+
+	buf := &bytes.Buffer{}
+	CurrentStdout = buf
+
+	logger := NewCommandLogger("block")
+	logger.PrintBlock("hello\n")
+
+	if got := buf.String(); got != "hello\n" {
+		t.Fatalf("expected single newline, got %q", got)
+	}
+}
+
+// TestLogLevelFiltering ensures higher log levels suppress lower messages.
+func TestLogLevelFiltering(t *testing.T) {
+	restore := CurrentStdout
+	defer func() { CurrentStdout = restore }()
+
+	buf := &bytes.Buffer{}
+	CurrentStdout = buf
+
+	logger := NewCommandLogger("filter").WithLevel(ErrorLevel)
+	logger.Info("should be suppressed")
+
+	if buf.Len() != 0 {
+		t.Fatalf("expected no output for Info at Error level, got %q", buf.String())
+	}
+}
+
+// TestLogOperationEndOutputsStatus covers duration formatting and status markers.
+func TestLogOperationEndOutputsStatus(t *testing.T) {
+	restore := CurrentStdout
+	defer func() { CurrentStdout = restore }()
+
+	buf := &bytes.Buffer{}
+	CurrentStdout = buf
+
+	logger := NewCommandLogger("op")
+	logger.LogOperationEnd("download", 1500*time.Millisecond, true)
+
+	out := buf.String()
+	if !strings.Contains(out, "download completed") {
+		t.Fatalf("expected success message, got %q", out)
+	}
+	if !strings.Contains(out, "1.5s") {
+		t.Fatalf("expected formatted duration, got %q", out)
+	}
+}
+
+// TestLogOperationEndFailure ensures failure path is logged.
+func TestLogOperationEndFailure(t *testing.T) {
+	restore := CurrentStdout
+	defer func() { CurrentStdout = restore }()
+
+	buf := &bytes.Buffer{}
+	CurrentStdout = buf
+
+	logger := NewCommandLogger("op")
+	logger.LogOperationEnd("download", 2*time.Second, false)
+
+	out := buf.String()
+	if !strings.Contains(out, "download failed") {
+		t.Fatalf("expected failure message, got %q", out)
+	}
 }

@@ -126,7 +126,7 @@ func runPHPIsolate(version string) error {
 	if err != nil {
 		return fmt.Errorf("resolve project path: %w", err)
 	}
-	
+
 	projectCfg, layout, err := projects.FindByPath(cfg.ProjectsDir, cwd)
 	if err != nil {
 		if errors.Is(err, projects.ErrProjectNotFound) {
@@ -134,7 +134,7 @@ func runPHPIsolate(version string) error {
 		}
 		return fmt.Errorf("load project configuration: %w", err)
 	}
-	
+
 	projectCfg.PHP = version
 	// Always update the PHP-FPM socket path when changing PHP versions
 	// to ensure it points to the correct PHP version socket
@@ -158,7 +158,7 @@ func runPHPIsolate(version string) error {
 
 	// Detect template type based on project structure
 	templateType := templateEngine.DetectTemplateType(projectCfg.Path)
-	
+
 	// Update nginx configuration with new PHP version
 	nginxOptions := templates.NginxConfigOptions{
 		HTTPPort:  cfg.Nginx.HTTPPort,
@@ -236,7 +236,7 @@ func runPHPList() error {
 			statusIcon = "✅"
 		}
 
-		fmt.Printf("  PHP %s %s\n", version.Version, statusIcon)
+		logger.Info(fmt.Sprintf("PHP %s %s", version.Version, statusIcon))
 	}
 
 	return nil
@@ -299,7 +299,8 @@ func runPHPCurrent() error {
 }
 
 func printPHPUsage() {
-	fmt.Print(`Chauffeur PHP Commands
+	logger := lib.NewCommandLogger("php")
+	logger.PrintBlock(`Chauffeur PHP Commands
 
 Usage:
   chauf php [args...]       Execute the default PHP CLI with passthrough args.

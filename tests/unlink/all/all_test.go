@@ -1,4 +1,4 @@
-package unlinkall_test
+package unlinkall
 
 import (
 	"os"

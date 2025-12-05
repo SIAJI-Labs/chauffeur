@@ -521,6 +521,15 @@ func (l *Logger) PrintServiceTable(headers []string, rows [][]string) {
 	}
 }
 
+// PrintBlock prints a raw multi-line block without prefixes, keeping stdout routing intact.
+func (l *Logger) PrintBlock(text string) {
+	if strings.HasSuffix(text, "\n") {
+		fmt.Fprintf(CurrentStdout, "%s", text)
+		return
+	}
+	fmt.Fprintf(CurrentStdout, "%s\n", text)
+}
+
 // Prompt prints a user prompt message with readable context
 func (l *Logger) Prompt(message, context string) {
 	promptIndent := "  →"

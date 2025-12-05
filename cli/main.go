@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/siaji/chauffeur/cli/commands"
+	"github.com/siaji/chauffeur/cli/lib"
 	"github.com/siaji/chauffeur/internal/utils"
 )
 
@@ -21,8 +22,8 @@ var (
 	buildDir       = "" // Set during self-update to track which repo we're building from
 )
 
-func usage() {
-	fmt.Print(`Chauffeur CLI
+func usage(logger *lib.Logger) {
+	logger.PrintBlock(`Chauffeur CLI
 
 Usage:
   chauf --version        Print the current Chauffeur version.
@@ -131,6 +132,7 @@ func getGitVersion() (string, error) {
 func main() {
 	// Initialize version dynamically
 	dynamicVersion := getVersion()
+	baseLogger := lib.NewCommandLogger("chauf")
 
 	args := os.Args[1:]
 	commands.SetCLIVersion(dynamicVersion)
@@ -138,135 +140,77 @@ func main() {
 	commands.SetBuildCommit(buildCommit)
 
 	if len(args) == 0 {
-		usage()
+		usage(baseLogger)
 		return
 	}
 
 	switch args[0] {
 	case "--version", "-v", "-V", "version":
-		fmt.Printf("chauf %s (built %s, commit %s)\n", dynamicVersion, buildTimestamp, buildCommit)
+		baseLogger.PrintBlock(fmt.Sprintf("chauf %s (built %s, commit %s)", dynamicVersion, buildTimestamp, buildCommit))
 	case "--help", "-h", "help":
-		usage()
+		usage(baseLogger)
 	case "init":
-		if err := commands.RunInit(args[1:]); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
-		}
+		exitWithError("init", commands.RunInit(args[1:]))
 	case "install":
-		if err := commands.RunInstall(args[1:]); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
-		}
+		exitWithError("install", commands.RunInstall(args[1:]))
 	case "remove":
-		if err := commands.RunRemove(args[1:]); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
-		}
+		exitWithError("remove", commands.RunRemove(args[1:]))
 	case "php":
-		if err := commands.RunPHP(args[1:]); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
-		}
+		exitWithError("php", commands.RunPHP(args[1:]))
 	case "self-update":
-		if err := commands.RunSelfUpdate(args[1:]); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
-		}
+		exitWithError("self-update", commands.RunSelfUpdate(args[1:]))
 	case "link":
-		if err := commands.RunLink(args[1:]); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
-		}
+		exitWithError("link", commands.RunLink(args[1:]))
 	case "info":
-		if err := commands.RunInfo(args[1:]); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
-		}
+		exitWithError("info", commands.RunInfo(args[1:]))
 	case "doctor":
-		if err := commands.RunDoctor(args[1:]); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
-		}
+		exitWithError("doctor", commands.RunDoctor(args[1:]))
 	case "links":
-		if err := commands.RunLinks(args[1:]); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
-		}
+		exitWithError("links", commands.RunLinks(args[1:]))
 	case "category":
-		if err := commands.RunCategory(args[1:]); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
-		}
+		exitWithError("category", commands.RunCategory(args[1:]))
 	case "unlink":
-		if err := commands.RunUnlink(args[1:]); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
-		}
+		exitWithError("unlink", commands.RunUnlink(args[1:]))
 	case "secure":
-		if err := commands.RunSecure(args[1:]); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
-		}
+		exitWithError("secure", commands.RunSecure(args[1:]))
 	case "unsecure":
-		if err := commands.RunUnsecure(args[1:]); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
-		}
+		exitWithError("unsecure", commands.RunUnsecure(args[1:]))
 	case "start":
-		if err := commands.RunStart(args[1:]); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
-		}
+		exitWithError("start", commands.RunStart(args[1:]))
 	case "stop":
-		if err := commands.RunStop(args[1:]); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
-		}
+		exitWithError("stop", commands.RunStop(args[1:]))
 	case "restart":
-		if err := commands.RunRestart(args[1:]); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
-		}
+		exitWithError("restart", commands.RunRestart(args[1:]))
 	case "status":
-		if err := commands.RunStatus(args[1:]); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
-		}
+		exitWithError("status", commands.RunStatus(args[1:]))
 	case "logs":
-		if err := commands.RunLogs(args[1:]); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
-		}
+		exitWithError("logs", commands.RunLogs(args[1:]))
 	case "clean":
-		if err := commands.RunClean(args[1:]); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
-		}
+		exitWithError("clean", commands.RunClean(args[1:]))
 	case "migrate":
-		if err := commands.RunMigrate(args[1:]); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
-		}
+		exitWithError("migrate", commands.RunMigrate(args[1:]))
 	case "hello-world":
-		if err := commands.RunHelloWorld(args[1:]); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
-		}
+		exitWithError("hello-world", commands.RunHelloWorld(args[1:]))
 	case "uninstall":
-		if err := commands.RunUninstall(args[1:]); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
-		}
+		exitWithError("uninstall", commands.RunUninstall(args[1:]))
 	default:
 		if commands.IsKnownService(args[0]) {
 			if err := commands.RunServiceCommand(args[0], args[1:]); err != nil {
-				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-				os.Exit(1)
+				exitWithError(args[0], err)
 			}
 			return
 		}
-		fmt.Fprintf(os.Stderr, "Unsupported command: %s\n", args[0])
-		fmt.Fprintln(os.Stderr, "Run 'chauf --help' for available commands.")
+		baseLogger.Error("Unsupported command", args[0])
+		baseLogger.Info("Run 'chauf --help' for available commands.")
 		os.Exit(1)
 	}
+}
+
+func exitWithError(cmd string, err error) {
+	if err == nil {
+		return
+	}
+	logger := lib.NewCommandLogger(cmd)
+	logger.Error("Error", err.Error())
+	os.Exit(1)
 }

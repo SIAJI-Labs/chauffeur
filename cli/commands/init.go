@@ -194,7 +194,8 @@ func DefaultConfig() (config.Config, error) {
 
 // printInitUsage prints usage information for the init command
 func printInitUsage() {
-	fmt.Print(`Chauffeur Workspace Initialization
+	logger := lib.NewCommandLogger("init")
+	logger.PrintBlock(`Chauffeur Workspace Initialization
 
 Usage:
   chauf init [--force] [--quiet]

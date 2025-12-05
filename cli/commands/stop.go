@@ -72,7 +72,7 @@ func RunStop(args []string) error {
 	logger := lib.NewCommandLogger("stop")
 
 	// Create service manager
-	manager, err := services.NewServiceManager()
+	manager, err := newServiceManager()
 	if err != nil {
 		return fmt.Errorf("create service manager: %w", err)
 	}
@@ -134,17 +134,17 @@ func RunStop(args []string) error {
 		if err != nil {
 			return fmt.Errorf("load config: %w", err)
 		}
-		
+
 		entries, err := os.ReadDir(cfg.ProjectsDir)
 		if err != nil {
 			return fmt.Errorf("read projects directory: %w", err)
 		}
-		
+
 		for _, entry := range entries {
 			if !entry.IsDir() {
 				continue
 			}
-			
+
 			projectSlug := entry.Name()
 			projectPath := filepath.Join(cfg.ProjectsDir, projectSlug)
 			configPath := filepath.Join(projectPath, "project.yaml")
@@ -238,7 +238,8 @@ func RunStop(args []string) error {
  * printStopUsage renders CLI help for the stop command.
  */
 func printStopUsage() {
-	fmt.Println(`Usage: chauf stop [--project <path>] [--all] [--dry-run]
+	logger := lib.NewCommandLogger("stop")
+	logger.PrintBlock(`Usage: chauf stop [--project <path>] [--all] [--dry-run]
 
 Stops Chauffeur services with chauf- prefix to avoid conflicts with system services.
 

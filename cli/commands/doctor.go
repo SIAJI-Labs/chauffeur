@@ -11,8 +11,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/siaji/chauffeur/cli/internal/config"
 	"github.com/siaji/chauffeur/cli/installers"
+	"github.com/siaji/chauffeur/cli/internal/config"
 	"github.com/siaji/chauffeur/cli/internal/services"
 	"github.com/siaji/chauffeur/cli/internal/workspace"
 	"github.com/siaji/chauffeur/cli/lib"
@@ -184,6 +184,7 @@ func RunDoctor(args []string) error {
 // parseDoctorArgs parses command line arguments for the doctor command
 func parseDoctorArgs(args []string) DoctorOptions {
 	options := DoctorOptions{}
+	logger := lib.NewCommandLogger("doctor")
 
 	for i := 0; i < len(args); {
 		arg := args[i]
@@ -225,7 +226,7 @@ func parseDoctorArgs(args []string) DoctorOptions {
 		case "--internal-fix-openssl":
 			// Handle internal OpenSSL configuration generation
 			if i+2 >= len(args) {
-				fmt.Printf("Internal fix-openssl requires --php-version and --workspace-dir flags\n")
+				logger.Error("Internal fix-openssl requires --php-version and --workspace-dir flags", "")
 				os.Exit(1)
 			}
 			phpVersion := ""
@@ -239,18 +240,18 @@ func parseDoctorArgs(args []string) DoctorOptions {
 				}
 			}
 			if phpVersion == "" || workspaceDir == "" {
-				fmt.Printf("Internal fix-openssl requires --php-version and --workspace-dir flags\n")
+				logger.Error("Internal fix-openssl requires --php-version and --workspace-dir flags", "")
 				os.Exit(1)
 			}
 			// Call the OpenSSL configuration function
 			if err := installers.WriteOpenSSLConf(workspaceDir, phpVersion); err != nil {
-				fmt.Printf("Failed to generate OpenSSL configuration: %v\n", err)
+				logger.Error("Failed to generate OpenSSL configuration", err.Error())
 				os.Exit(1)
 			}
-			fmt.Printf("✓ OpenSSL configuration generated for PHP %s\n", phpVersion)
+			logger.Success(fmt.Sprintf("OpenSSL configuration generated for PHP %s", phpVersion), "")
 			os.Exit(0)
 		default:
-			fmt.Printf("Unknown flag: %s\n\n", arg)
+			logger.Error(fmt.Sprintf("Unknown flag: %s", arg), "")
 			printDoctorUsage()
 			os.Exit(1)
 		}
@@ -261,7 +262,8 @@ func parseDoctorArgs(args []string) DoctorOptions {
 
 // printDoctorUsage displays usage information for the doctor command
 func printDoctorUsage() {
-	fmt.Printf(`Chauffeur Doctor - Health Check and Troubleshooting
+	logger := lib.NewCommandLogger("doctor")
+	logger.PrintBlock(`Chauffeur Doctor - Health Check and Troubleshooting
 
 Usage:
   chauf doctor [options]
@@ -313,7 +315,7 @@ func checkSystemDependencies(options DoctorOptions, fixPlans *[]FixPlan) ([]Depe
 			description: "Version control system",
 			fixCommands: map[string]string{
 				"ubuntu/debian": "sudo apt update && sudo apt install -y git",
-								"arch":          "sudo pacman -S git",
+				"arch":          "sudo pacman -S git",
 				"fedora":        "sudo dnf install -y git",
 			},
 		},
@@ -326,7 +328,7 @@ func checkSystemDependencies(options DoctorOptions, fixPlans *[]FixPlan) ([]Depe
 			description: "HTTP client for downloads",
 			fixCommands: map[string]string{
 				"ubuntu/debian": "sudo apt update && sudo apt install -y curl",
-								"arch":          "sudo pacman -S curl",
+				"arch":          "sudo pacman -S curl",
 				"fedora":        "sudo dnf install -y curl",
 			},
 		},
@@ -339,7 +341,7 @@ func checkSystemDependencies(options DoctorOptions, fixPlans *[]FixPlan) ([]Depe
 			description: "Archive extraction tool",
 			fixCommands: map[string]string{
 				"ubuntu/debian": "sudo apt update && sudo apt install -y tar",
-								"arch":          "sudo pacman -S tar",
+				"arch":          "sudo pacman -S tar",
 				"fedora":        "sudo dnf install -y tar",
 			},
 		},
@@ -352,7 +354,7 @@ func checkSystemDependencies(options DoctorOptions, fixPlans *[]FixPlan) ([]Depe
 			description: "C compiler for building PHP",
 			fixCommands: map[string]string{
 				"ubuntu/debian": "sudo apt update && sudo apt install -y build-essential",
-								"arch":          "sudo pacman -S base-devel",
+				"arch":          "sudo pacman -S base-devel",
 				"fedora":        "sudo dnf groupinstall -y 'Development Tools'",
 			},
 		},
@@ -365,7 +367,7 @@ func checkSystemDependencies(options DoctorOptions, fixPlans *[]FixPlan) ([]Depe
 			description: "Build automation tool",
 			fixCommands: map[string]string{
 				"ubuntu/debian": "sudo apt update && sudo apt install -y make",
-								"arch":          "sudo pacman -S make",
+				"arch":          "sudo pacman -S make",
 				"fedora":        "sudo dnf install -y make",
 			},
 		},
@@ -378,7 +380,7 @@ func checkSystemDependencies(options DoctorOptions, fixPlans *[]FixPlan) ([]Depe
 			description: "Package configuration tool for PHP builds",
 			fixCommands: map[string]string{
 				"ubuntu/debian": "sudo apt update && sudo apt install -y pkg-config",
-								"arch":          "sudo pacman -S pkgconf",
+				"arch":          "sudo pacman -S pkgconf",
 				"fedora":        "sudo dnf install -y pkgconfig",
 			},
 		},
@@ -446,11 +448,11 @@ func checkPHPBuildDependencies(options DoctorOptions, fixPlans *[]FixPlan) ([]De
 
 	// PHP build dependencies based on AGENTS.md requirements
 	dependencies := []struct {
-		name         string
-		pkgConfig    string
-		description  string
-		required     bool
-		fixCommands  map[string]string
+		name        string
+		pkgConfig   string
+		description string
+		required    bool
+		fixCommands map[string]string
 	}{
 		{
 			name:        "libzip",
@@ -459,7 +461,7 @@ func checkPHPBuildDependencies(options DoctorOptions, fixPlans *[]FixPlan) ([]De
 			required:    true,
 			fixCommands: map[string]string{
 				"ubuntu/debian": "sudo apt install -y libzip-dev",
-								"arch":          "sudo pacman -S libzip",
+				"arch":          "sudo pacman -S libzip",
 				"fedora":        "sudo dnf install -y libzip-devel",
 			},
 		},
@@ -470,7 +472,7 @@ func checkPHPBuildDependencies(options DoctorOptions, fixPlans *[]FixPlan) ([]De
 			required:    true,
 			fixCommands: map[string]string{
 				"ubuntu/debian": "sudo apt install -y libjpeg-dev",
-								"arch":          "sudo pacman -S libjpeg-turbo",
+				"arch":          "sudo pacman -S libjpeg-turbo",
 				"fedora":        "sudo dnf install -y libjpeg-turbo-devel",
 			},
 		},
@@ -481,7 +483,7 @@ func checkPHPBuildDependencies(options DoctorOptions, fixPlans *[]FixPlan) ([]De
 			required:    true,
 			fixCommands: map[string]string{
 				"ubuntu/debian": "sudo apt install -y libpng-dev",
-								"arch":          "sudo pacman -S libpng",
+				"arch":          "sudo pacman -S libpng",
 				"fedora":        "sudo dnf install -y libpng-devel",
 			},
 		},
@@ -492,7 +494,7 @@ func checkPHPBuildDependencies(options DoctorOptions, fixPlans *[]FixPlan) ([]De
 			required:    true,
 			fixCommands: map[string]string{
 				"ubuntu/debian": "sudo apt install -y libfreetype6-dev",
-								"arch":          "sudo pacman -S freetype2",
+				"arch":          "sudo pacman -S freetype2",
 				"fedora":        "sudo dnf install -y freetype-devel",
 			},
 		},
@@ -503,7 +505,7 @@ func checkPHPBuildDependencies(options DoctorOptions, fixPlans *[]FixPlan) ([]De
 			required:    true,
 			fixCommands: map[string]string{
 				"ubuntu/debian": "sudo apt install -y libxml2-dev",
-								"arch":          "sudo pacman -S libxml2",
+				"arch":          "sudo pacman -S libxml2",
 				"fedora":        "sudo dnf install -y libxml2-devel",
 			},
 		},
@@ -514,7 +516,7 @@ func checkPHPBuildDependencies(options DoctorOptions, fixPlans *[]FixPlan) ([]De
 			required:    true,
 			fixCommands: map[string]string{
 				"ubuntu/debian": "sudo apt install -y libcurl4-openssl-dev",
-								"arch":          "sudo pacman -S curl",
+				"arch":          "sudo pacman -S curl",
 				"fedora":        "sudo dnf install -y libcurl-devel",
 			},
 		},
@@ -525,7 +527,7 @@ func checkPHPBuildDependencies(options DoctorOptions, fixPlans *[]FixPlan) ([]De
 			required:    true,
 			fixCommands: map[string]string{
 				"ubuntu/debian": "sudo apt install -y zlib1g-dev",
-								"arch":          "sudo pacman -S zlib",
+				"arch":          "sudo pacman -S zlib",
 				"fedora":        "sudo dnf install -y zlib-devel",
 			},
 		},
@@ -536,7 +538,7 @@ func checkPHPBuildDependencies(options DoctorOptions, fixPlans *[]FixPlan) ([]De
 			required:    true,
 			fixCommands: map[string]string{
 				"ubuntu/debian": "sudo apt install -y libreadline-dev",
-								"arch":          "sudo pacman -S readline",
+				"arch":          "sudo pacman -S readline",
 				"fedora":        "sudo dnf install -y readline-devel",
 			},
 		},
@@ -547,7 +549,7 @@ func checkPHPBuildDependencies(options DoctorOptions, fixPlans *[]FixPlan) ([]De
 			required:    true,
 			fixCommands: map[string]string{
 				"ubuntu/debian": "sudo apt install -y libxslt1-dev",
-								"arch":          "sudo pacman -S libxslt",
+				"arch":          "sudo pacman -S libxslt",
 				"fedora":        "sudo dnf install -y libxslt-devel",
 			},
 		},
@@ -558,7 +560,7 @@ func checkPHPBuildDependencies(options DoctorOptions, fixPlans *[]FixPlan) ([]De
 			required:    false, // Optional but recommended
 			fixCommands: map[string]string{
 				"ubuntu/debian": "sudo apt install -y libmagickwand-dev",
-								"arch":          "sudo pacman -S imagemagick",
+				"arch":          "sudo pacman -S imagemagick",
 				"fedora":        "sudo dnf install -y ImageMagick-devel",
 			},
 		},
@@ -569,7 +571,7 @@ func checkPHPBuildDependencies(options DoctorOptions, fixPlans *[]FixPlan) ([]De
 			required:    true,
 			fixCommands: map[string]string{
 				"ubuntu/debian": "sudo apt install -y libgmp-dev",
-								"arch":          "sudo pacman -S gmp",
+				"arch":          "sudo pacman -S gmp",
 				"fedora":        "sudo dnf install -y gmp-devel",
 			},
 		},
@@ -971,7 +973,7 @@ func executeFixPlan(logger *lib.Logger, fixPlans []FixPlan, quiet bool) bool {
 	logger.Info("This will execute the above commands to fix the identified issues.")
 	logger.Warn("⚠️ Some commands may require sudo privileges.", "")
 
-	fmt.Print("Do you want to proceed with these fixes? [y/N] ")
+	logger.Prompt("Do you want to proceed with these fixes? [y/N]", "")
 
 	var response string
 	fmt.Scanln(&response)
@@ -1061,7 +1063,7 @@ func detectDistribution() string {
 	if _, err := os.Stat("/etc/debian_version"); err == nil {
 		return "ubuntu/debian"
 	}
-		if _, err := os.Stat("/etc/arch-release"); err == nil {
+	if _, err := os.Stat("/etc/arch-release"); err == nil {
 		return "arch"
 	}
 	if _, err := os.Stat("/etc/fedora-release"); err == nil {
@@ -1074,22 +1076,22 @@ func getDistroCommand(distro, package_ string) string {
 	commands := map[string]map[string]string{
 		"pkg-config": {
 			"ubuntu/debian": "sudo apt update && sudo apt install -y pkg-config",
-						"arch":          "sudo pacman -S pkgconf",
+			"arch":          "sudo pacman -S pkgconf",
 			"fedora":        "sudo dnf install -y pkgconfig",
 		},
 		"openssl": {
 			"ubuntu/debian": "sudo apt update && sudo apt install -y openssl",
-						"arch":          "sudo pacman -S openssl",
+			"arch":          "sudo pacman -S openssl",
 			"fedora":        "sudo dnf install -y openssl-devel",
 		},
 		"dnsmasq": {
 			"ubuntu/debian": "sudo apt update && sudo apt install -y dnsmasq",
-						"arch":          "sudo pacman -S dnsmasq",
+			"arch":          "sudo pacman -S dnsmasq",
 			"fedora":        "sudo dnf install -y dnsmasq",
 		},
 		"mkcert": {
 			"ubuntu/debian": "sudo apt update && sudo apt install -y mkcert",
-						"arch":          "sudo pacman -S mkcert",
+			"arch":          "sudo pacman -S mkcert",
 			"fedora":        "sudo dnf install -y mkcert",
 		},
 	}
@@ -1130,8 +1132,8 @@ func isPortOccupiedByNonChauffeur(port int) bool {
 
 	// Check if this is one of Chauffeur's expected ports
 	chauffeurPorts := map[int]bool{
-		cfg.Nginx.HTTPPort:     true,
-		cfg.Nginx.HTTPSPort:    true,
+		cfg.Nginx.HTTPPort:       true,
+		cfg.Nginx.HTTPSPort:      true,
 		cfg.Ports.PHPFPMFallback: true,
 	}
 

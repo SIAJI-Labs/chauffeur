@@ -142,21 +142,20 @@ func RunLinks(args []string) error {
 
 	printProjectsByCategory(logger, allProjects)
 
-	
 	return nil
 }
 
 type linkedProject struct {
-	Slug        string
-	Path        string
-	PHP         string
-	Category    string
-	Site        *projects.Site
-	AliasCount  int // Number of alias domains
-	SSL         bool
-	CreatedAt   time.Time
-	FPMType     string // Shared or Dedicated
-	FPMSocket   string // Path to the FPM socket
+	Slug       string
+	Path       string
+	PHP        string
+	Category   string
+	Site       *projects.Site
+	AliasCount int // Number of alias domains
+	SSL        bool
+	CreatedAt  time.Time
+	FPMType    string // Shared or Dedicated
+	FPMSocket  string // Path to the FPM socket
 }
 
 // printProjectsByCategory displays projects grouped by category with formatted tables.
@@ -408,7 +407,8 @@ func listAllProjects(projectsDir string) ([]linkedProject, error) {
 }
 
 func printLinksUsage() {
-	fmt.Fprintf(lib.CurrentStdout, `Chauffeur Project Listing
+	logger := lib.NewCommandLogger("links")
+	logger.PrintBlock(`Chauffeur Project Listing
 
 Usage:
   chauf links                        List all registered projects grouped by category.

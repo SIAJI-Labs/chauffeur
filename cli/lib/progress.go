@@ -44,10 +44,10 @@ func NewSpinner(command, message string) *progressSpinner {
 	if s.enabled {
 		s.stop = make(chan struct{})
 		s.done = make(chan struct{})
-		fmt.Printf("\r[ %s ] %s %s%s", command, message, string(spinnerFrames[0]), gray(""))
+		fmt.Fprintf(CurrentStdout, "\r[ %s ] %s %s%s", command, message, string(spinnerFrames[0]), gray(""))
 		go s.loop(1)
 	} else {
-		fmt.Printf("[ %s ] %s...\n", command, message)
+		fmt.Fprintf(CurrentStdout, "[ %s ] %s...\n", command, message)
 	}
 	return s
 }
@@ -61,14 +61,14 @@ func (s *progressSpinner) Success(summary string) {
 	s.stopSpinner()
 	if s.enabled {
 		durationStr := formatDuration(elapsed)
-		fmt.Printf("\r[ %s ] %s %s (%s)\n", s.command, s.message, green("✓"), gray(durationStr))
+		fmt.Fprintf(CurrentStdout, "\r[ %s ] %s %s (%s)\n", s.command, s.message, green("✓"), gray(durationStr))
 		if summary != "" {
-			fmt.Printf("  └── %s %s\n", green("✓"), summary)
+			fmt.Fprintf(CurrentStdout, "  └── %s %s\n", green("✓"), summary)
 		}
 	} else {
-		fmt.Printf("[ %s ] %s %s\n", s.command, s.message, green("✓"))
+		fmt.Fprintf(CurrentStdout, "[ %s ] %s %s\n", s.command, s.message, green("✓"))
 		if summary != "" {
-			fmt.Printf("  └── %s\n", summary)
+			fmt.Fprintf(CurrentStdout, "  └── %s\n", summary)
 		}
 	}
 }
@@ -82,14 +82,14 @@ func (s *progressSpinner) Fail(summary string) {
 	s.stopSpinner()
 	if s.enabled {
 		durationStr := formatDuration(elapsed)
-		fmt.Printf("\r[%s] %s %s (%s)\n", s.command, s.message, red("✗"), gray(durationStr))
+		fmt.Fprintf(CurrentStdout, "\r[%s] %s %s (%s)\n", s.command, s.message, red("✗"), gray(durationStr))
 		if summary != "" {
-			fmt.Printf("  └── %s %s\n", red("✗"), summary)
+			fmt.Fprintf(CurrentStdout, "  └── %s %s\n", red("✗"), summary)
 		}
 	} else {
-		fmt.Printf("[ %s ] %s %s\n", s.command, s.message, red("✗"))
+		fmt.Fprintf(CurrentStdout, "[ %s ] %s %s\n", s.command, s.message, red("✗"))
 		if summary != "" {
-			fmt.Printf("  └── %s\n", summary)
+			fmt.Fprintf(CurrentStdout, "  └── %s\n", summary)
 		}
 	}
 }
@@ -104,14 +104,14 @@ func (s *progressSpinner) loop(startIndex int) {
 			elapsed := time.Since(s.startTime)
 			dots := s.getEllipsis()
 			durationStr := formatDuration(elapsed)
-	// Use the same format as initialization: \r[ %s ] %s %s%s
-	fmt.Printf("\r[ %s ] %s %s%s", s.command, s.message, string(spinnerFrames[i%len(spinnerFrames)]), gray(durationStr+dots))
+			// Use the same format as initialization: \r[ %s ] %s %s%s
+			fmt.Fprintf(CurrentStdout, "\r[ %s ] %s %s%s", s.command, s.message, string(spinnerFrames[i%len(spinnerFrames)]), gray(durationStr+dots))
 			i++
 			s.dotCounter = (s.dotCounter + 1) % 4
 		case <-s.stop:
 			// Final render without spinner
 			elapsed := time.Since(s.startTime)
-			fmt.Printf("\r[%s] %s... %s", s.command, s.message, gray(formatDuration(elapsed)))
+			fmt.Fprintf(CurrentStdout, "\r[%s] %s... %s", s.command, s.message, gray(formatDuration(elapsed)))
 			close(s.done)
 			return
 		}
@@ -168,22 +168,22 @@ func NewProgressStep(operation []string, total int) *progressStep {
 // Begin marks the start of a step
 func (ps *progressStep) Begin(stepName string) {
 	ps.index++
-	fmt.Printf("[%s] Step %d/%d: %s\n", "command-name", ps.index, ps.total, stepName)
+	fmt.Fprintf(CurrentStdout, "[%s] Step %d/%d: %s\n", "command-name", ps.index, ps.total, stepName)
 }
 
 // Success marks completion of current step
 func (ps *progressStep) Success(summary string) {
-	fmt.Printf("    %s %s\n", "→", summary)
+	fmt.Fprintf(CurrentStdout, "    %s %s\n", "→", summary)
 }
 
 // Fail marks failure of current step
 func (ps *progressStep) Fail(summary string) {
-	fmt.Printf("    %s %s\n", "✗", summary)
+	fmt.Fprintf(CurrentStdout, "    %s %s\n", "✗", summary)
 }
 
 // Complete marks overall completion
 func (ps *progressStep) Complete(summary string) {
-	fmt.Printf("[%s] %s %s\n", "command-name", "✓", summary)
+	fmt.Fprintf(CurrentStdout, "[%s] %s %s\n", "command-name", "✓", summary)
 }
 
 // NewProgressPrinter creates a new progress printer with command logger integration
@@ -267,9 +267,9 @@ func (p *progressPrinter) render() {
 		abbreviatedLabel := p.abbreviateLabel(p.label)
 
 		// Update the same line (no spam - single line progress)
-		fmt.Printf("\r\033[K[%s] %s... [%s] %3.0f%%", p.command, abbreviatedLabel, bar, ratio*100)
+		fmt.Fprintf(CurrentStdout, "\r\033[K[%s] %s... [%s] %3.0f%%", p.command, abbreviatedLabel, bar, ratio*100)
 	} else {
-		fmt.Printf("\r\033[K[%s] %s... %s", p.command, p.label, HumanBytes(p.current))
+		fmt.Fprintf(CurrentStdout, "\r\033[K[%s] %s... %s", p.command, p.label, HumanBytes(p.current))
 	}
 	// Flush output to ensure immediate display
 	p.lastPrint = time.Now()
@@ -362,9 +362,9 @@ func getTerminalWidth() (int, error) {
 // renderFinal displays the final completed progress with newline
 func (p *progressPrinter) renderFinal() {
 	if p.total > 0 {
-		fmt.Printf("\r\033[K[%s] %s... [%s] 100%% (%s)\n", p.command, p.label, strings.Repeat("#", p.width), HumanBytes(p.current))
+		fmt.Fprintf(CurrentStdout, "\r\033[K[%s] %s... [%s] 100%% (%s)\n", p.command, p.label, strings.Repeat("#", p.width), HumanBytes(p.current))
 	} else {
-		fmt.Printf("\r\033[K[%s] %s... %s\n", p.command, p.label, HumanBytes(p.current))
+		fmt.Fprintf(CurrentStdout, "\r\033[K[%s] %s... %s\n", p.command, p.label, HumanBytes(p.current))
 	}
 }
 

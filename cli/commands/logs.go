@@ -26,15 +26,15 @@ type LogEntry struct {
 
 // LogCollectionOptions defines options for log collection
 type LogCollectionOptions struct {
-	ServiceName  string
-	Lines        int
-	Follow       bool
-	Since        string
-	Until        string
-	Level        string
-	ShowContext  bool
-	Verbose      bool
-	Quiet        bool
+	ServiceName string
+	Lines       int
+	Follow      bool
+	Since       string
+	Until       string
+	Level       string
+	ShowContext bool
+	Verbose     bool
+	Quiet       bool
 }
 
 // LogCollector handles log collection from various services
@@ -45,7 +45,7 @@ type LogCollector struct {
 
 // NewLogCollector creates a new log collector instance
 func NewLogCollector() (*LogCollector, error) {
-	manager, err := services.NewServiceManager()
+	manager, err := newServiceManager()
 	if err != nil {
 		return nil, fmt.Errorf("create service manager: %w", err)
 	}
@@ -208,7 +208,7 @@ func (lc *LogCollector) CollectLogs(options *LogCollectionOptions) error {
 		}
 
 		if len(matchingServices) > 1 && !options.Quiet {
-			fmt.Println() // Add spacing between services
+			lc.logger.PrintBlock("") // spacing between services
 		}
 	}
 
@@ -396,17 +396,17 @@ func (lc *LogCollector) readLogFile(logFile string, service services.Service, op
 
 	// Display context if requested
 	if options.ShowContext && !options.Quiet {
-		fmt.Printf("📄 %s (%d lines)\n", logFile, len(displayLines))
+		lc.logger.PrintBlock(fmt.Sprintf("📄 %s (%d lines)", logFile, len(displayLines)))
 		if len(displayLines) < len(filteredLines) {
-			fmt.Printf("   Showing last %d of %d matching lines\n", len(displayLines), len(filteredLines))
+			lc.logger.PrintBlock(fmt.Sprintf("   Showing last %d of %d matching lines", len(displayLines), len(filteredLines)))
 		}
-		fmt.Println()
+		lc.logger.PrintBlock("")
 	}
 
 	// Print the lines
 	for _, line := range displayLines {
 		if options.Quiet {
-			fmt.Println(line)
+			lc.logger.PrintBlock(line)
 		} else {
 			lc.printLogLine(line, service, options)
 		}
@@ -456,16 +456,11 @@ func (lc *LogCollector) getLastLines(lines []string, count int) []string {
 
 // printLogLine prints a log line with optional formatting
 func (lc *LogCollector) printLogLine(line string, service services.Service, options *LogCollectionOptions) {
-	if options.Quiet {
-		fmt.Println(line)
-		return
-	}
-
 	// Add service prefix if not already present
 	if !strings.Contains(line, service.Name) && options.Verbose {
-		fmt.Printf("[%s] %s\n", service.Name, line)
+		lc.logger.PrintBlock(fmt.Sprintf("[%s] %s", service.Name, line))
 	} else {
-		fmt.Println(line)
+		lc.logger.PrintBlock(line)
 	}
 }
 
@@ -572,7 +567,8 @@ func (lc *LogCollector) listAvailableServices() error {
 
 // printLogsUsage renders CLI help for the logs command
 func printLogsUsage() {
-	fmt.Println(`Usage: chauf logs [service-name] [options]
+	logger := lib.NewCommandLogger("logs")
+	logger.PrintBlock(`Usage: chauf logs [service-name] [options]
 
 View and follow logs from Chauffeur services.
 
@@ -611,7 +607,7 @@ func (lc *LogCollector) selectService(matchingServices []services.Service, optio
 		return nil, nil
 	}
 
-	fmt.Printf("\nMultiple services found matching '%s':\n\n", options.ServiceName)
+	lc.logger.PrintBlock(fmt.Sprintf("\nMultiple services found matching '%s':\n", options.ServiceName))
 
 	for i, service := range matchingServices {
 		status := "🔴 Stopped"
@@ -621,10 +617,10 @@ func (lc *LogCollector) selectService(matchingServices []services.Service, optio
 				status = "🟢 Running"
 			}
 		}
-		fmt.Printf("  [%d] %s - %s\n", i+1, service.Name, status)
+		lc.logger.PrintBlock(fmt.Sprintf("  [%d] %s - %s", i+1, service.Name, status))
 	}
 
-	fmt.Printf("\n[ logs ] Select service to view logs (1-%d), or 'a' for all services: ", len(matchingServices))
+	lc.logger.Prompt(fmt.Sprintf("[ logs ] Select service to view logs (1-%d), or 'a' for all services:", len(matchingServices)), "Enter a number or 'a'")
 
 	reader := bufio.NewReader(os.Stdin)
 	input, err := reader.ReadString('\n')
