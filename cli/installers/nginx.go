@@ -752,6 +752,7 @@ func handleChecksum(tarballPath, sum, algo string, logger *lib.Logger) error {
  * @return error when extraction fails.
  */
 func untar(tarball, dest string) error {
+	logger := lib.NewCommandLogger("nginx")
 	if err := os.MkdirAll(dest, 0o755); err != nil {
 		return err
 	}
@@ -814,7 +815,7 @@ func untar(tarball, dest string) error {
 			}
 		case tar.TypeSymlink:
 			// SECURITY: Skip symbolic links to prevent symlink attacks
-			fmt.Printf("Warning: Skipping symbolic link for security: %s\n", header.Name)
+			logger.Warn("Skipping symbolic link for security", header.Name)
 			continue
 		default:
 			// SECURITY: Skip unknown file types for security

@@ -62,16 +62,16 @@ func isTerminal() bool {
 
 // ServiceHealthInfo contains detailed health information about a service
 type ServiceHealthInfo struct {
-	Status       string
-	Icon         string
+	Status        string
+	Icon          string
 	StateWithText string // For detailed view: "● (running)", "○ (stopped)", etc.
-	PID          int
-	Uptime       string
-	MemoryUsage  string
-	CPUUsage     float64
-	ProcessCount int
-	SocketInfo   string
-	ConfigPath   string
+	PID           int
+	Uptime        string
+	MemoryUsage   string
+	CPUUsage      float64
+	ProcessCount  int
+	SocketInfo    string
+	ConfigPath    string
 }
 
 // getHealthIcon returns appropriate colored status dot based on service health
@@ -374,7 +374,7 @@ func RunStatus(args []string) error {
 	}
 
 	// Create service manager
-	manager, err := services.NewServiceManager()
+	manager, err := newServiceManager()
 	if err != nil {
 		return logger.Error("create service manager", err.Error())
 	}
@@ -482,12 +482,12 @@ func RunStatus(args []string) error {
 			}
 
 			row := []string{
-				healthInfo.Icon,           // Status icon
-				service.Name,              // Service name
-				serviceType,               // Service type
-				projectDisplay,            // Project
-				healthInfo.Uptime,         // Uptime
-				healthInfo.MemoryUsage,    // Memory usage
+				healthInfo.Icon,        // Status icon
+				service.Name,           // Service name
+				serviceType,            // Service type
+				projectDisplay,         // Project
+				healthInfo.Uptime,      // Uptime
+				healthInfo.MemoryUsage, // Memory usage
 			}
 			tableData = append(tableData, row)
 		}
@@ -583,13 +583,12 @@ func serviceTypeToString(serviceType services.ServiceType) string {
 	}
 }
 
-
-
 /**
  * printStatusUsage renders CLI help for the status command.
  */
 func printStatusUsage() {
-	fmt.Println(`Usage: chauf status [service-type] [--project <slug>] [--detail]
+	logger := lib.NewCommandLogger("status")
+	logger.PrintBlock(`Usage: chauf status [service-type] [--project <slug>] [--detail]
 
 Shows the status of Chauffeur services with chauf- prefix.
 

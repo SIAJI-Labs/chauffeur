@@ -7,6 +7,13 @@ import (
 	"net/url"
 )
 
+var githubAPIBase = "https://api.github.com"
+
+// setGitHubAPIBase allows tests to override the GitHub API host.
+func setGitHubAPIBase(base string) {
+	githubAPIBase = base
+}
+
 // GitHubCompareResult captures ahead/behind information between two commits.
 type GitHubCompareResult struct {
 	Status   string
@@ -25,7 +32,8 @@ func CompareGitHubCommits(client *http.Client, owner, repo, baseSHA, headRef str
 		return GitHubCompareResult{}, fmt.Errorf("both base commit and head ref are required")
 	}
 
-	path := fmt.Sprintf("https://api.github.com/repos/%s/%s/compare/%s...%s",
+	path := fmt.Sprintf("%s/repos/%s/%s/compare/%s...%s",
+		githubAPIBase,
 		url.PathEscape(owner),
 		url.PathEscape(repo),
 		url.PathEscape(baseSHA),
@@ -87,7 +95,8 @@ func FetchBranchHeadSHA(client *http.Client, owner, repo, branch string) (string
 		return "", fmt.Errorf("branch name is required")
 	}
 
-	path := fmt.Sprintf("https://api.github.com/repos/%s/%s/branches/%s",
+	path := fmt.Sprintf("%s/repos/%s/%s/branches/%s",
+		githubAPIBase,
 		url.PathEscape(owner),
 		url.PathEscape(repo),
 		url.PathEscape(branch),

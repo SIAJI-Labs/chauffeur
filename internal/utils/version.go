@@ -8,21 +8,31 @@ import (
 	"time"
 )
 
+var githubAPIBase = "https://api.github.com"
+var clientFactory = func() *http.Client {
+	return &http.Client{
+		Timeout: 10 * time.Second,
+	}
+}
+
+// setGitHubAPIBase allows tests to override the GitHub API host.
+func setGitHubAPIBase(base string) {
+	githubAPIBase = base
+}
+
 // GitHubRelease represents a GitHub API response for a release
 type GitHubRelease struct {
-	TagName string `json:"tag_name"`
-	Name    string `json:"name"`
-	Draft   bool   `json:"draft"`
-	Prerelease bool `json:"prerelease"`
+	TagName    string `json:"tag_name"`
+	Name       string `json:"name"`
+	Draft      bool   `json:"draft"`
+	Prerelease bool   `json:"prerelease"`
 }
 
 // GetLatestVersion fetches the latest release version from GitHub
 func GetLatestVersion() (string, error) {
-	client := &http.Client{
-		Timeout: 10 * time.Second,
-	}
+	client := clientFactory()
 
-	resp, err := client.Get("https://api.github.com/repos/SIAJI-Labs/chauffeur/releases/latest")
+	resp, err := client.Get(fmt.Sprintf("%s/repos/SIAJI-Labs/chauffeur/releases/latest", githubAPIBase))
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch latest version: %w", err)
 	}
@@ -47,11 +57,9 @@ func GetLatestVersion() (string, error) {
 
 // GetLatestReleaseVersion finds the latest non-prerelease, non-draft release
 func GetLatestReleaseVersion() (string, error) {
-	client := &http.Client{
-		Timeout: 10 * time.Second,
-	}
+	client := clientFactory()
 
-	resp, err := client.Get("https://api.github.com/repos/SIAJI-Labs/chauffeur/releases")
+	resp, err := client.Get(fmt.Sprintf("%s/repos/SIAJI-Labs/chauffeur/releases", githubAPIBase))
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch releases: %w", err)
 	}

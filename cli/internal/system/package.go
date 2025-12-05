@@ -10,6 +10,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/siaji/chauffeur/cli/lib"
 )
 
 // PackageManager represents a system package manager
@@ -333,12 +335,13 @@ func PromptUserForPackages(missing []Package) bool {
 		return true
 	}
 
-	fmt.Printf("The following packages are required for Chauffeur local domain resolution:\n")
+	logger := lib.NewCommandLogger("system")
+	logger.PrintSection("Missing Packages")
 	for _, pkg := range missing {
-		fmt.Printf("  - %s (%s): %s\n", pkg.Name, pkg.PackageName, pkg.Description)
+		logger.Info(fmt.Sprintf("%s (%s): %s", pkg.Name, pkg.PackageName, pkg.Description))
 	}
 
-	fmt.Printf("\nWould you like to install these packages? [y/N]: ")
+	logger.Prompt("Would you like to install these packages? [y/N]:", "Packages are required for local domain resolution")
 
 	// SENSITIVE: User input confirmation - package installation consent
 	var response string

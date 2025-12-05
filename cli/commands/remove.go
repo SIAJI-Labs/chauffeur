@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/siaji/chauffeur/cli/installers"
-	"github.com/siaji/chauffeur/cli/internal/services"
 	"github.com/siaji/chauffeur/cli/internal/system"
 	"github.com/siaji/chauffeur/cli/internal/workspace"
 	"github.com/siaji/chauffeur/cli/lib"
@@ -153,13 +152,12 @@ func runRemovePHP(version string, force bool, logger *lib.Logger) error {
 	if len(cachedFiles) > 0 {
 		cacheInfo := installers.GetCacheFileInfo(cachedFiles)
 		logger.Info("Cached PHP files found")
-		fmt.Println(cacheInfo)
+		logger.PrintBlock(cacheInfo)
 
 		if !force {
 			logger.Prompt("Cache Management", "What would you like to do with cached PHP files?")
-			fmt.Println("  1) Keep cached files (faster future installations)")
-			fmt.Println("  2) Remove cached files (free up disk space)")
-			fmt.Print("Enter your choice (1-2): ")
+			logger.PrintBlock("  1) Keep cached files (faster future installations)\n  2) Remove cached files (free up disk space)")
+			logger.Prompt("Enter your choice (1-2):", "")
 
 			reader := bufio.NewReader(os.Stdin)
 			input, err := reader.ReadString('\n')
@@ -255,13 +253,12 @@ func runRemoveComposer(prefix string, force bool, logger *lib.Logger) error {
 	if len(cachedFiles) > 0 {
 		cacheInfo := installers.GetCacheFileInfo(cachedFiles)
 		logger.Info("Cached Composer files found")
-		fmt.Println(cacheInfo)
+		logger.PrintBlock(cacheInfo)
 
 		if !force {
 			logger.Prompt("Cache Management", "What would you like to do with cached Composer files?")
-			fmt.Println("  1) Keep cached files (faster future installations)")
-			fmt.Println("  2) Remove cached files (free up disk space)")
-			fmt.Print("Enter your choice (1-2): ")
+			logger.PrintBlock("  1) Keep cached files (faster future installations)\n  2) Remove cached files (free up disk space)")
+			logger.Prompt("Enter your choice (1-2):", "")
 
 			reader := bufio.NewReader(os.Stdin)
 			input, err := reader.ReadString('\n')
@@ -322,13 +319,12 @@ func runRemoveService(spec ServiceSpec, force bool, logger *lib.Logger) error {
 	if len(cachedFiles) > 0 {
 		cacheInfo := installers.GetCacheFileInfo(cachedFiles)
 		logger.Info(fmt.Sprintf("Cached %s files found", spec.Name))
-		fmt.Println(cacheInfo)
+		logger.PrintBlock(cacheInfo)
 
 		if !force {
 			logger.Prompt("Cache Management", fmt.Sprintf("What would you like to do with cached %s files?", spec.Name))
-			fmt.Println("  1) Keep cached files (faster future installations)")
-			fmt.Println("  2) Remove cached files (free up disk space)")
-			fmt.Print("Enter your choice (1-2): ")
+			logger.PrintBlock("  1) Keep cached files (faster future installations)\n  2) Remove cached files (free up disk space)")
+			logger.Prompt("Enter your choice (1-2):", "")
 
 			reader := bufio.NewReader(os.Stdin)
 			input, err := reader.ReadString('\n')
@@ -360,7 +356,7 @@ func runRemoveService(spec ServiceSpec, force bool, logger *lib.Logger) error {
 	}
 
 	// Stop running service before removal
-	manager, mgrErr := services.NewServiceManager()
+	manager, mgrErr := newServiceManager()
 	if mgrErr == nil && spec.Name == "nginx" {
 		for _, svc := range manager.ListGlobalServices() {
 			if svc.Name == "chauf-nginx" {
@@ -466,7 +462,8 @@ func confirmDestructiveAction(logger *lib.Logger, prompt string) bool {
 }
 
 func printRemoveUsage() {
-	fmt.Println(`Usage: chauf remove [--force] <service> [<version>...]
+	logger := lib.NewCommandLogger("remove")
+	logger.PrintBlock(`Usage: chauf remove [--force] <service> [<version>...]
 
 Removes installed Chauffeur-managed services and optionally their cached downloads.
 

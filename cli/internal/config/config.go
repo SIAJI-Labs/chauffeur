@@ -205,6 +205,10 @@ func (c *Config) applyDefaults() {
 		c.ProjectsDir = filepath.Join(c.WorkspaceDir, c.ProjectsDir)
 	}
 
+	if c.PHP.LocalTarballs == nil {
+		c.PHP.LocalTarballs = make(map[string]string)
+	}
+
 	// Apply user-space port defaults to avoid system conflicts
 	if c.Nginx.HTTPPort == 0 {
 		c.Nginx.HTTPPort = 8080
@@ -327,15 +331,8 @@ func parseIntoConfig(data []byte, cfg *Config) error {
 				if cfg.PHP.LocalTarballs == nil {
 					cfg.PHP.LocalTarballs = make(map[string]string)
 				}
-			} else if strings.HasPrefix(key, "  ") && currentSection == "php" {
-				// Handle indented tarball paths (e.g., "  8.3: /path/to/php-8.3.27.tar.gz")
-				tarballKey := strings.TrimSpace(key)
-				if tarballKey != "" && value != "" {
-					if cfg.PHP.LocalTarballs == nil {
-						cfg.PHP.LocalTarballs = make(map[string]string)
-					}
-					cfg.PHP.LocalTarballs[tarballKey] = value
-				}
+			} else if cfg.PHP.LocalTarballs != nil && key != "" {
+				cfg.PHP.LocalTarballs[key] = value
 			}
 		case "ports":
 			switch key {

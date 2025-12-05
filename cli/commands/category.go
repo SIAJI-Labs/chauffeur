@@ -378,7 +378,8 @@ func runCategoryDelete(logger *lib.Logger, args []string) error {
 }
 
 func printCategoryUsage() {
-	fmt.Fprintf(lib.CurrentStdout, `Chauffeur Category Management
+	logger := lib.NewCommandLogger("category")
+	logger.PrintBlock(`Chauffeur Category Management
 
 Usage:
   chauf category list                       List all categories with project counts.
@@ -406,7 +407,8 @@ Flags:
 }
 
 func printCategoryRenameUsage() {
-	fmt.Fprintf(lib.CurrentStdout, `Chauffeur Category Rename
+	logger := lib.NewCommandLogger("category rename")
+	logger.PrintBlock(`Chauffeur Category Rename
 
 Usage:
   chauf category rename --from <old-category> --to <new-category>
@@ -427,7 +429,8 @@ Examples:
 }
 
 func printCategoryDeleteUsage() {
-	fmt.Fprintf(lib.CurrentStdout, `Chauffeur Category Delete
+	logger := lib.NewCommandLogger("category delete")
+	logger.PrintBlock(`Chauffeur Category Delete
 
 Usage:
   chauf category delete --name <category> [--move-to <destination>]

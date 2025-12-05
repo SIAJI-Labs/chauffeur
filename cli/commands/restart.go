@@ -79,7 +79,7 @@ func RunRestart(args []string) error {
 	}
 
 	// Create service manager
-	manager, err := services.NewServiceManager()
+	manager, err := newServiceManager()
 	if err != nil {
 		return fmt.Errorf("create service manager: %w", err)
 	}
@@ -288,7 +288,8 @@ func RunRestart(args []string) error {
  * printRestartUsage renders CLI help for the restart command.
  */
 func printRestartUsage() {
-	fmt.Println(`Usage: chauf restart [service...] [--project <slug>] [--all] [--dry-run]
+	logger := lib.NewCommandLogger("restart")
+	logger.PrintBlock(`Usage: chauf restart [service...] [--project <slug>] [--all] [--dry-run]
 
 Restarts Chauffeur services with chauf- prefix to avoid conflicts with system services.
 This is equivalent to running 'chauf stop' followed by 'chauf start' for the same services.

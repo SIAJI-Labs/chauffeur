@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/siaji/chauffeur/cli/internal/services"
 	"github.com/siaji/chauffeur/cli/lib" // Import the lib package for CommandExecutor
 )
 
@@ -41,6 +42,9 @@ func TestVersionManagement(t *testing.T) {
 // TestCommandValidation tests basic command argument validation
 func TestCommandValidation(t *testing.T) {
 	// Test invalid flag handling
+	reset := OverrideServiceManager(func() (*services.ServiceManager, error) { return &services.ServiceManager{}, nil })
+	defer reset()
+
 	err := RunStart([]string{"--invalid-flag"})
 	if err == nil {
 		t.Error("Expected error for invalid flag in start command")
@@ -88,6 +92,8 @@ func TestDryRunCommands(t *testing.T) {
 	originalHome := os.Getenv("HOME")
 	os.Setenv("HOME", tempDir)
 	defer os.Setenv("HOME", originalHome)
+	resetSvc := OverrideServiceManager(func() (*services.ServiceManager, error) { return &services.ServiceManager{}, nil })
+	defer resetSvc()
 
 	// Initialize workspace in temp directory
 	wsDir := filepath.Join(tempDir, ".chauffeur")
@@ -251,11 +257,11 @@ func TestInstallCommandDeduplication(t *testing.T) {
 		service  string
 		expected bool
 	}{
-		{[]string{"nginx", "php", "composer"}, "nginx", true},   // nginx already present
-		{[]string{"nginx", "php", "composer"}, "php", true},     // php already present
+		{[]string{"nginx", "php", "composer"}, "nginx", true},    // nginx already present
+		{[]string{"nginx", "php", "composer"}, "php", true},      // php already present
 		{[]string{"nginx", "php", "composer"}, "composer", true}, // composer already present
-		{[]string{"nginx", "php", "composer"}, "nginx2", false}, // nginx2 not present
-		{[]string{}, "nginx", false},                           // empty array
+		{[]string{"nginx", "php", "composer"}, "nginx2", false},  // nginx2 not present
+		{[]string{}, "nginx", false},                             // empty array
 	}
 
 	for _, tc := range testCases {

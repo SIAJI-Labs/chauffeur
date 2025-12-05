@@ -401,7 +401,8 @@ func (pm *ProjectMigrator) unlinkFromCurrentWorkspace(projectSlug string) error 
 
 // printMigrateUsage renders CLI help for the migrate command
 func printMigrateUsage() {
-	fmt.Println(`Usage: chauf migrate <project-slug> <destination-workspace> [options]
+	logger := lib.NewCommandLogger("migrate")
+	logger.PrintBlock(`Usage: chauf migrate <project-slug> <destination-workspace> [options]
 
 Migrate a project to a different Chauffeur workspace.
 
