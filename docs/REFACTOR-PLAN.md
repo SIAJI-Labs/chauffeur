@@ -215,10 +215,10 @@ Checking directory /var/www/myapp
 ```
 
 **Proposed (Grouped & Hierarchical)**
-*Normal Mode:*
+*Normal Mode (with Spinners for active steps):*
 ```text
 Linking project my-app...
-  • Validating directory
+  ⠋ Validating directory... (spinner updates in place)
   ✓ Directory validated
   ✓ SSL certificate generated
 ```
@@ -256,3 +256,16 @@ nginx         running   8080    1234   12MB
 php-fpm-8.3   running   9000    5678   45MB
 mysql         stopped   3306    -      -
 ```
+
+### Future Considerations / Backlog
+*Items identified for future implementation but not currently prioritized.*
+
+1.  **Configuration Validation**
+    *   Implement a `Validate()` method for `Config` structs to catch issues (e.g., negative ports) early.
+2.  **Service Health Checks (Wait-for-ready)**
+    *   Add logic to wait for ports to open after starting services instead of "fire and forget".
+3.  **Workspace Cleanup**
+    *   Add `chauf clean` to remove unused logs and cache without full uninstall.
+4.  **Self-Update Rollback**
+    *   Add `chauf self-update --rollback` to restore previous binary version in case of failure.
+
