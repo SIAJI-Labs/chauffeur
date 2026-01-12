@@ -180,6 +180,14 @@ main() {
     # Add to PATH
     add_to_path
 
+    # Initialize workspace (creates directories and recreates PHP shims if PHP is already installed)
+    log "Initializing Chauffeur workspace..."
+    if "${BINARY_PATH}" init --quiet; then
+        success "Workspace initialized at ${WORKSPACE}"
+    else
+        warn "Workspace initialization had warnings, but installation succeeded"
+    fi
+
     # Cleanup temporary directory if we cloned
     if [[ "${src_dir}" != "$(pwd)" ]]; then
         rm -rf "${src_dir}"
@@ -195,9 +203,9 @@ main() {
     echo -e "${GREEN}🎉 Chauffeur is now installed!${NC}"
     echo -e "${BLUE}Next steps:${NC}"
     echo "  1. Reload your shell: source ~/.${SHELL##*/}rc"
-    echo "  2. Initialize workspace: chauf init"
-    echo "  3. Install services: chauf install"
-    echo "  4. Create your first project: chauf link"
+    echo "  2. Install services: chauf install nginx php"
+    echo "  3. Create your first project: cd /path/to/project && chauf link"
+    echo "  4. Start services: chauf start"
     echo ""
 }
 

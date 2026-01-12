@@ -2909,3 +2909,71 @@ func getCAPaths() (string, string) {
 		return "/etc/ssl/certs/ca-certificates.crt", "/etc/ssl/certs"
 	}
 }
+
+// RecreateExistingPHPShims recreates shims for any existing PHP installations found in the workspace.
+// This is useful after uninstall/reinstall to restore shim functionality.
+func RecreateExistingPHPShims(prefix string) (int, error) {
+	phpDir := filepath.Join(prefix, "php")
+
+	// Check if php directory exists
+	if _, err := os.Stat(phpDir); os.IsNotExist(err) {
+		return 0, nil // No PHP installations, nothing to do
+	}
+
+	// Scan for PHP version directories
+	entries, err := os.ReadDir(phpDir)
+	if err != nil {
+		return 0, fmt.Errorf("read php directory: %w", err)
+	}
+
+	supportedVersions := GetSupportedPHPVersions()
+	supportedMap := make(map[string]bool)
+	for _, v := range supportedVersions {
+		supportedMap[v.Version] = true
+	}
+
+	var recreated []string
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		version := entry.Name()
+
+		// Skip if this is not a supported version
+		if !supportedMap[version] {
+			continue
+		}
+
+		// Check if PHP binary exists
+		binaryPath := filepath.Join(phpDir, version, "bin", phpBinaryName)
+		if _, err := os.Stat(binaryPath); err != nil {
+			continue // Binary doesn't exist, skip
+		}
+
+		// Check if versioned shim already exists
+		shimName := fmt.Sprintf("php-%s", version)
+		shimPath := filepath.Join(prefix, "bin", shimName)
+		if _, err := os.Stat(shimPath); err == nil {
+			continue // Shim already exists, skip
+		}
+
+		// Create the versioned shim
+		if err := writeShim(prefix, shimName, binaryPath); err != nil {
+			return 0, fmt.Errorf("write shim for php %s: %w", version, err)
+		}
+
+		recreated = append(recreated, version)
+
+		// If this is the default version, also create the default shim
+		defaultVersion, err := config.GetDefaultPHPVersion()
+		if err == nil && defaultVersion == version {
+			if err := writeShim(prefix, phpBinaryName, binaryPath); err != nil {
+				return 0, fmt.Errorf("write default php shim: %w", err)
+			}
+		}
+	}
+
+	return len(recreated), nil
+}

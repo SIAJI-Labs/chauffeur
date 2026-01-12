@@ -451,7 +451,7 @@ func checkSystemDependencies(options DoctorOptions, fixPlans *[]FixPlan) ([]Depe
 func checkPHPBuildDependencies(options DoctorOptions, fixPlans *[]FixPlan) ([]DependencyCheck, int, int) {
 	logger := lib.NewCommandLogger("doctor")
 
-	// PHP build dependencies based on AGENTS.md requirements
+	// PHP build dependencies based on docs/README.md requirements
 	dependencies := []struct {
 		name        string
 		pkgConfig   string
