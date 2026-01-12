@@ -151,7 +151,7 @@ _A living status board for features, debt, and priorities. Keep this in sync wit
 - **Status monitoring** with systemd integration for service health checking
 - **Project-specific autostart**: `chauf link --autostart` for individual project services
 
-**Implementation Status**: Design complete in `docs/AUTOSTART_DESIGN.md`
+**Implementation Status**: Design complete in `docs/design/autostart.md`
 **Key Files**: `cli/commands/autostart.go` (new), `cli/internal/config/config.go` (extend), systemd templates
 
 ### GD Extension for Legacy PHP (Future Enhancement)
@@ -333,7 +333,7 @@ The following commands were documented but **never implemented** in the actual C
 
 #### Auto-Start Service Integration (Design Complete)
 - **Description**: Systemd integration for automatic startup on system boot
-- **Status**: Design documented in `docs/AUTOSTART_DESIGN.md`
+- **Status**: Design documented in `docs/design/autostart.md`
 - **Commands to Implement**:
   - `chauf autostart enable [--service]` - Enable auto-start
   - `chauf autostart disable [--service]` - Disable auto-start

@@ -76,7 +76,7 @@ troubleshooting information.
 1. **Fork and clone** the repository
 2. **Build locally**: `chauf self-update --dev` (from repo root)
 3. **Run tests**: `go test ./...`
-4. **Read AGENTS.md**: The authoritative handbook for development patterns
+4. **Read docs/README.md**: The comprehensive documentation index for development patterns
 
 ### Go Basics for Chauffeur Development
 

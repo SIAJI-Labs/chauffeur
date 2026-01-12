@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/siaji/chauffeur/cli/internal/config"
@@ -102,19 +103,32 @@ func LinkExampleProjectIfReady() error {
 		defaultPHP = "8.3"
 	}
 
-	if !projects.IsPHPVersionInstalled(defaultPHP) {
-		logger.Info("PHP not installed yet. Example project will be linked after PHP installation.")
-		return nil
+	// Collect missing prerequisites
+	var missing []string
+	phpInstalled := projects.IsPHPVersionInstalled(defaultPHP)
+	if !phpInstalled {
+		missing = append(missing, fmt.Sprintf("php %s", defaultPHP))
 	}
 
 	// Check nginx installation
 	nginxBinPath := filepath.Join(cfg.WorkspaceDir, "nginx", "bin", "nginx")
-	if _, err := os.Stat(nginxBinPath); os.IsNotExist(err) {
-		logger.Info("Nginx not installed yet. Example project will be linked after nginx installation.")
+	nginxInstalled := false
+	if _, err := os.Stat(nginxBinPath); err == nil {
+		nginxInstalled = true
+	} else {
+		missing = append(missing, "nginx")
+	}
+
+	// Show consolidated message if any prerequisites are missing
+	if len(missing) > 0 {
+		logger.Info(fmt.Sprintf("Example project requires: %s", strings.Join(missing, ", ")))
+		logger.Info(fmt.Sprintf("Install with: chauf install %s", strings.Join(missing, " ")))
+		logger.Info("Example project will be linked automatically after installation.")
 		return nil
 	}
 
 	// Both services are installed, link the project
+	_ = phpInstalled && nginxInstalled // Silence unused warning
 	return linkExampleProject(cfg, logger, defaultPHP)
 }
 

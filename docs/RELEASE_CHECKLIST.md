@@ -15,13 +15,13 @@ This checklist ensures consistent, high-quality releases for Chauffeur. Follow t
 ### 2. Documentation Sync ✅
 - [ ] **README.md** reflects current features and installation steps
 - [ ] **docs/TODO_STATUS.md** shows accurate project status
-- [ ] **AGENTS.md** matches actual command behavior and contracts
+- [ ] **docs/README.md** matches actual command behavior and contracts
 - [ ] **docs/CONTRIBUTING.md** guidelines are current
 - [ ] Changelog entries prepared (following conventional commit format)
 
 ### 3. Feature Validation ✅
 - [ ] All documented features work as described
-- [ ] CLI commands match AGENTS.md command surface
+- [ ] CLI commands match docs/README.md documentation
 - [ ] Error messages are actionable and user-friendly
 - [ ] Workspace rules followed (no host system mutations)
 - [ ] Service orchestration works (start/stop/restart/status)

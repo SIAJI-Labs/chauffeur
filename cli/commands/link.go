@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/siaji/chauffeur/cli/installers"
 	"github.com/siaji/chauffeur/cli/internal/config"
 	"github.com/siaji/chauffeur/cli/internal/projects"
 	"github.com/siaji/chauffeur/cli/internal/templates"
@@ -51,19 +52,15 @@ func validateDomain(domain string) error {
 	return nil
 }
 
-// validatePHPVersion ensures PHP version is in expected format
+// validatePHPVersion ensures PHP version is in expected format and supported
 func validatePHPVersion(version string) error {
 	if version == "" {
 		return fmt.Errorf("PHP version cannot be empty")
 	}
 
-	// Allow only major.minor format (e.g., "7.4", "8.0", "8.1")
-	validVersions := map[string]bool{
-		"7.4": true, "8.0": true, "8.1": true, "8.2": true, "8.3": true, "8.4": true,
-	}
-
-	if !validVersions[version] {
-		return fmt.Errorf("unsupported PHP version: %s", version)
+	// Use the installer's version support check (single source of truth)
+	if !installers.IsPHPVersionSupported(version) {
+		return fmt.Errorf("unsupported PHP version: %s. Supported versions: %s", version, installers.GetSupportedVersionsList())
 	}
 
 	return nil

@@ -152,11 +152,16 @@ func RunDoctor(args []string) error {
 		}
 	}
 
-	// Execute auto-fix if requested
-	if options.AutoFix && len(fixPlans) > 0 {
-		if executeFixPlan(logger, fixPlans, options.Quiet) {
-			// Mark that we've executed fixes so the summary reflects the attempt
-			logger.Info("Auto-fix completed. Run 'chauf doctor' again to verify all issues were resolved.")
+	// Handle fix plan display/execution based on flags
+	if len(fixPlans) > 0 {
+		if options.AutoFix {
+			// --auto-fix: Show plan, prompt user, and execute if confirmed
+			if executeFixPlan(logger, fixPlans, options.Quiet) {
+				logger.Info("Auto-fix completed. Run 'chauf doctor' again to verify all issues were resolved.")
+			}
+		} else if options.Fix {
+			// --fix: Show fix plan only (no execution)
+			displayFixPlan(logger, fixPlans)
 		}
 	}
 
@@ -276,16 +281,16 @@ Options:
   --check-network, -n   Check network and port availability
   --check-dns           Check DNS resolution for .test domains
   --verbose, -v         Show detailed diagnostic information
-  --fix, -f            Show fix suggestions for issues found
-  --auto-fix           Attempt to automatically fix issues where safe
-  --quiet, -q          Suppress non-error output
-  --help, -h           Show this help message
+  --fix, -f             Show fix plan for all issues found (no execution)
+  --auto-fix            Show fix plan, prompt for confirmation, then execute
+  --quiet, -q           Suppress non-error output
+  --help, -h            Show this help message
 
 Examples:
   chauf doctor                    # Run all health checks
   chauf doctor --check-deps       # Check only system dependencies
-  chauf doctor --check-php --fix  # Check PHP dependencies and show fixes
-  chauf doctor --auto-fix         # Attempt to fix issues automatically
+  chauf doctor --fix              # Show fix plan for all issues
+  chauf doctor --auto-fix         # Fix issues with confirmation prompt
 
 Description:
   Performs comprehensive health checks on your Chauffeur installation,
@@ -918,7 +923,64 @@ func checkDNSDependencies(options DoctorOptions, fixPlans *[]FixPlan) ([]Depende
 	return checks, errorCount, warningCount
 }
 
+// displayFixPlan shows the collected fix plan without executing (for --fix flag)
+func displayFixPlan(logger *lib.Logger, fixPlans []FixPlan) {
+	if len(fixPlans) == 0 {
+		logger.Info("No fixes needed - all checks passed!")
+		return
+	}
+
+	// Sort fixes by priority (errors first)
+	for i := 0; i < len(fixPlans); i++ {
+		for j := i + 1; j < len(fixPlans); j++ {
+			if fixPlans[i].Priority > fixPlans[j].Priority {
+				fixPlans[i], fixPlans[j] = fixPlans[j], fixPlans[i]
+			}
+		}
+	}
+
+	logger.PrintSection("🔧 Fix Plan")
+
+	// Count errors vs warnings
+	errorCount := 0
+	warningCount := 0
+	for _, plan := range fixPlans {
+		if plan.Priority == 1 {
+			errorCount++
+		} else {
+			warningCount++
+		}
+	}
+
+	logger.Info(fmt.Sprintf("Found %d fixable issue(s): %d errors, %d warnings", len(fixPlans), errorCount, warningCount))
+	logger.Info("")
+
+	// Group fixes by category
+	categories := make(map[string][]FixPlan)
+	for _, plan := range fixPlans {
+		categories[plan.Category] = append(categories[plan.Category], plan)
+	}
+
+	// Show fixes by category
+	for category, plans := range categories {
+		logger.Info(fmt.Sprintf("%s:", category))
+		for _, plan := range plans {
+			priorityIcon := "❌"
+			if plan.Priority == 2 {
+				priorityIcon = "⚠️"
+			}
+			logger.Info(fmt.Sprintf("  %s %s: %s", priorityIcon, plan.Name, plan.Description))
+			logger.Info(fmt.Sprintf("    Command: %s", plan.Command))
+		}
+		logger.Info("")
+	}
+
+	// Show hint to use --auto-fix
+	logger.Info("To execute these fixes, run: chauf doctor --auto-fix")
+}
+
 // executeFixPlan shows the fix plan and asks for user confirmation before executing
+
 func executeFixPlan(logger *lib.Logger, fixPlans []FixPlan, quiet bool) bool {
 	if len(fixPlans) == 0 {
 		return true
@@ -1298,21 +1360,16 @@ func printCheckResult(logger *lib.Logger, check DependencyCheck, options DoctorO
 					logger.Error("  ├─ Error", err)
 				}
 			}
-			if options.Fix && check.FixCommand != "" {
-				if options.AutoFix && check.CanFix {
-					// Collect fix plan instead of executing immediately
-					fixPlan := FixPlan{
-						Name:        check.Name,
-						Description: check.Description,
-						Command:     check.FixCommand,
-						Category:    category,
-						Priority:    1, // Error priority
-					}
-					*fixPlans = append(*fixPlans, fixPlan)
-					logger.Info(fmt.Sprintf("  └─ Will fix: %s", check.FixCommand))
-				} else {
-					logger.Info(fmt.Sprintf("  └─ Fix: %s", check.FixCommand))
+			// Collect fix plan when --fix is set (for both --fix and --auto-fix modes)
+			if options.Fix && check.FixCommand != "" && check.CanFix {
+				fixPlan := FixPlan{
+					Name:        check.Name,
+					Description: check.Description,
+					Command:     check.FixCommand,
+					Category:    category,
+					Priority:    1, // Error priority
 				}
+				*fixPlans = append(*fixPlans, fixPlan)
 			}
 		} else if len(check.Warnings) > 0 {
 			logger.Warn(check.Status, check.Name)
@@ -1321,22 +1378,16 @@ func printCheckResult(logger *lib.Logger, check DependencyCheck, options DoctorO
 					logger.Warn("  ├─ Warning", warn)
 				}
 			}
-			// Show fix suggestions for warnings with --fix, and collect with --auto-fix
+			// Collect fix plan for warnings when --fix is set
 			if options.Fix && check.CanFix && check.FixCommand != "" && !check.Installed {
-				if options.AutoFix {
-					// Collect fix plan instead of executing immediately
-					fixPlan := FixPlan{
-						Name:        check.Name,
-						Description: check.Description,
-						Command:     check.FixCommand,
-						Category:    category,
-						Priority:    2, // Warning priority
-					}
-					*fixPlans = append(*fixPlans, fixPlan)
-					logger.Info(fmt.Sprintf("  └─ Will fix: %s", check.FixCommand))
-				} else {
-					logger.Info(fmt.Sprintf("  └─ Fix: %s", check.FixCommand))
+				fixPlan := FixPlan{
+					Name:        check.Name,
+					Description: check.Description,
+					Command:     check.FixCommand,
+					Category:    category,
+					Priority:    2, // Warning priority
 				}
+				*fixPlans = append(*fixPlans, fixPlan)
 			}
 		} else {
 			if !options.Quiet {
