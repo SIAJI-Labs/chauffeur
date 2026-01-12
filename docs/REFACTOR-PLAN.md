@@ -106,39 +106,89 @@ This section outlines the execution plan for addressing the identified issues, p
 *Focus: Fixing potential bugs, security risks, and ensuring robust configuration.*
 
 1. **Fix Service Manager Error Handling**
-   - Address ignored errors in `cli/internal/services/manager.go`.
-   - Ensure explicit logging or failure when config generation fails.
+   - **Context**: In `cli/internal/services/manager.go`, `generateNginxConfig` failures are currently ignored.
+   - **Example**:
+     ```go
+     // Before
+     _ = generateNginxConfig(config) // Continue even if config generation fails
+
+     // After
+     if err := generateNginxConfig(config); err != nil {
+         return fmt.Errorf("generate nginx config: %w", err)
+     }
+     ```
 2. **Security Audit: File Permissions**
-   - Review and fix `0755` defaults for sensitive directories in `cli/internal/projects` and `cli/lib/ssl.go`.
-   - Ensure `0600` for keys and `0644` for configs.
+   - **Context**: `cli/internal/projects` and `cli/lib/ssl.go` often use `0755` for directories.
+   - **Example**:
+     ```go
+     // Before
+     os.MkdirAll(certDir, 0o755)
+
+     // After
+     os.MkdirAll(certDir, 0o700) // Restricted access for sensitive dirs
+     ```
 3. **Security Audit: Command Injection**
-   - Harden `chauf doctor` internal command parsing to prevent injection risks.
+   - **Context**: `chauf doctor` executes internal commands with flags.
+   - **Example**: Ensure `phpVersion` and `workspaceDir` are strictly validated against allowlists or regex (e.g., `^[0-9]+\.[0-9]+$`) before passing to `exec`.
 4. **Fix Template Engine Paths**
-   - Replace brittle relative paths in `cli/internal/templates/engine.go` with `embed` or strict config paths.
+   - **Context**: `cli/internal/templates/engine.go` uses `filepath.Join(exe, "../..")`.
+   - **Example**: Use `//go:embed templates/*` to bundle templates directly into the binary, removing runtime filesystem dependency.
 
 ### Phase 2: Refactoring & UX (Medium Priority)
 *Focus: Improving code maintainability and user interaction.*
 
 1. **Refactor `RunLink`**
-   - Extract `handleNewProject`, `handleAliasAddition`, `handleProjectUpdate` from `cli/commands/link.go`.
-   - Simplify main control flow.
+   - **Context**: `cli/commands/link.go` has a massive `RunLink` function.
+   - **Example**:
+     ```go
+     func RunLink(args []string) error {
+         // ... parsing logic ...
+         if opts.IsNew {
+             return handleNewProject(opts)
+         } else if opts.AddAlias {
+             return handleAliasAddition(opts)
+         }
+         return handleProjectUpdate(opts)
+     }
+     ```
 2. **Centralize Defaults**
-   - Create `cli/internal/config/defaults.go`.
-   - Migrate scattered constants (repo URLs, ports) to this single source.
+   - **Context**: Defaults like git URLs are hardcoded in `doctor.go`.
+   - **Example**:
+     ```go
+     // cli/internal/config/defaults.go
+     const (
+         DefaultRepoURL = "https://github.com/SIAJI-Labs/chauffeur.git"
+         DefaultHTTPPort = 8080
+     )
+     ```
 3. **UX: Standardize Flags**
-   - Implement global `--verbose`/`--quiet` support across all commands.
+   - **Context**: `install` lacks `--quiet`.
+   - **Example**: Create a shared `cli/internal/flags` package or struct mixin that defines `Verbose`, `Quiet`, `Help` and handles them consistently.
 4. **UX: Interactive Prompts**
-   - Add interactive fallback for missing args in `chauf link`.
+   - **Context**: `chauf link` fails if `--php` is missing.
+   - **Example**:
+     ```go
+     if version == "" {
+         version = lib.PromptSelect("Select PHP version", []string{"8.1", "8.2", "8.3"})
+     }
+     ```
 
 ### Phase 3: Architecture & Performance (Long Term)
 *Focus: Structural improvements and optimization.*
 
 1. **Dependency Injection**
-   - Refactor `http.Client` usage in `releases` package.
-   - Reduce reliance on `coverage_probe.go` in tests where possible.
+   - **Context**: `releases` package creates its own `http.Client`.
+   - **Example**: Pass `*http.Client` as a dependency to `LatestGitHubRelease` to allow injecting a mock client in tests.
 2. **Performance Optimization**
-   - Implement caching for `detectDistro`.
-   - Optimize `TemplateEngine` file checks if metrics indicate slowness.
+   - **Context**: `detectDistro` reads files on every call.
+   - **Example**:
+     ```go
+     var cachedInfo *Info
+     func Detect() (Info, error) {
+         if cachedInfo != nil { return *cachedInfo, nil }
+         // ... detection logic ...
+     }
+     ```
 3. **Testing Improvements**
-   - Adopt standard Go interface mocking.
-   - Explore `testscript` for robust CLI integration testing.
+   - **Context**: `coverage_probe.go` pattern usage.
+   - **Example**: Replace probes with `internal` packages for white-box testing or use strictly public interfaces for black-box testing.
