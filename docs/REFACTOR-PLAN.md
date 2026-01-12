@@ -204,3 +204,33 @@ This section outlines the execution plan for addressing the identified issues, p
 3.  **Migrate Commands**
     *   Systematically update `link`, `install`, `doctor` to use the new contract.
     *   Remove manual `if verbose { ... }` checks in favor of `logger.Debug()`.
+
+### Visual Comparison (Logger)
+
+**Current (Inconsistent)**
+```text
+[ LINK ] Linking project...
+Checking directory /var/www/myapp
+[ LINK ] ✗ Failed Error: something went wrong
+```
+
+**Proposed (Grouped & Hierarchical)**
+*Normal Mode:*
+```text
+Linking project my-app...
+  • Validating directory
+  ✓ Directory validated
+  ✓ SSL certificate generated
+```
+
+*Verbose Mode:*
+```text
+Linking project my-app...
+  • Validating directory
+  • [debug] path=/var/www/my-app perm=0755
+  ✓ Directory validated
+
+Configuring SSL...
+  • [debug] exec="mkcert -install"
+  ✓ Certificates generated
+```
