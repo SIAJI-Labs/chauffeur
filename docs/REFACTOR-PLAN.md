@@ -173,22 +173,34 @@ This section outlines the execution plan for addressing the identified issues, p
      }
      ```
 
-### Phase 3: Architecture & Performance (Long Term)
-*Focus: Structural improvements and optimization.*
+### Phase 4: Logger Standardization (UX & Consistency)
+*Focus: Implementing a grouped, step-based logging strategy to improve readability and debuggability.*
 
-1. **Dependency Injection**
-   - **Context**: `releases` package creates its own `http.Client`.
-   - **Example**: Pass `*http.Client` as a dependency to `LatestGitHubRelease` to allow injecting a mock client in tests.
-2. **Performance Optimization**
-   - **Context**: `detectDistro` reads files on every call.
-   - **Example**:
-     ```go
-     var cachedInfo *Info
-     func Detect() (Info, error) {
-         if cachedInfo != nil { return *cachedInfo, nil }
-         // ... detection logic ...
-     }
-     ```
-3. **Testing Improvements**
-   - **Context**: `coverage_probe.go` pattern usage.
-   - **Example**: Replace probes with `internal` packages for white-box testing or use strictly public interfaces for black-box testing.
+1.  **Implement Grouped Logger Contract**
+    *   **Context**: Current logging is a mix of `fmt` and `logger`, with inconsistent verbose handling.
+    *   **Goal**: Adopt a "Step -> Item -> Debug" hierarchy.
+    *   **Example Spec**:
+        ```go
+        // 1. Grouping: Starts a block of work
+        logger.Step("Linking project my-app")
+        // Output: Linking project my-app...
+
+        // 2. Item: Standard info inside a step
+        logger.Item("Validating directory")
+        // Output:   • Validating directory
+
+        // 3. Debug: Key-value pairs, only shown in verbose mode
+        logger.Debug("Found artisan file", "framework", "laravel")
+        // Output (Gray):   • [debug] Found artisan file (framework=laravel)
+
+        // 4. Result: Closes the loop
+        logger.Success("Directory validated")
+        // Output:   ✓ Directory validated
+        ```
+2.  **Refactor `cli/lib/logging.go`**
+    *   Add `Step()`, `Item()`, and updated `Debug()` methods.
+    *   Implement state tracking for indentation.
+    *   Support auto-formatting of key-value pairs in `Debug()`.
+3.  **Migrate Commands**
+    *   Systematically update `link`, `install`, `doctor` to use the new contract.
+    *   Remove manual `if verbose { ... }` checks in favor of `logger.Debug()`.
