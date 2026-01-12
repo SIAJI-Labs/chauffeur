@@ -234,3 +234,25 @@ Configuring SSL...
   • [debug] exec="mkcert -install"
   ✓ Certificates generated
 ```
+
+### Visual Comparison (UI Elements)
+
+**Options / Interactive Menus**
+*Proposed style for `lib.PromptSelect`*
+```text
+? Select PHP Version:
+  ▸ PHP 8.3 (Recommended)
+    PHP 8.2
+    PHP 8.1
+    Other...
+```
+
+**Tables**
+*Proposed style for `chauf status` or `doctor`*
+```text
+SERVICE       STATUS    PORT    PID    MEM
+───────────────────────────────────────────
+nginx         running   8080    1234   12MB
+php-fpm-8.3   running   9000    5678   45MB
+mysql         stopped   3306    -      -
+```
