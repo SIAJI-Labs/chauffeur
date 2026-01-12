@@ -458,7 +458,7 @@ case "--version", "-v":
 
 ---
 
-This design follows AGENTS.md principles:
+This design follows [../README.md](../README.md) principles:
 - Workspace-first approach (all updates within ~/.chauffeur)
 - Minimal host impact (no system-wide changes)
 - Manual control philosophy (updates are opt-in)

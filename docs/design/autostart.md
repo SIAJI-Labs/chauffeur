@@ -9,7 +9,7 @@ This design document outlines the implementation of auto-start functionality for
 1. **Non-intrusive**: Don't require root privileges for basic functionality
 2. **User-controlled**: Allow users to enable/disable auto-start per service
 3. **System integration**: Work with modern Linux init systems (systemd)
-4. **Workspace compliance**: Follow AGENTS.md rules and workspace-first approach
+4. **Workspace compliance**: Follow [../README.md](../README.md) rules and workspace-first approach
 5. **Graceful handling**: Proper startup and shutdown management
 
 ## Implementation Approach

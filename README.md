@@ -670,7 +670,7 @@ All compiled runtimes include GNU Readline via `--with-readline`, which fixes cu
 
 **Doctor Integration**: `chauf doctor` now validates OpenSSL configuration and can auto-generate missing configuration files with `chauf doctor --auto-fix`.
 
-Refer to `AGENTS.md` for the authoritative workspace layout, dnsmasq instructions, and logging spec.
+Refer to `docs/README.md` for the comprehensive documentation index, including workspace layout, dnsmasq instructions, and logging specifications.
 
 ## Development & Contribution
 - **Preferred workflow**: Use `chauf self-update --dev` from the repo root to rebuild binaries; avoid `go build -o chauf` in-tree.
