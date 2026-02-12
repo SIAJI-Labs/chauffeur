@@ -31,9 +31,12 @@ func applyLegacyPHPSourcePatches(version, sourceDir string, logger *lib.Logger) 
 	if err := patchLegacyScanf(logger, sourceDir); err != nil {
 		return err
 	}
-	if err := patchLegacyGD(logger, sourceDir); err != nil {
-		return err
-	}
+
+	// Skip patchLegacyGD - the typed function pointers cause more issues than they solve.
+	// Instead, we use compiler flags (-Wno-error=incompatible-pointer-types) when building GD.
+	// if err := patchLegacyGD(logger, sourceDir); err != nil {
+	// 	return err
+	// }
 
 	logPHPSuccess(logger, "Legacy compatibility patches applied")
 	return nil

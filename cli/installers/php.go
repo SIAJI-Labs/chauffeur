@@ -2650,6 +2650,132 @@ func addLocalTarballToConfig(version, path string) error {
 }
 
 /**
+ * patchGDExtension applies function pointer type patches to GD extension source code.
+ * This fixes compilation errors with modern GCC/Clang compilers for PHP 7.4.
+ *
+ * @param gdSourceDir Path to GD extension source directory
+ * @param logger Logger instance
+ * @return error if patching fails
+ */
+func patchGDExtension(gdSourceDir string, logger *lib.Logger) error {
+	gdFile := filepath.Join(gdSourceDir, "gd.c")
+	ctxFile := filepath.Join(gdSourceDir, "gd_ctx.c")
+
+	// Check if files exist
+	for _, f := range []string{gdFile, ctxFile} {
+		if _, err := os.Stat(f); os.IsNotExist(err) {
+			return fmt.Errorf("GD source file not found: %s", f)
+		}
+	}
+
+	// Define patches for gd.c - add casts to generic void(*)() function pointers
+	gdPatches := []struct {
+		pattern string
+		replacement string
+	}{
+		{
+			", gdImageGd);",
+			", (void (*)())gdImageGd);",
+		},
+		{
+			", gdImageGd2);",
+			", (void (*)())gdImageGd2);",
+		},
+		{
+			", gdImageWbmp);",
+			", (void (*)())gdImageWbmp);",
+		},
+		{
+			", gdImageJpeg);",
+			", (void (*)())gdImageJpeg);",
+		},
+		{
+			", gdImagePng);",
+			", (void (*)())gdImagePng);",
+		},
+		{
+			", gdImageGif);",
+			", (void (*)())gdImageGif);",
+		},
+	}
+
+	// Apply patches to gd.c
+	for _, patch := range gdPatches {
+		content, err := os.ReadFile(gdFile)
+		if err != nil {
+			return fmt.Errorf("failed to read gd.c: %w", err)
+		}
+		strContent := string(content)
+		if !strings.Contains(strContent, patch.replacement) {
+			strContent = strings.ReplaceAll(strContent, patch.pattern, patch.replacement)
+			if err := os.WriteFile(gdFile, []byte(strContent), 0644); err != nil {
+				return fmt.Errorf("failed to patch gd.c: %w", err)
+			}
+		}
+	}
+
+	// Define patches for ctx functions (these are called from gd.c, so patch gd.c too)
+	ctxPatches := []struct {
+		pattern string
+		replacement string
+	}{
+		{
+			", gdImageXbmCtx);",
+			", (void (*)())gdImageXbmCtx);",
+		},
+		{
+			", gdImageGifCtx);",
+			", (void (*)())gdImageGifCtx);",
+		},
+		{
+			", gdImagePngCtxEx);",
+			", (void (*)())gdImagePngCtxEx);",
+		},
+		{
+			", gdImageWebpCtx);",
+			", (void (*)())gdImageWebpCtx);",
+		},
+		{
+			", gdImageJpegCtx);",
+			", (void (*)())gdImageJpegCtx);",
+		},
+		{
+			", gdImageWBMPCtx);",
+			", (void (*)())gdImageWBMPCtx);",
+		},
+		{
+			", gdImageBmpCtx);",
+			", (void (*)())gdImageBmpCtx);",
+		},
+		{
+			", gdImagePngCtx);",
+			", (void (*)())gdImagePngCtx);",
+		},
+		{
+			", gdImageGd2Ctx);",
+			", (void (*)())gdImageGd2Ctx);",
+		},
+	}
+
+	// Apply ctx patches to gd.c (where the function calls are)
+	for _, patch := range ctxPatches {
+		content, err := os.ReadFile(gdFile)
+		if err != nil {
+			return fmt.Errorf("failed to read gd.c: %w", err)
+		}
+		strContent := string(content)
+		if !strings.Contains(strContent, patch.replacement) {
+			strContent = strings.ReplaceAll(strContent, patch.pattern, patch.replacement)
+			if err := os.WriteFile(gdFile, []byte(strContent), 0644); err != nil {
+				return fmt.Errorf("failed to patch gd.c with ctx patches: %w", err)
+			}
+		}
+	}
+
+	return nil
+}
+
+/**
  * buildBundledGDExtension builds the GD extension as a bundled extension from PHP source.
  * This is used for legacy PHP versions (7.4, 8.0) that have GD compatibility issues.
  *
@@ -2680,18 +2806,36 @@ func buildBundledGDExtension(sourceDir, installDir, version string, logger *lib.
 
 	logger.Info("Configuring GD extension")
 
-	// Configure GD extension
+	// Configure GD extension with proper image format support
 	phpConfigPath := filepath.Join(installDir, "bin", "php-config")
 	gdConfigureArgs := []string{
 		fmt.Sprintf("--with-php-config=%s", phpConfigPath),
 		"--with-gd=shared",
-		"--with-jpeg-dir=/usr",
-		"--with-freetype-dir=/usr",
-		"--with-png-dir=/usr",
+		"--with-freetype=/usr",
+		"--with-jpeg=/usr",
+		"--with-png=/usr",
+		"--with-webp=/usr",
 	}
 
 	if err := runCommandForPHP(gdSourceDir, nil, "./configure", gdConfigureArgs...); err != nil {
 		return fmt.Errorf("GD configure failed: %w", err)
+	}
+
+	// Modify Makefile to add compiler flags that suppress strict prototype checking
+	// Use C89 standard where void() means "unspecified parameters" instead of "no parameters"
+	makefilePath := filepath.Join(gdSourceDir, "Makefile")
+	makefileContent, err := os.ReadFile(makefilePath)
+	if err == nil {
+		// Use sed to add -std=gnu89 to CFLAGS line
+		lines := strings.Split(string(makefileContent), "\n")
+		for i, line := range lines {
+			if strings.HasPrefix(line, "CFLAGS = ") {
+				lines[i] = line + " -std=gnu89"
+				break
+			}
+		}
+		modifiedMakefile := strings.Join(lines, "\n")
+		os.WriteFile(makefilePath, []byte(modifiedMakefile), 0644)
 	}
 
 	logger.Info("Compiling GD extension")
@@ -2757,10 +2901,10 @@ func PromptGDExtension(version string, logger *lib.Logger, force bool) (bool, er
 		return true, nil
 	}
 
-	// Skip prompting in force mode
+	// Skip prompting in force mode - enable GD by default for PHP 7.4/8.0
 	if force {
-		logger.Info("Force mode: skipping GD extension prompt (GD disabled)")
-		return false, nil
+		logger.Info("Force mode: enabling GD extension by default")
+		return true, nil
 	}
 
 	logger.Warn(fmt.Sprintf("PHP %s requires additional compilation for GD support", version), "")
