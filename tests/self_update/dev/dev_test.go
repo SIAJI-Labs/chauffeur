@@ -16,6 +16,7 @@ func TestSelfUpdateDevRebuildsBinary(t *testing.T) {
 	required := []string{
 		filepath.Join(repoDir, ".git"),
 		filepath.Join(repoDir, "cli"),
+		filepath.Join(repoDir, "docs"),
 	}
 	for _, dir := range required {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -25,10 +26,11 @@ func TestSelfUpdateDevRebuildsBinary(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(repoDir, "cli", "main.go"), []byte("package main\nfunc main(){}\n"), 0o644); err != nil {
 		t.Fatalf("write main: %v", err)
 	}
-	for _, name := range []string{"go.mod", "AGENTS.md"} {
-		if err := os.WriteFile(filepath.Join(repoDir, name), []byte("module github.com/siaji/chauffeur\n"), 0o644); err != nil {
-			t.Fatalf("write %s: %v", name, err)
-		}
+	if err := os.WriteFile(filepath.Join(repoDir, "go.mod"), []byte("module github.com/siaji/chauffeur\n"), 0o644); err != nil {
+		t.Fatalf("write go.mod: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repoDir, "docs", "README.md"), []byte("# Chauffeur Documentation\n"), 0o644); err != nil {
+		t.Fatalf("write docs/README.md: %v", err)
 	}
 
 	helpers.Chdir(t, repoDir)

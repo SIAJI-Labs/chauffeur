@@ -124,7 +124,6 @@ func RunLink(args []string) error {
 		httpPort     int
 		httpsPort    int
 		aliases      []string
-		addAlias     bool
 		category     string
 		update       bool
 		slugFlag     string
@@ -200,9 +199,6 @@ func RunLink(args []string) error {
 			}
 			aliases = append(aliases, aliasDomain)
 			i += 2
-		case "--add-alias":
-			addAlias = true
-			i++
 		case "--category":
 			if i+1 >= len(args) {
 				return fmt.Errorf("--category requires a category name")
@@ -237,53 +233,9 @@ func RunLink(args []string) error {
 		return handleUpdateLink(category, slugFlag)
 	}
 
-	// SSL now works with both explicit and default .test domains
-
-	// Handle alias mode for existing projects (alias flags without linking)
-	if len(aliases) > 0 && !addAlias && domain == "" && phpVer == "" && !dedicatedFPM && httpPort == 0 && httpsPort == 0 && !force {
-		return handleAddAlias(args, aliases)
-	}
-
 	cfg, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("load configuration: %w", err)
-	}
-
-	// Create port validator (skip auto restart during linking)
-	validator, err := lib.NewPortValidatorWithOpts(cfg, true)
-	if err != nil {
-		return fmt.Errorf("create port validator: %w", err)
-	}
-
-	// Handle custom port overrides
-	if httpPort > 0 {
-		validPort, err := validator.SetPortFromCommand("nginx-http", fmt.Sprintf("%d", httpPort))
-		if err != nil {
-			return err
-		}
-		cfg.Nginx.HTTPPort = validPort
-	}
-
-	if httpsPort > 0 {
-		validPort, err := validator.SetPortFromCommand("nginx-https", fmt.Sprintf("%d", httpsPort))
-		if err != nil {
-			return err
-		}
-		cfg.Nginx.HTTPSPort = validPort
-	}
-
-	// Validate all configured ports
-	if err := validator.ValidateAllPorts(); err != nil {
-		// If validation fails, check if it's due to conflicts that can be resolved
-		if cfg.Ports.ConflictResolution == "fail" {
-			return fmt.Errorf("port validation failed: %w", err)
-		}
-	}
-
-	// Always reload configuration after validation in case ports were updated
-	cfg, err = config.Load()
-	if err != nil {
-		return fmt.Errorf("reload configuration after port validation: %w", err)
 	}
 
 	cwd, err := os.Getwd()
@@ -300,6 +252,50 @@ func RunLink(args []string) error {
 		return fmt.Errorf("security validation failed: %w", err)
 	}
 
+	// Check if we're in "alias-only mode" - only aliases specified, no other project creation flags
+	// This mode tries to add aliases to an existing project
+	isAliasOnlyMode := len(aliases) > 0 && domain == "" && phpVer == "" && !dedicatedFPM &&
+		httpPort == 0 && httpsPort == 0 && !force && category == ""
+
+	if isAliasOnlyMode {
+		// Try to find existing project
+		existingProj, layout, err := projects.FindByPath(cfg.ProjectsDir, cwd)
+		if err != nil {
+			// Project doesn't exist
+			return logger.Error(
+				"No linked project found in current directory",
+				"Use 'chauf link' to create the project first",
+			)
+		}
+
+		// Project exists - add aliases to it
+		logger.Info(fmt.Sprintf("Found linked project: %s", layout.Root))
+		logger.Info(fmt.Sprintf("Primary domain: %s", existingProj.Site.Domain))
+		logger.Info(fmt.Sprintf("Adding %d alias domain(s)...", len(aliases)))
+
+		// Add each alias
+		for _, alias := range aliases {
+			aliasSSL := ssl || (existingProj.Site != nil && existingProj.Site.SSL)
+			if err := existingProj.AddAlias(alias, aliasSSL); err != nil {
+				return logger.Error(fmt.Sprintf("Failed to add alias %s", alias), err.Error())
+			}
+			sslStatus := "HTTP"
+			if aliasSSL {
+				sslStatus = "HTTPS"
+			}
+			logger.Success(fmt.Sprintf("Added alias: %s (%s)", alias, sslStatus), "")
+		}
+
+		// Save updated configuration
+		if err := projects.WriteConfig(existingProj, layout.ConfigPath, true); err != nil {
+			return logger.Error("Failed to save project configuration", err.Error())
+		}
+
+		// Regenerate nginx configuration and restart services
+		return regenerateProjectServices(logger, &cfg, &existingProj, &layout, cwd)
+	}
+
+	// Normal project creation/update flow
 	if phpVer == "" {
 		phpVer = cfg.PHP.Default
 	}
@@ -326,58 +322,78 @@ func RunLink(args []string) error {
 		return err
 	}
 
-	// Set default domain if none provided
-	if domain == "" {
-		domain = slug + ".test"
+	// Check if project config already exists
+	var proj *projects.Config
+	configExists := false
+	if _, err := os.Stat(layout.ConfigPath); err == nil {
+		configExists = true
+		// Load existing config
+		loadedProj, err := projects.LoadConfig(layout.ConfigPath)
+		if err == nil {
+			proj = &loadedProj
+			logger.Info("Updating existing linked project")
+		} else {
+			// Config exists but failed to load - recreate it
+			logger.Warn("Existing configuration found but failed to load, recreating", "")
+			proj = nil
+		}
 	}
 
-	// Security: Validate domain format and safety
-	if err := validateDomain(domain); err != nil {
-		return fmt.Errorf("security validation failed: %w", err)
-	}
+	// If no existing config or failed to load, create new project
+	if proj == nil {
+		// Set default domain if none provided
+		if domain == "" {
+			domain = slug + ".test"
+		}
 
-	// Determine socket path based on dedicated FPM setting
-	var socketPath string
-	if dedicatedFPM {
-		// Use project-specific socket for dedicated FPM
-		socketPath = layout.SocketPath
-	} else {
-		// Use shared version-specific socket
-		phpVersionDir := filepath.Join(cfg.WorkspaceDir, "php", phpVer)
-		runtimeDir := filepath.Join(phpVersionDir, "runtime", "php-fpm")
-		socketPath = filepath.Join(runtimeDir, "php-fpm.sock")
-	}
+		// Security: Validate domain format and safety
+		if err := validateDomain(domain); err != nil {
+			return fmt.Errorf("security validation failed: %w", err)
+		}
 
-	// Create FPM configuration
-	fpmConfig := &projects.FPM{
-		Dedicated: dedicatedFPM,
-		Socket:    socketPath,
-	}
+		// Determine socket path based on dedicated FPM setting
+		var socketPath string
+		if dedicatedFPM {
+			// Use project-specific socket for dedicated FPM
+			socketPath = layout.SocketPath
+		} else {
+			// Use shared version-specific socket
+			phpVersionDir := filepath.Join(cfg.WorkspaceDir, "php", phpVer)
+			runtimeDir := filepath.Join(phpVersionDir, "runtime", "php-fpm")
+			socketPath = filepath.Join(runtimeDir, "php-fpm.sock")
+		}
 
-	proj := projects.Config{
-		Version: projects.ConfigVersion,
-		Path:    cwd,
-		PHP:     phpVer,
-		Runtime: projects.Runtime{
-			PHPFPM: socketPath,
-			FPM:    fpmConfig,
-		},
-		CreatedAt: time.Now().UTC(),
-	}
+		// Create FPM configuration
+		fpmConfig := &projects.FPM{
+			Dedicated: dedicatedFPM,
+			Socket:    socketPath,
+		}
 
-	// Set category - default to "Uncategorized" if not specified
-	if category == "" {
-		category = projects.DefaultCategory
-	}
+		proj = &projects.Config{
+			Version: projects.ConfigVersion,
+			Path:    cwd,
+			PHP:     phpVer,
+			Runtime: projects.Runtime{
+				PHPFPM: socketPath,
+				FPM:    fpmConfig,
+			},
+			CreatedAt: time.Now().UTC(),
+		}
 
-	// Validate and set category name
-	if err := proj.SetCategory(category); err != nil {
-		return fmt.Errorf("invalid category name: %w", err)
-	}
+		// Set category - default to "Uncategorized" if not specified
+		if category == "" {
+			category = projects.DefaultCategory
+		}
 
-	proj.Site = &projects.Site{
-		Domain: domain,
-		SSL:    ssl,
+		// Validate and set category name
+		if err := proj.SetCategory(category); err != nil {
+			return fmt.Errorf("invalid category name: %w", err)
+		}
+
+		proj.Site = &projects.Site{
+			Domain: domain,
+			SSL:    ssl,
+		}
 	}
 
 	// Add alias domains if specified
@@ -391,7 +407,8 @@ func RunLink(args []string) error {
 		}
 	}
 
-	if err := projects.WriteConfig(proj, layout.ConfigPath, force); err != nil {
+	// Save configuration
+	if err := projects.WriteConfig(*proj, layout.ConfigPath, force || configExists); err != nil {
 		return err
 	}
 
@@ -475,7 +492,7 @@ func RunLink(args []string) error {
 	}
 
 	// Generate and write nginx configuration (with SSL paths if applicable)
-	if err := templateEngine.WriteNginxConfig(proj, layout, templateType, nginxOptions); err != nil {
+	if err := templateEngine.WriteNginxConfig(*proj, layout, templateType, nginxOptions); err != nil {
 		templateSpin.Fail("nginx configuration generation failed")
 		logger.Warn("Failed to generate nginx configuration", err.Error())
 		return fmt.Errorf("generate nginx configuration: %w", err)
@@ -569,142 +586,9 @@ func RunLink(args []string) error {
 	return nil
 }
 
-func printLinkUsage() {
-	logger := lib.NewCommandLogger("link")
-	logger.PrintBlock(`Chauffeur Project Linking
-
-Usage:
-  chauf link [--site <domain>] [--secure] [--php <version>] [--dedicated-fpm] [--http-port <port>] [--https-port <port>] [--alias <domain>]... [--category <name>] [--force]
-  chauf link --add-alias --alias <domain> [--alias <domain>]...    # Add aliases to existing project
-  chauf link --update --category <name> [--slug <project>]     # Update existing project's category
-
-Flags:
-  --site <domain>           Register a local domain for the project (default: <slug>.test).
-  --secure                  Enable internal TLS for the domain.
-  --php <version>           Override the PHP version for this project (default: global default).
-  --dedicated-fpm           Create a dedicated PHP-FPM pool for this project (instead of shared).
-  --http-port <port>        Override Nginx HTTP port for this project (default: from config).
-  --https-port <port>       Override Nginx HTTPS port for this project (default: from config).
-  --alias <domain>          Add alias domains that point to the same project (can be used multiple times).
-  --add-alias               Add aliases to an existing linked project (use with --alias).
-  --category <name>         Set project category (default: Uncategorized).
-  --update                  Update mode for existing projects (requires --category).
-  --slug <project>          Specify project by slug for update operations.
-  --force                   Overwrite existing project configuration.
-
-Port Management:
-  If specified ports are already in use, Chauffeur will:
-    - Prompt for alternative ports (default behavior)
-    - Auto-resolve to available ports (if "conflict_resolution: auto" in config)
-    - Fail with error if "conflict_resolution: fail" in config
-
-FPM Strategy:
-  By default, projects share PHP-FPM pools with others using the same PHP version (resource efficient).
-  Use --dedicated-fpm to create an isolated PHP-FPM pool for this specific project.
-
-Multi-domain Examples:
-  # Link with multiple aliases
-  chauf link --site myapp.test --alias admin.test --alias api.test --secure
-
-  # Add aliases for white-label scenarios
-  chauf link --site brand-a.test --alias brand-b.test --alias landing.test
-
-  # Add aliases to existing project
-  chauf link --add-alias --alias admin.test --alias api.test
-
-Add-alias Mode:
-  Use --add-alias to add new domains to an already linked project without
-  recreating it. This command automatically regenerates nginx configuration
-  and restarts the service to apply changes.
-
-Category Examples:
-  # Link project with category
-  chauf link --category "Work"
-  chauf link --category "Personal: Blogging"
-  chauf link --category "Client: ABC Corp"
-
-  # Update project category (current directory)
-  chauf link --update --category "New Category"
-
-  # Update specific project by slug
-  chauf link --update --slug my-project --category "Client Work"
-
-Note:
-  When --site is not specified, the project is automatically assigned a .test domain
-  based on the project directory name (e.g., "my-project" -> "my-project.test").
-
-  Alias domains inherit SSL settings from the primary domain. All domains will
-  serve the same content from the project directory.
-`)
-}
-
-// handleAddAlias adds alias domains to an existing project
-func handleAddAlias(args []string, aliases []string) error {
-	if len(aliases) == 0 {
-		return fmt.Errorf("--alias requires at least one domain value")
-	}
-
-	logger := lib.NewCommandLogger("add-alias")
-
-	cfg, err := config.Load()
-	if err != nil {
-		return fmt.Errorf("load configuration: %w", err)
-	}
-
-	// Get current working directory
-	cwd, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("determine current directory: %w", err)
-	}
-
-	// Find existing project
-	proj, layout, err := projects.FindByPath(cfg.ProjectsDir, cwd)
-	if err != nil {
-		return logger.Error(
-			"No linked project found in current directory",
-			"Use 'chauf link' to create a new project first",
-		)
-	}
-
-	// Check if primary domain exists
-	if proj.Site == nil || proj.Site.Domain == "" {
-		return logger.Error(
-			"Project has no primary domain configured",
-			"Primary domain must exist before adding aliases. Use 'chauf link --site <domain>' first.",
-		)
-	}
-
-	logger.Info(fmt.Sprintf("Found linked project: %s", layout.Root))
-	logger.Info(fmt.Sprintf("Primary domain: %s", proj.Site.Domain))
-
-	// Check if SSL is requested in args
-	sslRequested := false
-	for _, arg := range args {
-		if arg == "--secure" {
-			sslRequested = true
-			break
-		}
-	}
-
-	// Add each alias
-	for _, alias := range aliases {
-		aliasSSL := sslRequested || (proj.Site != nil && proj.Site.SSL)
-		if err := proj.AddAlias(alias, aliasSSL); err != nil {
-			return logger.Error(fmt.Sprintf("Failed to add alias %s", alias), err.Error())
-		}
-		sslStatus := "HTTP"
-		if aliasSSL {
-			sslStatus = "HTTPS"
-		}
-		logger.Success(fmt.Sprintf("Added alias: %s (%s)", alias, sslStatus), "")
-	}
-
-	// Save updated configuration
-	if err := projects.WriteConfig(proj, layout.ConfigPath, true); err != nil {
-		return logger.Error("Failed to save project configuration", err.Error())
-	}
-
-	// Regenerate nginx configuration with new domains
+// regenerateProjectServices regenerates nginx configuration and SSL certificates for an existing project
+func regenerateProjectServices(logger *lib.Logger, cfg *config.Config, proj *projects.Config, layout *projects.Layout, cwd string) error {
+	// Regenerate nginx configuration and restart services
 	templateEngine, err := templates.NewTemplateEngine()
 	if err != nil {
 		return logger.Error("Template engine initialization failed", err.Error())
@@ -751,15 +635,96 @@ func handleAddAlias(args []string, aliases []string) error {
 	}
 
 	// Generate and write nginx configuration
-	if err := templateEngine.WriteNginxConfig(proj, layout, templateType, nginxOptions); err != nil {
+	if err := templateEngine.WriteNginxConfig(*proj, *layout, templateType, nginxOptions); err != nil {
 		return logger.Error("Failed to regenerate nginx configuration", err.Error())
 	}
 
-	// Note: nginx should be restarted to apply changes
-	logger.Info("Restart nginx to apply changes: chauf restart")
+	// Restart nginx to apply changes
+	manager, err := newServiceManager()
+	if err != nil {
+		return logger.Error("Failed to create service manager", err.Error())
+	}
 
-	logger.Success("Aliases added successfully", fmt.Sprintf("Total aliases: %d", len(aliases)))
+	nginxServices := manager.ListGlobalServices()
+	for _, service := range nginxServices {
+		if strings.Contains(service.Name, "nginx") {
+			if err := manager.Restart(service); err != nil {
+				return logger.Error("Failed to restart nginx", err.Error())
+			}
+			logger.Success("Nginx restarted to apply new aliases", "")
+			break
+		}
+	}
+
 	return nil
+}
+
+func printLinkUsage() {
+	logger := lib.NewCommandLogger("link")
+	logger.PrintBlock(`Chauffeur Project Linking
+
+Usage:
+  chauf link [--site <domain>] [--secure] [--php <version>] [--dedicated-fpm] [--http-port <port>] [--https-port <port>] [--alias <domain>]... [--category <name>] [--force]
+  chauf link --alias <domain> [--alias <domain>]... [--secure]    # Add aliases to existing project
+  chauf link --update --category <name> [--slug <project>]          # Update existing project's category
+
+Flags:
+  --site <domain>           Register a local domain for the project (default: <slug>.test).
+  --secure                  Enable internal TLS for the domain.
+  --php <version>           Override the PHP version for this project (default: global default).
+  --dedicated-fpm           Create a dedicated PHP-FPM pool for this project (instead of shared).
+  --http-port <port>        Override Nginx HTTP port for this project (default: from config).
+  --https-port <port>       Override Nginx HTTPS port for this project (default: from config).
+  --alias <domain>          Add alias domains (can be used multiple times).
+                           When used alone on existing project: adds aliases to project.
+                           When used with --site: creates project with aliases.
+  --category <name>         Set project category (default: Uncategorized).
+  --update                  Update mode for existing projects (requires --category).
+  --slug <project>          Specify project by slug for update operations.
+  --force                   Overwrite existing project configuration.
+
+Port Management:
+  If specified ports are already in use, Chauffeur will:
+    - Prompt for alternative ports (default behavior)
+    - Auto-resolve to available ports (if "conflict_resolution: auto" in config)
+    - Fail with error if "conflict_resolution: fail" in config
+
+FPM Strategy:
+  By default, projects share PHP-FPM pools with others using the same PHP version (resource efficient).
+  Use --dedicated-fpm to create an isolated PHP-FPM pool for this specific project.
+
+Multi-domain Examples:
+  # Create new project with multiple aliases
+  chauf link --site myapp.test --alias admin.test --alias api.test --secure
+
+  # Add aliases to existing project
+  chauf link --alias admin.test --alias api.test
+
+  # Add aliases to existing project with SSL
+  chauf link --alias admin.test --secure
+
+Category Examples:
+  # Link project with category
+  chauf link --category "Work"
+  chauf link --category "Personal: Blogging"
+  chauf link --category "Client: ABC Corp"
+
+  # Update project category (current directory)
+  chauf link --update --category "New Category"
+
+  # Update specific project by slug
+  chauf link --update --slug my-project --category "Client Work"
+
+Note:
+  When --site is not specified, the project is automatically assigned a .test domain
+  based on the project directory name (e.g., "my-project" -> "my-project.test").
+
+  Alias domains inherit SSL settings from the primary domain (or --secure flag).
+  All domains will serve the same content from the project directory.
+
+  When adding aliases to an existing project, the project must already be linked.
+  Use 'chauf link' without --alias first to create the project.
+`)
 }
 
 // Import SSLCertificateType from lib package

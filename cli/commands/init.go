@@ -7,6 +7,7 @@ import (
 
 	"github.com/siaji/chauffeur/cli/internal/config"
 	"github.com/siaji/chauffeur/cli/internal/example"
+	"github.com/siaji/chauffeur/cli/installers"
 	"github.com/siaji/chauffeur/cli/internal/workspace"
 	"github.com/siaji/chauffeur/cli/lib"
 )
@@ -89,6 +90,17 @@ func RunInit(args []string) error {
 	// Create default configuration file
 	if err := createDefaultConfig(wsDir, logger, quiet); err != nil {
 		return fmt.Errorf("create default configuration: %w", err)
+	}
+
+	// Recreate PHP shims for any existing PHP installations (after uninstall/reinstall)
+	if !quiet {
+		logger.Info("Checking for existing PHP installations...")
+	}
+	count, err := installers.RecreateExistingPHPShims(wsDir)
+	if err != nil {
+		logger.Warn("Failed to recreate PHP shims", err.Error())
+	} else if count > 0 && !quiet {
+		logger.Success(fmt.Sprintf("Recreated %d PHP shim(s)", count), "")
 	}
 
 	// Create .gitignore in workspace directory if it doesn't exist

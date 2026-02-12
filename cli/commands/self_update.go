@@ -63,7 +63,7 @@ func runDevUpdate(logger *lib.Logger) error {
 	requiredPaths := []string{
 		"cli/main.go",
 		"go.mod",
-		"AGENTS.md",
+		"docs/README.md",
 	}
 
 	for _, path := range requiredPaths {
