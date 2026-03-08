@@ -1,0 +1,237 @@
+# Chauffeur V2 — Implementation Plan
+
+## Overview
+
+V2 is a ground-up rewrite of Chauffeur, preserving the proven workspace architecture and core features of V1 while restructuring the codebase for maintainability and adding missing features.
+
+## Current Status
+
+- **Phase**: 0 — Project initialization
+- **Stability**: New project
+
+## File Structure Summary
+
+```
+chauffeur-v2/
+├── cmd/chauf/main.go
+├── internal/
+│   ├── commands/           # CLI command handlers
+│   ├── config/             # Config loading and validation
+│   ├── installers/         # PHP, nginx, Composer installers
+│   ├── projects/           # Project CRUD and config management
+│   ├── services/           # Service lifecycle management
+│   ├── system/             # Host integration (ports, DNS, systemd)
+│   ├── templates/          # Config template rendering
+│   ├── workspace/          # Path resolution
+│   └── lib/                # Shared utilities
+├── tests/
+├── .agent/
+├── go.mod
+├── go.sum
+├── .goreleaser.yml
+└── install.sh
+```
+
+---
+
+## Phase 0: Project Bootstrap (START HERE)
+
+- [ ] Initialize Go module (`go mod init github.com/SIAJI-Labs/chauffeur`)
+- [ ] Create directory structure (`cmd/`, `internal/`, `tests/`, etc.)
+- [ ] Set up `cmd/chauf/main.go` with version routing and command dispatch
+- [ ] Port `lib/logging.go` from V1 — Logger with colors, spinners, progress bars
+- [ ] Port `internal/workspace/` path resolution from V1
+- [ ] Port `internal/config/` schema and YAML loading from V1
+- [ ] Write `chauf init` command (workspace initialization)
+- [ ] Write `chauf info` command (workspace status display)
+- [ ] Basic `chauf --version` and `chauf help`
+- [ ] Write tests for workspace init and config loading
+- [ ] Create `.goreleaser.yml` for release builds
+- [ ] Create `install.sh` for curl-based installation
+
+---
+
+## Phase 1: Core Services Installation
+
+- [ ] Port `installers/nginx.go` — build nginx from source
+- [ ] Port `installers/php.go` — compile PHP from source (all versions)
+- [ ] Port `installers/php_legacy.go` — PHP 7.4/8.0 GD patching
+- [ ] Port `installers/composer.go` — Composer PHAR download + shim
+- [ ] Port `installers/common.go` — shared download/checksum utilities
+- [ ] `chauf install nginx` command
+- [ ] `chauf install php <version>` command
+- [ ] `chauf install composer` command
+- [ ] `chauf remove <service>` command
+- [ ] `chauf php use <version>` — set global default PHP
+- [ ] PHP shim at `~/.chauffeur/bin/shims/php`
+- [ ] Composer shim at `~/.chauffeur/bin/shims/composer`
+- [ ] Tests for installer utilities (download, checksum, extraction)
+
+---
+
+## Phase 2: Project Management
+
+- [ ] Port `internal/projects/` — project config CRUD
+- [ ] `chauf link` — register project with nginx config generation
+  - [ ] `--php <version>` flag
+  - [ ] `--secure` flag (SSL from the start)
+  - [ ] `--dedicated-fpm` flag
+  - [ ] `--alias <domain>` flag (multi-domain)
+- [ ] `chauf links` — table display of all projects with status
+- [ ] `chauf unlink` — remove project registration
+  - [ ] `--alias <domain>` — remove specific alias
+  - [ ] `--all` — remove all aliases then unlink
+- [ ] `chauf php isolate <version>` — set per-project PHP
+- [ ] `chauf secure` / `chauf unsecure` — SSL management
+- [ ] Port nginx template generation from V1
+- [ ] Port multi-domain nginx config from V1
+- [ ] Tests for project linking, config management, nginx templates
+
+---
+
+## Phase 3: Service Orchestration
+
+- [ ] Port `internal/services/` — service start/stop/restart
+- [ ] `chauf start` — start nginx + PHP-FPM
+  - [ ] `--project <path>` — start project-specific services only
+  - [ ] `--all` — start all services
+- [ ] `chauf stop` — stop services
+  - [ ] `--project <path>` flag
+  - [ ] `--all` flag
+- [ ] `chauf restart [nginx|php|fpm]` — restart specific service
+  - [ ] `--project <path>` flag
+  - [ ] `--all` flag
+- [ ] `chauf status` — service health display
+  - [ ] `--detail` — verbose output with process counts, memory
+  - [ ] `--project <path>` — project-specific status
+- [ ] `chauf logs [nginx|php|access|error]` — log viewing
+  - [ ] `--follow` — tail mode
+  - [ ] `--level <level>` — filter by log level
+- [ ] Tests for service orchestration with mock executors
+
+---
+
+## Phase 4: Health and Maintenance
+
+- [ ] Port `commands/doctor.go` — comprehensive health checking
+  - [ ] System tool checks (git, curl, tar, gcc, make, pkg-config)
+  - [ ] PHP build dependency checks (libzip, libjpeg, etc.)
+  - [ ] SSL checks (mkcert, openssl)
+  - [ ] Network checks (port availability, dnsmasq)
+  - [ ] `--fix` / `--auto-fix` flags
+  - [ ] Distribution-aware package install suggestions
+- [ ] Port `commands/clean.go` — workspace cleanup
+  - [ ] `chauf clean cache` — remove download cache
+  - [ ] `chauf clean logs` — remove old log files
+  - [ ] `--dry-run` — show what would be cleaned
+  - [ ] `--older-than <age>` — age-based cleanup
+- [ ] Port `commands/migrate.go` — project migration
+- [ ] Port `chauf self-update` — binary update
+- [ ] Tests for doctor checks (with mocked system commands)
+
+---
+
+## Phase 5: V2 New Features
+
+### Configuration Management
+
+- [ ] `chauf config show [--project <slug>]` — display current config
+- [ ] `chauf config set <key> <value> [--project <slug>]` — update config value
+- [ ] `chauf config validate [--project <slug>]` — validate config schema
+- [ ] `chauf config export [--project <slug>]` — export to JSON/YAML
+- [ ] `chauf config import <file> [--project <slug>]` — import config
+- [ ] `chauf config reset [--project <slug>]` — reset to defaults
+- [ ] JSON Schema validation for workspace and project configs
+
+### Environment Management
+
+- [ ] `chauf env list [--project <slug>]` — list env vars
+- [ ] `chauf env set <key> <value> [--project <slug>]` — set env var
+- [ ] `chauf env unset <key> [--project <slug>]` — remove env var
+- [ ] `chauf env import <file>` — import from `.env` file
+- [ ] `chauf env export [--project <slug>]` — export to `.env` format
+- [ ] Integration with nginx `fastcgi_param` injection
+
+### Auto-Start via Systemd
+
+- [ ] `chauf autostart enable [--service nginx|php]` — enable systemd service
+- [ ] `chauf autostart disable [--service]` — disable systemd service
+- [ ] `chauf autostart status` — show systemd service state
+- [ ] User-level systemd unit file generation (`~/.config/systemd/user/`)
+- [ ] No root required (systemctl --user)
+- [ ] Tests for systemd unit file generation
+
+### Service Update Management
+
+- [ ] `chauf update <service> [--dry-run] [--backup]` — update specific service
+- [ ] `chauf update all [--dry-run] [--backup]` — update all services
+- [ ] `chauf update rollback <service> <version>` — rollback to previous version
+- [ ] `chauf update list-available [--service]` — check for available updates
+- [ ] Backup before update (tar archive of service dir)
+
+---
+
+## Phase 6: Documentation Site
+
+- [ ] Port `sites/` Next.js documentation site from V1
+- [ ] Update all command references to match V2 CLI
+- [ ] Add V2 new features documentation
+- [ ] Deploy to `https://chauffeur.siaji.com/docs`
+
+---
+
+## Implementation Checklist Summary
+
+### Phase 0: Bootstrap
+- [ ] Go module init
+- [ ] Directory structure
+- [ ] Logging library
+- [ ] Workspace paths
+- [ ] Config loading
+- [ ] `chauf init` + `chauf info`
+
+### Phase 1: Installation
+- [ ] Nginx installer
+- [ ] PHP installer (all versions)
+- [ ] PHP legacy patches
+- [ ] Composer installer
+- [ ] PHP + Composer shims
+- [ ] `install/remove/use` commands
+
+### Phase 2: Project Management
+- [ ] Project CRUD
+- [ ] `link/links/unlink` commands
+- [ ] Nginx template generation
+- [ ] Multi-domain support
+- [ ] SSL support
+
+### Phase 3: Service Orchestration
+- [ ] Service lifecycle
+- [ ] `start/stop/restart` commands
+- [ ] `status/logs` commands
+
+### Phase 4: Health & Maintenance
+- [ ] `doctor` command
+- [ ] `clean` command
+- [ ] `migrate/self-update` commands
+
+### Phase 5: V2 New Features
+- [ ] `config` command
+- [ ] `env` command
+- [ ] `autostart` command
+- [ ] `update` command
+
+### Phase 6: Docs Site
+- [ ] Documentation site update
+
+---
+
+## Priority Order
+
+1. Phase 0 → Get a working `chauf init` binary
+2. Phase 1 → Install nginx and PHP (core dependency)
+3. Phase 2 → Link projects (core value proposition)
+4. Phase 3 → Start/stop/status (make it usable)
+5. Phase 4 → Doctor + clean (stability)
+6. Phase 5 → V2 new features (differentiators)
+7. Phase 6 → Documentation site (polish)
