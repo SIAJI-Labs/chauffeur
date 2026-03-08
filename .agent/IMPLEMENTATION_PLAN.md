@@ -6,8 +6,8 @@ V2 is a ground-up rewrite of Chauffeur, preserving the proven workspace architec
 
 ## Current Status
 
-- **Phase**: 0 — Project initialization
-- **Stability**: New project
+- **Phase**: 1 — Core Services Installation
+- **Stability**: Early development — Phase 0 complete, no installers yet
 
 ## File Structure Summary
 
@@ -34,20 +34,25 @@ chauffeur-v2/
 
 ---
 
-## Phase 0: Project Bootstrap (START HERE)
+## Phase 0: Project Bootstrap ✅ COMPLETE
 
-- [ ] Initialize Go module (`go mod init github.com/SIAJI-Labs/chauffeur`)
-- [ ] Create directory structure (`cmd/`, `internal/`, `tests/`, etc.)
-- [ ] Set up `cmd/chauf/main.go` with version routing and command dispatch
-- [ ] Port `lib/logging.go` from V1 — Logger with colors, spinners, progress bars
-- [ ] Port `internal/workspace/` path resolution from V1
-- [ ] Port `internal/config/` schema and YAML loading from V1
-- [ ] Write `chauf init` command (workspace initialization)
-- [ ] Write `chauf info` command (workspace status display)
-- [ ] Basic `chauf --version` and `chauf help`
-- [ ] Write tests for workspace init and config loading
-- [ ] Create `.goreleaser.yml` for release builds
-- [ ] Create `install.sh` for curl-based installation
+- [x] Initialize Go module (`github.com/siegg/chauffeur`, Go 1.22)
+- [x] Create directory structure (`cmd/`, `internal/`, `tests/`, etc.)
+- [x] Set up `cmd/chauf/main.go` with version routing and command dispatch
+- [x] Output/color library (`internal/lib/output.go`) — colors, print helpers, DirSize, FormatBytes
+- [x] Port `internal/workspace/` path resolution from V1
+- [x] Port `internal/config/` — config struct, YAML load (custom parser, no external deps)
+- [x] Write `chauf init` command (workspace initialization, idempotent, --force, --quiet)
+- [x] Write `chauf info` command (workspace status — services, projects, PHP, cache)
+- [x] Basic `chauf --version` and `chauf help`
+- [x] Write `chauf uninstall` command (service stop, workspace removal, manual cleanup hints)
+- [x] Write `chauf self-update` command (--dev rebuild from repo, --dry-run, --version, release download)
+- [x] Create `scripts/install.sh` for curl-based installation (in-repo / release / clone+build)
+- [x] Create `Makefile` (build, dev, install, clean targets)
+- [x] Create `.gitignore`
+- [x] Spinners (`lib.NewSpinner`) + download progress bar (`lib.NewProgressReader`)
+- [x] Write tests for workspace init and config loading (8 tests, all passing)
+- [x] Create `.goreleaser.yml` for release builds (linux amd64/arm64, combined checksums.txt)
 
 ---
 
@@ -182,13 +187,17 @@ chauffeur-v2/
 
 ## Implementation Checklist Summary
 
-### Phase 0: Bootstrap
-- [ ] Go module init
-- [ ] Directory structure
-- [ ] Logging library
-- [ ] Workspace paths
-- [ ] Config loading
-- [ ] `chauf init` + `chauf info`
+### Phase 0: Bootstrap ✅
+- [x] Go module init
+- [x] Directory structure
+- [x] Output/color library (spinners deferred to Phase 1)
+- [x] Workspace paths
+- [x] Config loading
+- [x] `chauf init` + `chauf info`
+- [x] `chauf uninstall` + `chauf self-update`
+- [x] `scripts/install.sh` + `Makefile`
+- [x] Tests (8 passing)
+- [x] `.goreleaser.yml`
 
 ### Phase 1: Installation
 - [ ] Nginx installer

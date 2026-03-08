@@ -1,0 +1,51 @@
+version: 2
+
+project_name: chauf
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - main: ./cmd/chauf
+    binary: chauf
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - format: tar.gz
+    # Produces: chauf_v2.0.0_linux_amd64.tar.gz
+    # Must match the naming in internal/commands/selfupdate.go
+    name_template: "chauf_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - none*
+
+checksum:
+  # Produces: chauf_v2.0.0_checksums.txt
+  # Must match checksumURL in internal/commands/selfupdate.go
+  name_template: "chauf_{{ .Version }}_checksums.txt"
+  algorithm: sha256
+
+release:
+  github:
+    owner: siegg
+    name: chauffeur
+  draft: true
+  prerelease: auto
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "Merge pull request"
+      - "Merge branch"
