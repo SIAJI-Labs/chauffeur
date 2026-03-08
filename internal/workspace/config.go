@@ -111,6 +111,45 @@ func Load() Config {
 	return c
 }
 
+// SetDefaultPHP updates php.default_version in chauffeur.yaml.
+func SetDefaultPHP(version string) error {
+	root := Root()
+	configPath := filepath.Join(root, "config", "chauffeur.yaml")
+
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return fmt.Errorf("read config: %w", err)
+	}
+
+	lines := strings.Split(string(data), "\n")
+	found := false
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "default_version") {
+			lines[i] = "  default_version: \"" + version + "\""
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		// Insert after "php:" section header
+		for i, line := range lines {
+			if strings.TrimSpace(line) == "php:" {
+				lines = append(lines[:i+1], append([]string{"  default_version: \"" + version + "\""}, lines[i+1:]...)...)
+				found = true
+				break
+			}
+		}
+	}
+
+	if !found {
+		return fmt.Errorf("could not find php section in %s", configPath)
+	}
+
+	return os.WriteFile(configPath, []byte(strings.Join(lines, "\n")), 0644)
+}
+
 // DefaultConfigYAML returns the default chauffeur.yaml content for the given workspace root.
 func DefaultConfigYAML(root string) string {
 	return fmt.Sprintf(`workspace: %s

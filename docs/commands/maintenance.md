@@ -2,6 +2,12 @@
 
 Commands for health checking, cleanup, migration, and updating.
 
+> **Implementation status**:
+> - `chauf doctor` — Phase 4 (not yet implemented)
+> - `chauf clean` — Phase 4 (not yet implemented)
+> - `chauf migrate` — Phase 4 (not yet implemented)
+> - `chauf self-update` — implemented
+
 ---
 
 ## `chauf doctor`

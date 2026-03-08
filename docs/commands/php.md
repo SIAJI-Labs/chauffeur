@@ -10,20 +10,15 @@ Commands for managing PHP versions. All are subcommands of `chauf php`.
 
 **Usage**:
 ```
-chauf php list [flags]
+chauf php list
 ```
 
-**Flags**:
-
-| Flag | Type | Default | Description |
-|------|------|---------|-------------|
-| `--detail` | bool | false | Show binary path, extension list, compiled flags |
+No flags.
 
 **Examples**:
 
 ```bash
 chauf php list
-chauf php list --detail
 ```
 
 **Output**:
@@ -34,17 +29,6 @@ chauf php list --detail
   8.3     ~/.chauffeur/php/8.3/       installed  (default)
   8.1     ~/.chauffeur/php/8.1/       installed
   7.4     ~/.chauffeur/php/7.4/       installed
-
-  8.0, 8.2 — not installed
-```
-
-**With `--detail`**:
-```
-  8.3  (default)
-    Binary      ~/.chauffeur/php/8.3/bin/php
-    FPM         ~/.chauffeur/php/8.3/bin/php-fpm
-    Extensions  mysqli  pdo_mysql  gd  zip  imagick
-                curl  openssl  sodium  readline  bcmath  gmp  exif  xsl  bz2
 ```
 
 ---
@@ -86,49 +70,40 @@ chauf php use 8.1
 
 ## `chauf php isolate`
 
-**Purpose**: Pin the current project to a specific PHP version by writing a `.chauffeur-version` file in the project root and updating the project config. The PHP shim reads this file when walking up the directory tree.
+**Purpose**: Pin the current directory to a specific PHP version by writing a `.chauffeur-php` file. The PHP shim reads this file when walking up the directory tree.
 
 **Usage**:
 ```
-chauf php isolate <version> [flags]
+chauf php isolate <version>
 ```
 
 **Arguments**:
 
 | Argument | Required | Description |
 |----------|----------|-------------|
-| `<version>` | yes | PHP version to pin to this project (e.g. `8.1`) |
+| `<version>` | yes | PHP version to pin (e.g. `8.1`) |
 
-**Flags**:
-
-| Flag | Type | Default | Description |
-|------|------|---------|-------------|
-| `--project <path>` | string | CWD | Isolate a project at a specific path |
+No flags. Run from the project root directory to isolate that project.
 
 **Examples**:
 
 ```bash
-# Pin current project to PHP 8.1
+# Pin current directory to PHP 8.1
+cd ~/Projects/legacy-app
 chauf php isolate 8.1
-
-# Pin a project at a specific path
-chauf php isolate 7.4 --project ~/Projects/legacy-app
 ```
 
 **Output**:
 ```
-  ✓ my-app pinned to PHP 8.1  (was 8.3)
-
-  File     ~/Projects/my-app/.chauffeur-version
-  nginx config regenerated  ·  nginx reloaded
+  ✓ Pinned to PHP 8.1  (.chauffeur-php)
 ```
 
-**How isolation works**: The `.chauffeur-version` file contains only the version string (e.g. `8.1`). The PHP shim walks up the directory tree from the current working directory looking for this file. When found, it uses the specified version's binary.
+**How isolation works**: A `.chauffeur-php` file containing only the version string (e.g. `8.1`) is written to the current directory. The PHP shim walks up the directory tree from `$PWD` looking for this file. When found, it invokes that version's binary.
 
 **Notes**:
-- The file is intentionally human-editable — `echo "8.1" > .chauffeur-version` works too.
-- To remove isolation (revert to global default), delete `.chauffeur-version` and rerun `chauf link` or `chauf link --php <version>`.
-- You may want to add `.chauffeur-version` to `.gitignore` for projects where PHP version is controlled differently.
+- The file is intentionally human-editable — `echo "8.1" > .chauffeur-php` works too.
+- To remove isolation (revert to global default), delete `.chauffeur-php`.
+- Consider adding `.chauffeur-php` to `.gitignore` if PHP version is controlled differently per-developer.
 
 ---
 

@@ -44,8 +44,11 @@ func main() {
 
 	// ── Install & Remove ───────────────────────────────────────────────────────
 
-	case "install", "remove":
-		notImplemented(args[0])
+	case "install":
+		err = commands.RunInstall(args[1:])
+
+	case "remove":
+		err = commands.RunRemove(args[1:])
 
 	// ── Projects ───────────────────────────────────────────────────────────────
 
@@ -55,11 +58,7 @@ func main() {
 	// ── PHP ────────────────────────────────────────────────────────────────────
 
 	case "php":
-		sub := ""
-		if len(args) > 1 {
-			sub = args[1]
-		}
-		notImplemented("php " + sub)
+		err = commands.RunPHP(args[1:])
 
 	// ── Services ───────────────────────────────────────────────────────────────
 

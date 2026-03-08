@@ -208,19 +208,43 @@ CHAUFFEUR_IMAGICK_TARBALL=/path/to/imagick-3.7.0.tgz chauf install php 8.3
 
 ## Legacy PHP (7.4, 8.0)
 
-Legacy PHP versions have additional constraints handled in `installers/php_legacy.go`:
+Legacy PHP versions require additional source patches and compiler flags to build on modern Linux systems. All handled in `installers/php_legacy.go`.
 
-**GD Extension** — API changed between PHP 7 and 8:
-- PHP 7.4, 8.0: Use `--with-jpeg-dir`, `--with-png-dir` (old flags)
-- PHP 8.1+: Use `--enable-gd`, `--with-jpeg`, `--with-freetype` (new flags)
+### GCC 14 Compatibility
 
-**LibXML constraint**:
-- PHP 7.4: Requires libxml2 ≤ 2.11 (2.12 has breaking API changes)
-- `chauf doctor` warns if system libxml2 ≥ 2.12 when installing legacy PHP
+GCC 14 tightened C standard enforcement. PHP 7.4 and 8.0 use old-style `()` function pointer declarations that are now errors, not warnings. Chauffeur applies two fixes:
 
-**ImageMagick constraint**:
-- PHP 7.4: imagick extension may not compile with ImageMagick 7.1+
-- `chauf doctor` checks MagickWand version before legacy PHP builds
+**CFLAGS** (set via `VendoredOpenSSLEnv`):
+```
+-Wno-deprecated-declarations -Wno-discarded-qualifiers -Wno-incompatible-pointer-types
+```
+`-Wno-incompatible-pointer-types` suppresses assignment-level errors when typed function pointers are passed to `void (*func_p)()` parameters.
+
+**Source patches** applied by `ApplyLegacyPatches()`:
+
+| Patch function | File(s) patched | What it fixes |
+|----------------|-----------------|---------------|
+| `patchLibXML` | `ext/libxml/libxml.c` | `ATTRIBUTE_UNUSED` macro, `xmlOutputBufferCreateFilenameDefault` guard, structured error handler cast |
+| `patchOpenSSLExt` | `ext/openssl/openssl.c` | OpenSSL 3.x `EVP_PKEY_get0_RSA` + `RSA_SSLV23_PADDING` shims |
+| `patchScanf` | `main/spprintf.c`, `main/snprintf.c`, `ext/standard/scanf.c` | `zend_long (*fn)()` typed to `(const char *, char **, int)` and casts updated |
+| `patchGDCtx` | `ext/gd/gd_ctx.c` (7.4 only, absent in 8.0) | Explicit casts on all `(*func_p)(...)` call sites in `_php_image_output_ctx` |
+| `patchGD` | `ext/gd/gd.c` | Explicit casts on all `(*func_p)` / `(*ioctx_func_p)` call sites in image create/output functions |
+
+> **Note**: PHP 8.0 merged `gd_ctx.c` into `gd.c`. `patchGDCtx` skips gracefully when the file is absent.
+
+### Vendored OpenSSL
+
+PHP 7.4 and 8.0 are not compatible with OpenSSL 3.x on the build or runtime level. Chauffeur compiles OpenSSL 1.1.1w into `~/.chauffeur/cache/vendor-openssl-<version>/` and points the PHP build at it via `PKG_CONFIG_PATH` and `LD_LIBRARY_PATH`.
+
+### GD Flags
+
+PHP 8.0 has a different GD configure interface than 7.4; both differ from 8.1+:
+- PHP 7.4, 8.1+: `--enable-gd --with-jpeg=/usr --with-freetype=/usr` (bundled in main build)
+- PHP 8.0: GD built separately via `BuildGD80()` post-install
+
+### LibXML
+
+`patchLibXML` patches `ext/libxml/libxml.c` to handle libxml2 2.12's API changes (`xmlOutputBufferCreateFilenameDefault` removal, handler cast changes). No system version constraint is required.
 
 ---
 

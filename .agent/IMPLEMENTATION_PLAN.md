@@ -6,8 +6,8 @@ V2 is a ground-up rewrite of Chauffeur, preserving the proven workspace architec
 
 ## Current Status
 
-- **Phase**: 1 — Core Services Installation
-- **Stability**: Early development — Phase 0 complete, no installers yet
+- **Phase**: 2 — Project Management
+- **Stability**: Early development — Phase 1 complete, no project linking yet
 
 ## File Structure Summary
 
@@ -50,27 +50,29 @@ chauffeur-v2/
 - [x] Create `scripts/install.sh` for curl-based installation (in-repo / release / clone+build)
 - [x] Create `Makefile` (build, dev, install, clean targets)
 - [x] Create `.gitignore`
-- [x] Spinners (`lib.NewSpinner`) + download progress bar (`lib.NewProgressReader`)
+- [x] Spinners (`lib.NewSpinner`) + download progress bar (`lib.NewProgressReader`) — indeterminate spinner when `Content-Length` absent, clamps negative total to 0
 - [x] Write tests for workspace init and config loading (8 tests, all passing)
 - [x] Create `.goreleaser.yml` for release builds (linux amd64/arm64, combined checksums.txt)
 
 ---
 
-## Phase 1: Core Services Installation
+## Phase 1: Core Services Installation ✅ COMPLETE
 
-- [ ] Port `installers/nginx.go` — build nginx from source
-- [ ] Port `installers/php.go` — compile PHP from source (all versions)
-- [ ] Port `installers/php_legacy.go` — PHP 7.4/8.0 GD patching
-- [ ] Port `installers/composer.go` — Composer PHAR download + shim
-- [ ] Port `installers/common.go` — shared download/checksum utilities
-- [ ] `chauf install nginx` command
-- [ ] `chauf install php <version>` command
-- [ ] `chauf install composer` command
-- [ ] `chauf remove <service>` command
-- [ ] `chauf php use <version>` — set global default PHP
-- [ ] PHP shim at `~/.chauffeur/bin/shims/php`
-- [ ] Composer shim at `~/.chauffeur/bin/shims/composer`
-- [ ] Tests for installer utilities (download, checksum, extraction)
+- [x] `installers/common.go` — BuildOpts, download+progress, checksum, tar extract, RunCmd
+- [x] `installers/nginx.go` — nginx version resolve, download, build from source
+- [x] `installers/php_legacy.go` — vendored OpenSSL 1.1.1w + 5 source patches for GCC 14 compat on 7.4/8.0 (libxml, openssl, scanf, gd_ctx, gd) + `-Wno-incompatible-pointer-types` CFLAGS
+- [x] `installers/php.go` — PHP 7.4–8.4 compile, FPM config, imagick extension
+- [x] `installers/composer.go` — Composer PHAR download
+- [x] `chauf install nginx` command
+- [x] `chauf install php <version>` command
+- [x] `chauf install composer` command
+- [x] `chauf remove <service>` command
+- [x] `chauf php use <version>` — set global default PHP (updates chauffeur.yaml)
+- [x] `chauf php list` — show installed versions with default marker
+- [x] `chauf php isolate <version>` — pin project to PHP version (.chauffeur-php)
+- [x] PHP shim at `~/.chauffeur/bin/shims/php` (written by chauf init)
+- [x] Composer shim at `~/.chauffeur/bin/shims/composer` (written by chauf init)
+- [x] Tests for installer utilities (download, checksum, extraction, legacy patches) — 29 tests
 
 ---
 
@@ -199,13 +201,13 @@ chauffeur-v2/
 - [x] Tests (8 passing)
 - [x] `.goreleaser.yml`
 
-### Phase 1: Installation
-- [ ] Nginx installer
-- [ ] PHP installer (all versions)
-- [ ] PHP legacy patches
-- [ ] Composer installer
-- [ ] PHP + Composer shims
-- [ ] `install/remove/use` commands
+### Phase 1: Installation ✅
+- [x] Nginx installer
+- [x] PHP installer (7.4–8.4)
+- [x] PHP legacy patches (5 patches) + vendored OpenSSL + GCC 14 CFLAGS
+- [x] Composer installer
+- [x] PHP + Composer shims (written by chauf init)
+- [x] `install/remove/php` commands
 
 ### Phase 2: Project Management
 - [ ] Project CRUD
