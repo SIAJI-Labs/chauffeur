@@ -96,26 +96,22 @@ func RunInit(args []string) error {
 	}
 
 	// ── Write shims ────────────────────────────────────────────────────────────
+	// Shims are always updated if their content differs — this ensures a
+	// running `chauf init` picks up shim fixes without requiring --force.
 
 	phpShimPath := filepath.Join(root, "bin/shims/php")
-	phpCreated, err := ensureFile(phpShimPath, phpShimContent, 0755, *force)
+	phpCreated, err := ensureShim(phpShimPath, phpShimContent, *force)
 	if err != nil {
 		return fmt.Errorf("php shim: %w", err)
-	}
-	if phpCreated {
-		os.Chmod(phpShimPath, 0755)
 	}
 	if !*quiet {
 		printRow("PHP shim", phpShimPath, phpCreated)
 	}
 
 	composerShimPath := filepath.Join(root, "bin/shims/composer")
-	compCreated, err := ensureFile(composerShimPath, composerShimContent, 0755, *force)
+	compCreated, err := ensureShim(composerShimPath, composerShimContent, *force)
 	if err != nil {
 		return fmt.Errorf("composer shim: %w", err)
-	}
-	if compCreated {
-		os.Chmod(composerShimPath, 0755)
 	}
 	if !*quiet {
 		printRow("Composer shim", composerShimPath, compCreated)
@@ -254,6 +250,20 @@ func ensureFile(path, content string, perm os.FileMode, force bool) (bool, error
 		}
 	}
 	if err := os.WriteFile(path, []byte(content), perm); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// ensureShim writes the shim if it doesn't exist OR if the content differs.
+// This allows `chauf init` (without --force) to self-update stale shims.
+// Returns true if the file was written.
+func ensureShim(path, content string, force bool) (bool, error) {
+	existing, err := os.ReadFile(path)
+	if err == nil && string(existing) == content && !force {
+		return false, nil // already up to date
+	}
+	if err := os.WriteFile(path, []byte(content), 0755); err != nil {
 		return false, err
 	}
 	return true, nil
@@ -404,14 +414,27 @@ const mimeTypesContent = `types {
 
 const phpShimContent = `#!/usr/bin/env bash
 # Chauffeur PHP shim — routes to the correct PHP binary based on active version.
+# shim-version: 2
 
 CHAUF_HOME="${CHAUFFEUR_HOME:-$HOME/.chauffeur}"
 CONFIG="$CHAUF_HOME/config/chauffeur.yaml"
 
-# Project-level override (set by 'chauf php isolate')
+# 1. Explicit env override (e.g. CHAUFFEUR_PHP_VERSION=8.3 php artisan ...)
 PHP_VER="${CHAUFFEUR_PHP_VERSION:-}"
 
-# Fall back to global default from config
+# 2. Walk up from CWD looking for .chauffeur-php (written by 'chauf php isolate')
+if [[ -z "$PHP_VER" ]]; then
+    DIR="$PWD"
+    while [[ "$DIR" != "/" ]]; do
+        if [[ -f "$DIR/.chauffeur-php" ]]; then
+            PHP_VER=$(tr -d '[:space:]' < "$DIR/.chauffeur-php")
+            break
+        fi
+        DIR="$(dirname "$DIR")"
+    done
+fi
+
+# 3. Fall back to global default from workspace config
 if [[ -z "$PHP_VER" && -f "$CONFIG" ]]; then
     PHP_VER=$(grep 'default_version' "$CONFIG" 2>/dev/null | head -1 | sed 's/.*"\(.*\)".*/\1/')
 fi

@@ -6,8 +6,8 @@ V2 is a ground-up rewrite of Chauffeur, preserving the proven workspace architec
 
 ## Current Status
 
-- **Phase**: 2 — Project Management
-- **Stability**: Early development — Phase 1 complete, no project linking yet
+- **Phase**: 3 — Service Orchestration
+- **Stability**: Early development — Phase 2 complete, project linking working
 
 ## File Structure Summary
 
@@ -76,23 +76,29 @@ chauffeur-v2/
 
 ---
 
-## Phase 2: Project Management
+## Phase 2: Project Management ✅ COMPLETE
 
-- [ ] Port `internal/projects/` — project config CRUD
-- [ ] `chauf link` — register project with nginx config generation
-  - [ ] `--php <version>` flag
-  - [ ] `--secure` flag (SSL from the start)
-  - [ ] `--dedicated-fpm` flag
-  - [ ] `--alias <domain>` flag (multi-domain)
-- [ ] `chauf links` — table display of all projects with status
-- [ ] `chauf unlink` — remove project registration
-  - [ ] `--alias <domain>` — remove specific alias
-  - [ ] `--all` — remove all aliases then unlink
-- [ ] `chauf php isolate <version>` — set per-project PHP
-- [ ] `chauf secure` / `chauf unsecure` — SSL management
-- [ ] Port nginx template generation from V1
-- [ ] Port multi-domain nginx config from V1
-- [ ] Tests for project linking, config management, nginx templates
+- [x] `internal/projects/config.go` — Project struct + YAML read/write + CRUD (Save/Load/Delete/ListSlugs/ListAll/FindByPath/IsDomainInUse)
+- [x] `internal/projects/slug.go` — GenerateSlug, DomainFromSlug, IsValidDomain
+- [x] `internal/projects/detect.go` — Detect (laravel/wordpress/generic), DocumentRoot
+- [x] `internal/projects/nginx.go` — RenderNginxConfig (HTTP+HTTPS templates), WriteNginxConfig, EnableNginxSite, DisableNginxSite, RemoveNginxConfig
+- [x] `internal/projects/services.go` — ReloadNginx, IsNginxRunning, RunMkcert, MkcertInstalled, MkcertCAInstalled
+- [x] `chauf link` — register project with nginx config generation
+  - [x] `--php <version>` flag
+  - [x] `--secure` flag (SSL from the start)
+  - [x] `--dedicated-fpm` flag
+  - [x] `--alias <domain>` flag (multi-domain, repeatable)
+  - [x] Idempotent (updates existing project on re-link)
+- [x] `chauf links` — table display of all projects with status + `--detail` flag
+- [x] `chauf unlink` — remove project registration + confirmation prompt
+  - [x] `--alias <domain>` — remove specific alias
+  - [x] `--yes` — skip confirmation
+- [x] `chauf php isolate <version>` — set per-project PHP (Phase 1, complete)
+- [x] `chauf secure` / `chauf unsecure` — SSL management via mkcert
+- [x] nginx template generation (HTTP + HTTPS) with per-type try_files routing
+- [x] Multi-domain nginx config (all domains in single server_name directive)
+- [x] Updated `chauf info` to use projects package (replaced stub parser)
+- [x] 33 tests for project CRUD, slug, detection, nginx templates, domain conflict detection
 
 ---
 
@@ -209,12 +215,13 @@ chauffeur-v2/
 - [x] PHP + Composer shims (written by chauf init)
 - [x] `install/remove/php` commands
 
-### Phase 2: Project Management
-- [ ] Project CRUD
-- [ ] `link/links/unlink` commands
-- [ ] Nginx template generation
-- [ ] Multi-domain support
-- [ ] SSL support
+### Phase 2: Project Management ✅
+- [x] Project CRUD
+- [x] `link/links/unlink` commands
+- [x] Nginx template generation (HTTP + HTTPS)
+- [x] Multi-domain support (aliases)
+- [x] SSL support (mkcert)
+- [x] Tests (33 passing)
 
 ### Phase 3: Service Orchestration
 - [ ] Service lifecycle

@@ -10,6 +10,7 @@ import (
 	"syscall"
 
 	"github.com/siegg/chauffeur/internal/lib"
+	"github.com/siegg/chauffeur/internal/projects"
 	"github.com/siegg/chauffeur/internal/workspace"
 )
 
@@ -81,19 +82,23 @@ func RunInfo(args []string) error {
 
 	// ── Projects ───────────────────────────────────────────────────────────────
 
-	projects := listProjects(root)
-	fmt.Printf("  %s  %s\n", lib.Bold("Projects"), lib.Gray(fmt.Sprintf("(%d)", len(projects))))
+	allProjects, _ := projects.ListAll(root)
+	fmt.Printf("  %s  %s\n", lib.Bold("Projects"), lib.Gray(fmt.Sprintf("(%d)", len(allProjects))))
 
-	if len(projects) == 0 {
-		fmt.Printf("  %s\n", lib.Gray("No projects registered. Run: chauf link <path>"))
+	if len(allProjects) == 0 {
+		fmt.Printf("  %s\n", lib.Gray("No projects registered. Run: chauf link"))
 	} else {
-		for _, p := range projects {
+		for _, p := range allProjects {
+			fpmMode := "shared"
+			if p.FPM.Dedicated {
+				fpmMode = "dedicated"
+			}
 			if *detail {
 				lib.Pair("  "+p.Slug, fmt.Sprintf("%-28s PHP %-4s %-10s %s",
-					p.Domain, p.PHPVersion, p.Mode, lib.Gray(p.ConfigPath)))
+					p.Domain, p.PHPVersion, fpmMode, lib.Gray(p.ConfigPath(root))))
 			} else {
 				lib.Pair("  "+p.Slug, fmt.Sprintf("%-28s PHP %-4s %-10s %s",
-					p.Domain, p.PHPVersion, p.Mode, schemeLabel(p.Secure)))
+					p.Domain, p.PHPVersion, fpmMode, schemeLabel(p.SSL)))
 			}
 		}
 	}
@@ -173,64 +178,4 @@ func installedPHPVersions(root string) []string {
 	return versions
 }
 
-type projectInfo struct {
-	Slug       string
-	Domain     string
-	PHPVersion string
-	Mode       string // "shared" or "dedicated"
-	Secure     bool
-	ConfigPath string
-}
-
-func listProjects(root string) []projectInfo {
-	projectsDir := filepath.Join(root, "projects")
-	entries, err := os.ReadDir(projectsDir)
-	if err != nil {
-		return nil
-	}
-
-	var projects []projectInfo
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		slug := e.Name()
-		cfgPath := filepath.Join(projectsDir, slug, "config.yaml")
-		p := projectInfo{
-			Slug:       slug,
-			Domain:     slug + ".test",
-			PHPVersion: "8.3",
-			Mode:       "shared",
-			Secure:     false,
-			ConfigPath: cfgPath,
-		}
-		if data, err := os.ReadFile(cfgPath); err == nil {
-			parseProjectConfig(data, &p)
-		}
-		projects = append(projects, p)
-	}
-	return projects
-}
-
-func parseProjectConfig(data []byte, p *projectInfo) {
-	for _, raw := range strings.Split(string(data), "\n") {
-		line := strings.TrimSpace(raw)
-		parts := strings.SplitN(line, ":", 2)
-		if len(parts) != 2 {
-			continue
-		}
-		key := strings.TrimSpace(parts[0])
-		val := strings.TrimSpace(strings.Trim(parts[1], `"`))
-		switch key {
-		case "domain":
-			p.Domain = val
-		case "php_version":
-			p.PHPVersion = val
-		case "fpm_mode":
-			p.Mode = val
-		case "secure":
-			p.Secure = val == "true"
-		}
-	}
-}
 

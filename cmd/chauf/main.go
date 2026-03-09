@@ -52,8 +52,20 @@ func main() {
 
 	// ── Projects ───────────────────────────────────────────────────────────────
 
-	case "link", "links", "unlink", "secure", "unsecure":
-		notImplemented(args[0])
+	case "link":
+		err = commands.RunLink(args[1:])
+
+	case "links":
+		err = commands.RunLinks(args[1:])
+
+	case "unlink":
+		err = commands.RunUnlink(args[1:])
+
+	case "secure":
+		err = commands.RunSecure(args[1:])
+
+	case "unsecure":
+		err = commands.RunUnsecure(args[1:])
 
 	// ── PHP ────────────────────────────────────────────────────────────────────
 

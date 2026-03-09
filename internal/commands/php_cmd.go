@@ -9,6 +9,7 @@ import (
 
 	"github.com/siegg/chauffeur/internal/installers"
 	"github.com/siegg/chauffeur/internal/lib"
+	"github.com/siegg/chauffeur/internal/projects"
 	"github.com/siegg/chauffeur/internal/workspace"
 )
 
@@ -159,15 +160,38 @@ func phpIsolate(args []string) error {
 		}
 	}
 
-	// Write .chauffeur-php file in the project dir
+	// Write .chauffeur-php file in the project dir (for the PHP shim)
 	phpFile := target + "/.chauffeur-php"
 	if err := os.WriteFile(phpFile, []byte(mm+"\n"), 0644); err != nil {
 		return fmt.Errorf("write .chauffeur-php: %w", err)
 	}
 
+	// If this directory is a registered project, update its config and nginx.
+	root := workspace.Root()
+	cfg := workspace.Load()
+	prevVersion := ""
+	p, err := projects.FindByPath(root, target)
+	if err == nil && p != nil {
+		prevVersion = p.PHPVersion
+		p.PHPVersion = mm
+		if err := projects.WriteNginxConfig(p, root, cfg.Nginx.HTTPPort, cfg.Nginx.HTTPSPort); err != nil {
+			lib.Warn("Could not regenerate nginx config: " + err.Error())
+		}
+		if err := projects.Save(p, root); err != nil {
+			lib.Warn("Could not update project config: " + err.Error())
+		}
+		if projects.IsNginxRunning(root) {
+			_ = projects.ReloadNginx(root)
+		}
+	}
+
 	fmt.Println()
 	lib.Success(fmt.Sprintf("Project pinned to PHP %s", mm))
 	lib.Pair("File", phpFile)
+	if p != nil && prevVersion != "" && prevVersion != mm {
+		lib.Pair("Was", prevVersion)
+		lib.Info(lib.Gray("nginx config and project config updated."))
+	}
 	lib.Info(lib.Gray("The PHP shim reads CHAUFFEUR_PHP_VERSION or .chauffeur-php when present."))
 	fmt.Println()
 
