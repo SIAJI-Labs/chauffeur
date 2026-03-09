@@ -99,7 +99,13 @@ func main() {
 	case "self-update":
 		err = commands.RunSelfUpdate(args[1:], version)
 
-	case "doctor", "clean", "migrate":
+	case "doctor":
+		err = commands.RunDoctor(args[1:])
+
+	case "clean":
+		err = commands.RunClean(args[1:])
+
+	case "migrate":
 		notImplemented(args[0])
 
 	default:

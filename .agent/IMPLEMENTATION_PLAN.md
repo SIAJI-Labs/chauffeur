@@ -139,22 +139,27 @@ chauffeur-v2/
 
 ---
 
-## Phase 4: Health and Maintenance
+## Phase 4: Health and Maintenance ✅ PARTIAL
 
-- [ ] Port `commands/doctor.go` — comprehensive health checking
-  - [ ] System tool checks (git, curl, tar, gcc, make, pkg-config)
-  - [ ] PHP build dependency checks (libzip, libjpeg, etc.)
-  - [ ] SSL checks (mkcert, openssl)
-  - [ ] Network checks (port availability, dnsmasq)
-  - [ ] `--fix` / `--auto-fix` flags
-  - [ ] Distribution-aware package install suggestions
-- [ ] Port `commands/clean.go` — workspace cleanup
-  - [ ] `chauf clean cache` — remove download cache
-  - [ ] `chauf clean logs` — remove old log files
-  - [ ] `--dry-run` — show what would be cleaned
-  - [ ] `--older-than <age>` — age-based cleanup
+- [x] `commands/doctor.go` — comprehensive health checking
+  - [x] System tool checks (git, curl, tar, gcc, make, pkg-config, autoconf, bison)
+  - [x] PHP build dependency checks (libzip, libjpeg, libpng, freetype2, libxml2, libcurl, zlib, readline, libxslt, gmp, openssl, ImageMagick)
+  - [x] SSL checks (mkcert, openssl, mkcert CA, cert directory)
+  - [x] Network checks (iptables port forwarding, port availability)
+  - [x] DNS checks (dnsmasq binary, chauffeur.conf, .test resolution)
+  - [x] `--fix` flag — prints commands, never runs them
+  - [x] `--auto-fix` flag — executes fix commands via `sh -c`, stops on first failure per block, skips comments
+  - [x] `--check-deps / --check-php / --check-ssl / --check-network / --check-dns` — individual section flags
+  - [x] Distribution-aware package install suggestions (arch/debian/fedora)
+  - [x] NM-managed dnsmasq detection (reads `/etc/NetworkManager/conf.d/`)
+  - [x] DNS resolution test via direct UDP dial to `127.0.0.1:53`
+- [x] `commands/clean.go` — workspace cleanup
+  - [x] `chauf clean cache` — remove download cache
+  - [x] `chauf clean logs` — remove nginx and PHP-FPM log files
+  - [x] `chauf clean all` — run all clean operations
+  - [x] `--dry-run` — show what would be cleaned
+  - [x] `--older-than <age>` — age-based cleanup (supports `7d`, `24h`, `30m`)
 - [ ] Port `commands/migrate.go` — project migration
-- [ ] Port `chauf self-update` — binary update
 - [ ] Tests for doctor checks (with mocked system commands)
 
 ---
@@ -247,9 +252,9 @@ chauffeur-v2/
 - [x] PHP shim v3 — project config lookup, no dotfiles
 
 ### Phase 4: Health & Maintenance
-- [ ] `doctor` command
-- [ ] `clean` command
-- [ ] `migrate/self-update` commands
+- [x] `doctor` command
+- [x] `clean` command
+- [ ] `migrate` command
 
 ### Phase 5: V2 New Features
 - [ ] `config` command

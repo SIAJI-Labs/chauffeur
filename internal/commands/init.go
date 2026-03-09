@@ -126,7 +126,7 @@ func RunInit(args []string) error {
 	// ── DNS & port forwarding checks ───────────────────────────────────────────
 
 	cfg := workspace.Load()
-	dnsStatus := checkDNS()
+	dnsStatus := checkDNSStatus()
 	pfActive := system.IsPortForwardingActive(root, cfg.Nginx.HTTPPort, cfg.Nginx.HTTPSPort)
 
 	// ── Summary ────────────────────────────────────────────────────────────────
@@ -162,14 +162,14 @@ func RunInit(args []string) error {
 
 // ── DNS detection ──────────────────────────────────────────────────────────────
 
-type dnsCheckResult struct {
+type initDNSStatus struct {
 	installed  bool // dnsmasq binary exists
 	configured bool // /etc/dnsmasq.d/chauffeur.conf exists
 	nmManaged  bool // NetworkManager is running its own dnsmasq instance
 }
 
-func checkDNS() dnsCheckResult {
-	r := dnsCheckResult{}
+func checkDNSStatus() initDNSStatus {
+	r := initDNSStatus{}
 	_, err := exec.LookPath("dnsmasq")
 	r.installed = err == nil
 	// NetworkManager dnsmasq plugin: NM owns dnsmasq and reads from its own dnsmasq.d dir.
@@ -191,7 +191,7 @@ func checkDNS() dnsCheckResult {
 	return r
 }
 
-func printDNSStatus(r dnsCheckResult) {
+func printDNSStatus(r initDNSStatus) {
 	if r.configured {
 		confPath := "/etc/dnsmasq.d/chauffeur.conf"
 		if r.nmManaged {
