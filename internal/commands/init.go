@@ -163,16 +163,20 @@ func RunInit(args []string) error {
 // ── DNS detection ──────────────────────────────────────────────────────────────
 
 type initDNSStatus struct {
-	installed  bool // dnsmasq binary exists
-	configured bool // /etc/dnsmasq.d/chauffeur.conf exists
-	nmManaged  bool // NetworkManager is running its own dnsmasq instance
+	installed        bool // dnsmasq binary exists
+	configured       bool // dnsmasq chauffeur.conf exists
+	nmManaged        bool // NetworkManager manages dnsmasq
+	resolvedActive        bool // systemd-resolved is running
+	resolvedInNSS         bool // nsswitch.conf routes hostname lookups through systemd-resolved
+	resolvedDropIn        bool // /etc/systemd/resolved.conf.d/chauffeur.conf exists
+	nssResolveFallthrough bool // nsswitch.conf allows TRYAGAIN to fall through to dns module
 }
 
 func checkDNSStatus() initDNSStatus {
 	r := initDNSStatus{}
 	_, err := exec.LookPath("dnsmasq")
 	r.installed = err == nil
-	// NetworkManager dnsmasq plugin: NM owns dnsmasq and reads from its own dnsmasq.d dir.
+	// NetworkManager dnsmasq plugin.
 	entries, _ := os.ReadDir("/etc/NetworkManager/conf.d")
 	for _, e := range entries {
 		data, _ := os.ReadFile("/etc/NetworkManager/conf.d/" + e.Name())
@@ -188,6 +192,12 @@ func checkDNSStatus() initDNSStatus {
 		_, err = os.Stat("/etc/dnsmasq.d/chauffeur.conf")
 	}
 	r.configured = err == nil
+	// systemd-resolved detection (reuse helpers defined in doctor.go, same package).
+	r.resolvedActive = isResolvedActive()
+	r.resolvedInNSS = isResolvedInNSS()
+	_, err = os.Stat(resolvedDropIn)
+	r.resolvedDropIn = err == nil
+	r.nssResolveFallthrough = isNSSResolveFallthrough()
 	return r
 }
 
@@ -197,7 +207,35 @@ func printDNSStatus(r initDNSStatus) {
 		if r.nmManaged {
 			confPath = "/etc/NetworkManager/dnsmasq.d/chauffeur.conf"
 		}
-		lib.Pair("DNS", lib.Green("✓")+"  .test domains resolve via "+confPath)
+		lib.Pair("DNS", lib.Green("✓")+"  .test domains → dnsmasq  ("+confPath+")")
+
+		// Even if dnsmasq is configured, systemd-resolved may bypass it when offline.
+		if r.resolvedActive && r.resolvedInNSS {
+			if r.resolvedDropIn && r.nssResolveFallthrough {
+				lib.Pair("   ", lib.Green("✓")+"  systemd-resolved .test route  ("+resolvedDropIn+")")
+				lib.Pair("   ", lib.Green("✓")+"  NSS offline fallback  (resolve [NOTFOUND=return])")
+			} else {
+				fmt.Println()
+				lib.Warn(".test sites unreachable without internet")
+				fmt.Println()
+				fmt.Printf("  systemd-resolved goes offline when your WAN interface disconnects, returning\n")
+				fmt.Printf("  TRYAGAIN which NSS treats as fatal. The fix allows TRYAGAIN to fall through\n")
+				fmt.Printf("  to the dns module, which uses resolv.conf → dnsmasq → .test works offline.\n")
+				fmt.Println()
+				fmt.Printf("  Run once to fix:\n")
+				fmt.Println()
+				if !r.resolvedDropIn {
+					fmt.Printf("    %s\n", lib.Bold("sudo mkdir -p /etc/systemd/resolved.conf.d"))
+					fmt.Printf("    %s\n", lib.Bold("printf '[Resolve]\\nDNS=127.0.0.1\\nDomains=~test\\n' | sudo tee "+resolvedDropIn))
+					fmt.Printf("    %s\n", lib.Bold("sudo systemctl restart systemd-resolved"))
+					fmt.Println()
+				}
+				if !r.nssResolveFallthrough {
+					fmt.Printf("    %s\n", lib.Bold("sudo sed -i 's/resolve \\[!UNAVAIL=return\\]/resolve [NOTFOUND=return]/' /etc/nsswitch.conf"))
+				}
+				fmt.Println()
+			}
+		}
 		return
 	}
 

@@ -153,6 +153,10 @@ chauffeur-v2/
   - [x] Distribution-aware package install suggestions (arch/debian/fedora)
   - [x] NM-managed dnsmasq detection (reads `/etc/NetworkManager/conf.d/`)
   - [x] DNS resolution test via direct UDP dial to `127.0.0.1:53`
+  - [x] systemd-resolved offline detection: `isResolvedInNSS()` checks `nsswitch.conf` for `resolve` module
+  - [x] NSS offline fallback check: detects `[!UNAVAIL=return]` blocking TRYAGAIN passthrough
+  - [x] Fix: `sed` changes nsswitch.conf `resolve [!UNAVAIL=return]` → `[NOTFOUND=return]` so offline TRYAGAIN falls through to `dns` → resolv.conf → dnsmasq → `.test` works offline
+  - [x] Global resolved routing: `resolved.conf.d/chauffeur.conf` routes `.test` to dnsmasq when online
 - [x] `commands/clean.go` — workspace cleanup
   - [x] `chauf clean cache` — remove download cache
   - [x] `chauf clean logs` — remove nginx and PHP-FPM log files

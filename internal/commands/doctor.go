@@ -403,6 +403,50 @@ func doctorDNS(root string) []checkResult {
 		})
 	}
 
+	// systemd-resolved: when in the NSS chain, check two things:
+	//   1. Global routing: resolved.conf.d drop-in routes .test to dnsmasq when online.
+	//   2. Offline fallback: nsswitch.conf must allow TRYAGAIN to fall through to `dns`
+	//      module. When resolved goes offline it returns TRYAGAIN (not UNAVAIL).
+	//      The default [!UNAVAIL=return] blocks TRYAGAIN, so curl fails offline.
+	//      Changing to [NOTFOUND=return] lets TRYAGAIN fall through → dns module
+	//      reads resolv.conf (nameserver 127.0.0.1) → dnsmasq → .test works offline.
+	if isResolvedActive() && isResolvedInNSS() {
+		// Check 1: online .test routing via resolved global config.
+		if _, err := os.Stat(resolvedDropIn); err == nil {
+			results = append(results, checkResult{
+				name:   "resolved .test route",
+				ok:     true,
+				status: lib.Gray(resolvedDropIn),
+			})
+		} else {
+			results = append(results, checkResult{
+				name:   "resolved .test route",
+				ok:     false,
+				warn:   true,
+				status: ".test may not resolve online — global routing config missing",
+				fix: "sudo mkdir -p /etc/systemd/resolved.conf.d\n" +
+					"printf '[Resolve]\\nDNS=127.0.0.1\\nDomains=~test\\n' | sudo tee " + resolvedDropIn + "\n" +
+					"sudo systemctl restart systemd-resolved",
+			})
+		}
+
+		// Check 2: offline fallback via NSS TRYAGAIN passthrough.
+		if isNSSResolveFallthrough() {
+			results = append(results, checkResult{
+				name:   "NSS offline fallback",
+				ok:     true,
+				status: lib.Gray("resolve [NOTFOUND=return] → dns → dnsmasq"),
+			})
+		} else {
+			results = append(results, checkResult{
+				name:   "NSS offline fallback",
+				ok:     false,
+				status: ".test unreachable offline — NSS stops on TRYAGAIN before reaching dns module",
+				fix:    "sudo sed -i 's/resolve \\[!UNAVAIL=return\\]/resolve [NOTFOUND=return]/' /etc/nsswitch.conf",
+			})
+		}
+	}
+
 	// .test resolution (offline-safe: query 127.0.0.1:53 directly)
 	if resolves := doctorTestResolution(); resolves {
 		results = append(results, checkResult{
@@ -526,6 +570,91 @@ func firstLine(s string) string {
 		return s[:idx]
 	}
 	return s
+}
+
+// resolvedDropIn is kept for backward-compat detection only.
+const resolvedDropIn = "/etc/systemd/resolved.conf.d/chauffeur.conf"
+
+// resolvedNetworkFile is a systemd-networkd .network file for the loopback
+// interface. Networkd registers DNS config for lo with systemd-resolved; since
+// lo is always up, resolved never considers the .test scope "offline".
+// Note: resolvectl dns lo requires networkd (org.freedesktop.network1 D-Bus).
+const resolvedNetworkFile = "/etc/systemd/network/99-chauffeur-lo.network"
+
+// isResolvedActive returns true when systemd-resolved is running.
+func isResolvedActive() bool {
+	out, err := exec.Command("systemctl", "is-active", "systemd-resolved").Output()
+	return err == nil && strings.TrimSpace(string(out)) == "active"
+}
+
+// isResolvedInNSS returns true when glibc will route hostname lookups through
+// systemd-resolved. This happens when nsswitch.conf has "resolve" in the hosts
+// line OR when /etc/resolv.conf points at the systemd-resolved stub (127.0.0.53).
+// In either case curl/getaddrinfo bypasses dnsmasq and uses resolved's own upstream.
+func isResolvedInNSS() bool {
+	// Check nsswitch.conf hosts line for "resolve" NSS module.
+	data, err := os.ReadFile("/etc/nsswitch.conf")
+	if err == nil {
+		for _, line := range strings.Split(string(data), "\n") {
+			if strings.HasPrefix(strings.TrimSpace(line), "hosts:") &&
+				strings.Contains(line, "resolve") {
+				return true
+			}
+		}
+	}
+	// Fallback: resolv.conf stub listener.
+	target, err2 := os.Readlink("/etc/resolv.conf")
+	if err2 == nil && (strings.Contains(target, "systemd") || strings.Contains(target, "stub")) {
+		return true
+	}
+	rc, _ := os.ReadFile("/etc/resolv.conf")
+	return strings.Contains(string(rc), "127.0.0.53")
+}
+
+// resolvedLoFix returns commands to bind .test DNS to the loopback interface via
+// systemd-networkd. Networkd registers DNS config for lo with systemd-resolved;
+// since lo is always up, the .test scope is never considered "offline".
+// Also cleans up the failed chauffeur-dns-route.service if present.
+func resolvedLoFix() string {
+	netFile := resolvedNetworkFile
+	content := "[Match]\\nName=lo\\n\\n[Network]\\nDNS=127.0.0.1\\nDomains=~test\\n"
+	return "# Clean up previous (failed) approach if present\n" +
+		"sudo systemctl disable --now chauffeur-dns-route.service 2>/dev/null; sudo rm -f /etc/systemd/system/chauffeur-dns-route.service; sudo systemctl daemon-reload\n" +
+		"# Configure systemd-networkd to register .test DNS for loopback\n" +
+		"sudo mkdir -p /etc/systemd/network\n" +
+		"printf '" + content + "' | sudo tee " + netFile + "\n" +
+		"sudo systemctl enable --now systemd-networkd\n" +
+		"sudo systemctl restart systemd-resolved"
+}
+
+// isNSSResolveFallthrough returns true when the nsswitch.conf hosts line allows
+// NSS TRYAGAIN (systemd-resolved offline) to fall through to the `dns` module.
+// With [!UNAVAIL=return], TRYAGAIN stops the lookup. With [NOTFOUND=return],
+// TRYAGAIN falls through to `dns` which uses resolv.conf → dnsmasq → .test works.
+func isNSSResolveFallthrough() bool {
+	data, _ := os.ReadFile("/etc/nsswitch.conf")
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "hosts:") && strings.Contains(line, "resolve") {
+			// Bad: [!UNAVAIL=return] blocks TRYAGAIN
+			if strings.Contains(line, "resolve [!UNAVAIL=return]") {
+				return false
+			}
+			// Good: [NOTFOUND=return] allows TRYAGAIN to fall through
+			return true
+		}
+	}
+	return false
+}
+
+// isResolvedDropInConfigured returns true when the systemd-networkd .network file
+// for loopback exists and networkd is active (so resolved has a permanent lo-link
+// DNS scope that is never considered offline).
+func isResolvedDropInConfigured() bool {
+	if _, err := os.Stat(resolvedNetworkFile); err != nil {
+		return false
+	}
+	out, err := exec.Command("systemctl", "is-active", "systemd-networkd").Output()
+	return err == nil && strings.TrimSpace(string(out)) == "active"
 }
 
 func isNMManagingDnsmasq() bool {
