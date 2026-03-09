@@ -6,8 +6,8 @@ V2 is a ground-up rewrite of Chauffeur, preserving the proven workspace architec
 
 ## Current Status
 
-- **Phase**: 3 — Service Orchestration
-- **Stability**: Early development — Phase 2 complete, project linking working
+- **Phase**: 3 — Service Orchestration ✅ COMPLETE
+- **Stability**: Core workflow fully working — services start/stop/restart, DNS, SSL, port forwarding
 
 ## File Structure Summary
 
@@ -69,8 +69,8 @@ chauffeur-v2/
 - [x] `chauf remove <service>` command
 - [x] `chauf php use <version>` — set global default PHP (updates chauffeur.yaml)
 - [x] `chauf php list` — show installed versions with default marker
-- [x] `chauf php isolate <version>` — pin project to PHP version (.chauffeur-php)
-- [x] PHP shim at `~/.chauffeur/bin/shims/php` (written by chauf init)
+- [x] `chauf php isolate <version>` — pin project to PHP version (stored in project config, no dotfile in project dir)
+- [x] PHP shim v3 at `~/.chauffeur/bin/shims/php` (written by chauf init) — resolves version by scanning `~/.chauffeur/projects/*/config.yaml` for CWD match, no project dotfiles
 - [x] Composer shim at `~/.chauffeur/bin/shims/composer` (written by chauf init)
 - [x] Tests for installer utilities (download, checksum, extraction, legacy patches) — 29 tests
 
@@ -102,25 +102,40 @@ chauffeur-v2/
 
 ---
 
-## Phase 3: Service Orchestration
+## Phase 3: Service Orchestration ✅ COMPLETE
 
-- [ ] Port `internal/services/` — service start/stop/restart
-- [ ] `chauf start` — start nginx + PHP-FPM
-  - [ ] `--project <path>` — start project-specific services only
-  - [ ] `--all` — start all services
-- [ ] `chauf stop` — stop services
-  - [ ] `--project <path>` flag
-  - [ ] `--all` flag
-- [ ] `chauf restart [nginx|php|fpm]` — restart specific service
-  - [ ] `--project <path>` flag
-  - [ ] `--all` flag
-- [ ] `chauf status` — service health display
-  - [ ] `--detail` — verbose output with process counts, memory
-  - [ ] `--project <path>` — project-specific status
-- [ ] `chauf logs [nginx|php|access|error]` — log viewing
-  - [ ] `--follow` — tail mode
-  - [ ] `--level <level>` — filter by log level
-- [ ] Tests for service orchestration with mock executors
+- [x] `internal/services/nginx.go` — NginxService: Start (TestConfig first), Stop (SIGQUIT + waitForExit), Reload (SIGHUP), PID, Uptime, MemoryMB
+- [x] `internal/services/fpm.go` — FPMService: NewSharedFPM, NewDedicatedFPM, Start (--daemonize), Stop (SIGTERM), Reload (SIGUSR2), PID, Uptime, MemoryMB
+- [x] `internal/services/process.go` — readPIDFile, processAlive, waitForPID, waitForExit, waitForSocket, processUptime (/proc/pid/stat), processMemoryMB (/proc/pid/status), FormatUptime
+- [x] `internal/services/ports.go` — IsPortAvailable (net.Listen), FindProcessOnPort (/proc/net/tcp inode walk)
+- [x] `internal/services/manager.go` — Manager: StartAll (FPM→socket wait→nginx), StopAll (nginx→FPM), AllFPM (shared sorted + dedicated), ReloadAll
+- [x] `internal/system/portforward.go` — iptables state tracking, PortForwardingCommands, IsPortForwardingActive
+- [x] `chauf start` — start nginx + PHP-FPM in correct order (shared FPM → dedicated FPM → nginx)
+  - [x] Socket readiness wait before nginx starts
+  - [x] Port conflict detection with process identification
+  - [x] `--project <path>` — start project-specific services only
+  - [x] Active domain URLs printed on success
+- [x] `chauf stop` — graceful shutdown (nginx SIGQUIT → FPM SIGTERM, 30s timeout)
+  - [x] `--project <path>` — stop dedicated FPM for specific project
+- [x] `chauf restart [nginx|php|fpm [version]]` — zero-downtime reload
+  - [x] Per-service progress output (label + PID after reload)
+  - [x] `--project <path>` — reload project-specific FPM pool
+- [x] `chauf status` — service health table (status, PID, uptime, memory)
+  - [x] `--detail` — verbose output with config/socket paths
+  - [x] `--project <path>` — project-specific status with FPM pool sharing info
+  - [x] Installed-but-unused PHP versions shown as stopped
+- [x] `chauf logs [nginx|access|php [version]]` — log viewing
+  - [x] `--follow` — tail mode (200ms poll, Ctrl+C to stop)
+  - [x] `--lines <n>` — number of lines to show (default 50)
+  - [x] `--project <path>` — project-specific nginx logs
+- [x] `chauf info` — updated with `(no projects)` tag for unused PHP-FPM pools
+- [x] `chauf init` — DNS setup detection (NM-managed vs standalone dnsmasq) + port forwarding instructions
+  - [x] Detects correct dnsmasq config path (`/etc/NetworkManager/dnsmasq.d/` vs `/etc/dnsmasq.d/`)
+  - [x] Detects systemd-resolved stub conflict
+  - [x] iptables port forwarding commands (80→8080, 443→8443)
+- [x] Binary path fixes: nginx `sbin/nginx`, php-fpm `sbin/php-fpm` (not `bin/`)
+- [x] `http2 on;` removed from nginx HTTPS template (not built into installed nginx)
+- [x] `chauf self-update --dev` — timestamp suffix on dev builds (`<commit>-YYYYMMDD-HHMM`)
 
 ---
 
@@ -223,10 +238,13 @@ chauffeur-v2/
 - [x] SSL support (mkcert)
 - [x] Tests (33 passing)
 
-### Phase 3: Service Orchestration
-- [ ] Service lifecycle
-- [ ] `start/stop/restart` commands
-- [ ] `status/logs` commands
+### Phase 3: Service Orchestration ✅
+- [x] Service lifecycle (nginx + PHP-FPM)
+- [x] `start/stop/restart` commands
+- [x] `status/logs` commands
+- [x] DNS setup detection in `chauf init`
+- [x] iptables port forwarding (80→8080, 443→8443)
+- [x] PHP shim v3 — project config lookup, no dotfiles
 
 ### Phase 4: Health & Maintenance
 - [ ] `doctor` command

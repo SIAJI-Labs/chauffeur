@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/siegg/chauffeur/internal/lib"
 )
@@ -54,8 +55,9 @@ func devUpdate(currentBin string, dryRun bool) error {
 		return err
 	}
 
-	version := gitOutput(repoRoot, "describe", "--tags", "--always", "--dirty")
-	branch  := gitOutput(repoRoot, "rev-parse", "--abbrev-ref", "HEAD")
+	version := gitOutput(repoRoot, "describe", "--tags", "--always", "--dirty") +
+		"-" + time.Now().Format("20060102-1504")
+	branch := gitOutput(repoRoot, "rev-parse", "--abbrev-ref", "HEAD")
 
 	lib.Pair("Repository", repoRoot)
 	lib.Pair("Commit", fmt.Sprintf("%s  (%s)", version, branch))

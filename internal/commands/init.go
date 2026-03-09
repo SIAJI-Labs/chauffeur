@@ -4,10 +4,12 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
 	"github.com/siegg/chauffeur/internal/lib"
+	"github.com/siegg/chauffeur/internal/system"
 	"github.com/siegg/chauffeur/internal/workspace"
 )
 
@@ -121,6 +123,12 @@ func RunInit(args []string) error {
 
 	shellResult := injectShellPath(*quiet)
 
+	// ── DNS & port forwarding checks ───────────────────────────────────────────
+
+	cfg := workspace.Load()
+	dnsStatus := checkDNS()
+	pfActive := system.IsPortForwardingActive(root, cfg.Nginx.HTTPPort, cfg.Nginx.HTTPSPort)
+
 	// ── Summary ────────────────────────────────────────────────────────────────
 
 	if !*quiet {
@@ -139,6 +147,9 @@ func RunInit(args []string) error {
 			fmt.Println()
 		}
 
+		printDNSStatus(dnsStatus)
+		printPortForwardingStatus(pfActive, cfg.Nginx.HTTPPort, cfg.Nginx.HTTPSPort)
+
 		fmt.Println()
 		fmt.Printf("  Next steps:\n")
 		fmt.Printf("    %s\n", lib.Gray("chauf install nginx php 8.3 composer"))
@@ -147,6 +158,109 @@ func RunInit(args []string) error {
 	}
 
 	return nil
+}
+
+// ── DNS detection ──────────────────────────────────────────────────────────────
+
+type dnsCheckResult struct {
+	installed  bool // dnsmasq binary exists
+	configured bool // /etc/dnsmasq.d/chauffeur.conf exists
+	nmManaged  bool // NetworkManager is running its own dnsmasq instance
+}
+
+func checkDNS() dnsCheckResult {
+	r := dnsCheckResult{}
+	_, err := exec.LookPath("dnsmasq")
+	r.installed = err == nil
+	// NetworkManager dnsmasq plugin: NM owns dnsmasq and reads from its own dnsmasq.d dir.
+	entries, _ := os.ReadDir("/etc/NetworkManager/conf.d")
+	for _, e := range entries {
+		data, _ := os.ReadFile("/etc/NetworkManager/conf.d/" + e.Name())
+		if strings.Contains(string(data), "dns=dnsmasq") {
+			r.nmManaged = true
+			break
+		}
+	}
+	// Check the correct conf path based on who manages dnsmasq.
+	if r.nmManaged {
+		_, err = os.Stat("/etc/NetworkManager/dnsmasq.d/chauffeur.conf")
+	} else {
+		_, err = os.Stat("/etc/dnsmasq.d/chauffeur.conf")
+	}
+	r.configured = err == nil
+	return r
+}
+
+func printDNSStatus(r dnsCheckResult) {
+	if r.configured {
+		confPath := "/etc/dnsmasq.d/chauffeur.conf"
+		if r.nmManaged {
+			confPath = "/etc/NetworkManager/dnsmasq.d/chauffeur.conf"
+		}
+		lib.Pair("DNS", lib.Green("✓")+"  .test domains resolve via "+confPath)
+		return
+	}
+
+	fmt.Println()
+	lib.Warn("DNS not configured — .test domains won't resolve")
+	fmt.Println()
+
+	if !r.installed {
+		fmt.Printf("  Install dnsmasq first:\n")
+		fmt.Println()
+		// Detect distro from /etc/os-release
+		osRelease, _ := os.ReadFile("/etc/os-release")
+		switch {
+		case strings.Contains(string(osRelease), "ID=arch") || strings.Contains(string(osRelease), "ID_LIKE=arch"):
+			fmt.Printf("    %s\n", lib.Bold("sudo pacman -S dnsmasq"))
+		case strings.Contains(string(osRelease), "ID=fedora") || strings.Contains(string(osRelease), "ID_LIKE=fedora"):
+			fmt.Printf("    %s\n", lib.Bold("sudo dnf install dnsmasq"))
+		default:
+			fmt.Printf("    %s\n", lib.Bold("sudo apt-get install dnsmasq"))
+		}
+		fmt.Println()
+		fmt.Printf("  Then run the DNS setup below.\n")
+		fmt.Println()
+	}
+
+	fmt.Printf("  Run these commands to configure DNS:\n")
+	fmt.Println()
+
+	if r.nmManaged {
+		fmt.Printf("    %s\n", lib.Bold("sudo mkdir -p /etc/NetworkManager/dnsmasq.d"))
+		fmt.Printf("    %s\n", lib.Bold("echo 'address=/.test/127.0.0.1' | sudo tee /etc/NetworkManager/dnsmasq.d/chauffeur.conf"))
+		fmt.Println()
+		fmt.Printf("    %s\n", lib.Bold("sudo systemctl restart NetworkManager"))
+		fmt.Printf("    %s\n", lib.Gray("(NetworkManager manages dnsmasq on your system)"))
+	} else {
+		fmt.Printf("    %s\n", lib.Bold("sudo mkdir -p /etc/dnsmasq.d"))
+		fmt.Printf("    %s\n", lib.Bold("echo 'address=/.test/127.0.0.1' | sudo tee /etc/dnsmasq.d/chauffeur.conf"))
+		fmt.Println()
+		fmt.Printf("    %s\n", lib.Bold("sudo systemctl enable --now dnsmasq"))
+		fmt.Printf("    %s\n", lib.Bold("sudo systemctl restart dnsmasq"))
+	}
+	fmt.Println()
+	fmt.Printf("  Or add per-project lines to %s:\n", lib.Cyan("/etc/hosts"))
+	fmt.Printf("    %s\n", lib.Gray("127.0.0.1  my-project.test"))
+}
+
+func printPortForwardingStatus(active bool, httpPort, httpsPort int) {
+	if active {
+		lib.Pair("Port forwarding", lib.Green("✓")+"  80→"+fmt.Sprintf("%d", httpPort)+"  443→"+fmt.Sprintf("%d", httpsPort)+"  (access without port)")
+		return
+	}
+
+	fmt.Println()
+	lib.Warn(fmt.Sprintf("Port forwarding not configured — access requires :%d / :%d", httpPort, httpsPort))
+	fmt.Println()
+	fmt.Printf("  Run once to access sites without a port number:\n")
+	fmt.Println()
+	for _, cmd := range system.PortForwardingCommands(httpPort, httpsPort) {
+		fmt.Printf("    %s\n", lib.Bold(cmd))
+	}
+	fmt.Println()
+	fmt.Printf("  %s\n", lib.Gray("Note: iptables rules reset on reboot. To make permanent:"))
+	fmt.Printf("  %s\n", lib.Gray("  sudo iptables-save | sudo tee /etc/iptables/rules.v4"))
 }
 
 // ── shell config injection ─────────────────────────────────────────────────────
@@ -414,23 +528,28 @@ const mimeTypesContent = `types {
 
 const phpShimContent = `#!/usr/bin/env bash
 # Chauffeur PHP shim — routes to the correct PHP binary based on active version.
-# shim-version: 2
+# shim-version: 3
 
 CHAUF_HOME="${CHAUFFEUR_HOME:-$HOME/.chauffeur}"
 CONFIG="$CHAUF_HOME/config/chauffeur.yaml"
+PROJECTS_DIR="$CHAUF_HOME/projects"
 
 # 1. Explicit env override (e.g. CHAUFFEUR_PHP_VERSION=8.3 php artisan ...)
 PHP_VER="${CHAUFFEUR_PHP_VERSION:-}"
 
-# 2. Walk up from CWD looking for .chauffeur-php (written by 'chauf php isolate')
-if [[ -z "$PHP_VER" ]]; then
-    DIR="$PWD"
-    while [[ "$DIR" != "/" ]]; do
-        if [[ -f "$DIR/.chauffeur-php" ]]; then
-            PHP_VER=$(tr -d '[:space:]' < "$DIR/.chauffeur-php")
+# 2. Scan project configs for one whose path matches CWD or a parent.
+#    PHP version is stored in ~/.chauffeur/projects/<slug>/config.yaml — no dotfile in project.
+if [[ -z "$PHP_VER" && -d "$PROJECTS_DIR" ]]; then
+    CWD="$PWD"
+    for cfg in "$PROJECTS_DIR"/*/config.yaml; do
+        [[ -f "$cfg" ]] || continue
+        proj_path=$(grep '^path:' "$cfg" 2>/dev/null | head -1 | sed 's/^path:[[:space:]]*//' | tr -d '"')
+        [[ -n "$proj_path" ]] || continue
+        # Match if CWD is the project dir or any subdirectory of it
+        if [[ "$CWD" == "$proj_path" || "$CWD" == "$proj_path/"* ]]; then
+            PHP_VER=$(grep '^php_version:' "$cfg" 2>/dev/null | head -1 | sed 's/^php_version:[[:space:]]*//' | tr -d '"')
             break
         fi
-        DIR="$(dirname "$DIR")"
     done
 fi
 

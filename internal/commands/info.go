@@ -50,7 +50,7 @@ func RunInfo(args []string) error {
 	if *detail {
 		lib.Pair("  nginx", fmt.Sprintf("%s    %d / %d    %s",
 			nginxStatus, cfg.Nginx.HTTPPort, cfg.Nginx.HTTPSPort,
-			lib.Gray(filepath.Join(root, "nginx", "bin", "nginx"))))
+			lib.Gray(filepath.Join(root, "nginx", "sbin", "nginx"))))
 	} else {
 		lib.Pair("  nginx", fmt.Sprintf("%s    %d / %d",
 			nginxStatus, cfg.Nginx.HTTPPort, cfg.Nginx.HTTPSPort))
@@ -58,19 +58,29 @@ func RunInfo(args []string) error {
 
 	// PHP-FPM per installed version
 	phpVersions := installedPHPVersions(root)
+	usedPHPVersions := phpVersionsInUse(root)
 	for _, ver := range phpVersions {
 		fpmPID := filepath.Join(root, "php", ver, "runtime", "php-fpm", "php-fpm.pid")
 		running := pidFileRunning(fpmPID)
 		status := serviceStatus(running)
 		label := fmt.Sprintf("  php-fpm %s", ver)
-		suffix := ""
-		if ver == cfg.PHP.DefaultVersion {
-			suffix = lib.Gray("  (default)")
+
+		var tags []string
+		if !usedPHPVersions[ver] {
+			tags = append(tags, lib.Gray("(no projects)"))
 		}
+		if ver == cfg.PHP.DefaultVersion {
+			tags = append(tags, lib.Gray("(default)"))
+		}
+		suffix := ""
+		if len(tags) > 0 {
+			suffix = "  " + strings.Join(tags, " ")
+		}
+
 		if *detail {
 			lib.Pair(label, fmt.Sprintf("%s    shared pool%s    %s",
 				status, suffix,
-				lib.Gray(filepath.Join(root, "php", ver, "bin", "php-fpm"))))
+				lib.Gray(filepath.Join(root, "php", ver, "sbin", "php-fpm"))))
 		} else {
 			lib.Pair(label, fmt.Sprintf("%s    shared pool%s", status, suffix))
 		}
@@ -161,6 +171,15 @@ func pidFileRunning(path string) bool {
 		return false
 	}
 	return proc.Signal(syscall.Signal(0)) == nil
+}
+
+func phpVersionsInUse(root string) map[string]bool {
+	all, _ := projects.ListAll(root)
+	used := map[string]bool{}
+	for _, p := range all {
+		used[p.PHPVersion] = true
+	}
+	return used
 }
 
 func installedPHPVersions(root string) []string {

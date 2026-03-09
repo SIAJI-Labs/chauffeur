@@ -74,8 +74,20 @@ func main() {
 
 	// ── Services ───────────────────────────────────────────────────────────────
 
-	case "start", "stop", "restart", "status", "logs":
-		notImplemented(args[0])
+	case "start":
+		err = commands.RunStart(args[1:])
+
+	case "stop":
+		err = commands.RunStop(args[1:])
+
+	case "restart":
+		err = commands.RunRestart(args[1:])
+
+	case "status":
+		err = commands.RunStatus(args[1:])
+
+	case "logs":
+		err = commands.RunLogs(args[1:])
 
 	// ── Config ─────────────────────────────────────────────────────────────────
 

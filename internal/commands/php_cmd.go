@@ -160,13 +160,8 @@ func phpIsolate(args []string) error {
 		}
 	}
 
-	// Write .chauffeur-php file in the project dir (for the PHP shim)
-	phpFile := target + "/.chauffeur-php"
-	if err := os.WriteFile(phpFile, []byte(mm+"\n"), 0644); err != nil {
-		return fmt.Errorf("write .chauffeur-php: %w", err)
-	}
-
-	// If this directory is a registered project, update its config and nginx.
+	// Update project config and nginx — PHP version is stored in ~/.chauffeur/projects/<slug>/config.yaml.
+	// No dotfile is written to the project directory.
 	root := workspace.Root()
 	cfg := workspace.Load()
 	prevVersion := ""
@@ -187,22 +182,16 @@ func phpIsolate(args []string) error {
 
 	fmt.Println()
 	lib.Success(fmt.Sprintf("Project pinned to PHP %s", mm))
-	lib.Pair("File", phpFile)
-	if p != nil && prevVersion != "" && prevVersion != mm {
-		lib.Pair("Was", prevVersion)
-		lib.Info(lib.Gray("nginx config and project config updated."))
-	}
-	lib.Info(lib.Gray("The PHP shim reads CHAUFFEUR_PHP_VERSION or .chauffeur-php when present."))
-	fmt.Println()
-
-	// Remind user to add to .gitignore if not already there
-	gitignore := target + "/.gitignore"
-	if data, err := os.ReadFile(gitignore); err == nil {
-		if !strings.Contains(string(data), ".chauffeur-php") {
-			lib.Info(lib.Gray("Add to .gitignore:  .chauffeur-php"))
+	if p != nil {
+		lib.Pair("Config", "~/.chauffeur/projects/"+p.Slug+"/config.yaml")
+		if prevVersion != "" && prevVersion != mm {
+			lib.Pair("Was", prevVersion)
+			lib.Info(lib.Gray("nginx config updated and reloaded."))
 		}
+	} else {
+		lib.Info(lib.Gray("Project not linked — pin will take effect once you run: chauf link"))
 	}
-
+	lib.Info(lib.Gray("The PHP shim resolves the version from your project config automatically."))
 	fmt.Println()
 	return nil
 }

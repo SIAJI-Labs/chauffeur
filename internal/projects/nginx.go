@@ -61,7 +61,6 @@ server {
 
 server {
     listen {{.HTTPSPort}} ssl;
-    http2 on;
     server_name {{.ServerNames}};
 
     ssl_certificate     {{.CertFile}};
