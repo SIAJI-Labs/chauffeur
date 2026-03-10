@@ -50,6 +50,12 @@ func (f *FPMService) Label() string { return f.label }
 // SockPath returns the unix socket path for this FPM pool.
 func (f *FPMService) SockPath() string { return f.sockPath }
 
+// ConfigPath returns the php-fpm.conf path for this pool.
+func (f *FPMService) ConfigPath() string { return f.configPath }
+
+// BinaryPath returns the php-fpm binary path for this pool.
+func (f *FPMService) BinaryPath() string { return f.binaryPath }
+
 // IsRunning returns true if PHP-FPM is running and the process is alive.
 func (f *FPMService) IsRunning() bool {
 	pid, err := readPIDFile(f.pidPath)

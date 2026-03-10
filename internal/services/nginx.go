@@ -25,6 +25,12 @@ func NewNginxService(root string) *NginxService {
 	}
 }
 
+// ConfigPath returns the nginx.conf path.
+func (n *NginxService) ConfigPath() string { return n.configPath }
+
+// BinaryPath returns the nginx binary path.
+func (n *NginxService) BinaryPath() string { return n.binaryPath }
+
 // IsRunning returns true if nginx is running and the process is alive.
 func (n *NginxService) IsRunning() bool {
 	pid, err := readPIDFile(n.pidPath)

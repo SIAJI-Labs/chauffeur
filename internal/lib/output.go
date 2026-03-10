@@ -7,6 +7,9 @@ import (
 	"path/filepath"
 )
 
+// Verbose enables step-level output. Set by the global --verbose / -v flag.
+var Verbose bool
+
 var IsTTY = func() bool {
 	fi, err := os.Stdout.Stat()
 	if err != nil {
@@ -38,6 +41,14 @@ func Info(msg string)    { fmt.Printf("  %s\n", msg) }
 
 // Pair prints an indented label-value line with consistent column alignment.
 func Pair(key, val string) { fmt.Printf("  %-14s  %s\n", key, val) }
+
+// Step prints a detail line visible only when Verbose is true.
+func Step(msg string) {
+	if !Verbose {
+		return
+	}
+	fmt.Printf("  %s  %s\n", Gray("→"), Gray(msg))
+}
 
 // DirSize returns the total size in bytes of all files under path.
 func DirSize(path string) int64 {

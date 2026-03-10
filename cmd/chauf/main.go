@@ -14,6 +14,10 @@ var version = "dev"
 func main() {
 	args := os.Args[1:]
 
+	// Strip --verbose / -v (except when -v is the leading "version" command)
+	// and enable verbose output globally before dispatch.
+	args = extractVerboseFlag(args)
+
 	if len(args) == 0 {
 		printHelp()
 		return
@@ -102,6 +106,9 @@ func main() {
 	case "doctor":
 		err = commands.RunDoctor(args[1:])
 
+	case "update":
+		err = commands.RunUpdate(args[1:])
+
 	case "clean":
 		err = commands.RunClean(args[1:])
 
@@ -119,6 +126,21 @@ func main() {
 		lib.Error(err.Error())
 		os.Exit(1)
 	}
+}
+
+// extractVerboseFlag strips --verbose and -v (when not at position 0, where -v
+// means the "version" command) from args, sets lib.Verbose, and returns the
+// filtered slice.
+func extractVerboseFlag(args []string) []string {
+	out := args[:0:0] // same backing array, zero length
+	for i, a := range args {
+		if a == "--verbose" || (a == "-v" && i > 0) {
+			lib.Verbose = true
+		} else {
+			out = append(out, a)
+		}
+	}
+	return out
 }
 
 func notImplemented(cmd string) {

@@ -39,12 +39,13 @@ chauffeur-v2/
 - [x] Initialize Go module (`github.com/siegg/chauffeur`, Go 1.22)
 - [x] Create directory structure (`cmd/`, `internal/`, `tests/`, etc.)
 - [x] Set up `cmd/chauf/main.go` with version routing and command dispatch
-- [x] Output/color library (`internal/lib/output.go`) — colors, print helpers, DirSize, FormatBytes
+- [x] Output/color library (`internal/lib/output.go`) — colors, print helpers, DirSize, FormatBytes, `lib.Verbose` flag, `lib.Step()` for verbose-only detail lines
 - [x] Port `internal/workspace/` path resolution from V1
 - [x] Port `internal/config/` — config struct, YAML load (custom parser, no external deps)
 - [x] Write `chauf init` command (workspace initialization, idempotent, --force, --quiet)
 - [x] Write `chauf info` command (workspace status — services, projects, PHP, cache)
 - [x] Basic `chauf --version` and `chauf help`
+- [x] Global `--verbose` / `-v` flag — pre-parsed in `main.go` before dispatch, sets `lib.Verbose`; works as `chauf --verbose <cmd>`, `chauf <cmd> --verbose`, or `chauf <cmd> -v` (note: `chauf -v` alone still prints version)
 - [x] Write `chauf uninstall` command (service stop, workspace removal, manual cleanup hints)
 - [x] Write `chauf self-update` command (--dev rebuild from repo, --dry-run, --version, release download)
 - [x] Create `scripts/install.sh` for curl-based installation (in-repo / release / clone+build)
@@ -98,19 +99,20 @@ chauffeur-v2/
 - [x] nginx template generation (HTTP + HTTPS) with per-type try_files routing
 - [x] Multi-domain nginx config (all domains in single server_name directive)
 - [x] Updated `chauf info` to use projects package (replaced stub parser)
+- [x] `chauf info` projects section uses table format matching `chauf links` (header + separator + rows); `--detail` shows config path as subdued sub-row
 - [x] 33 tests for project CRUD, slug, detection, nginx templates, domain conflict detection
 
 ---
 
 ## Phase 3: Service Orchestration ✅ COMPLETE
 
-- [x] `internal/services/nginx.go` — NginxService: Start (TestConfig first), Stop (SIGQUIT + waitForExit), Reload (SIGHUP), PID, Uptime, MemoryMB
-- [x] `internal/services/fpm.go` — FPMService: NewSharedFPM, NewDedicatedFPM, Start (--daemonize), Stop (SIGTERM), Reload (SIGUSR2), PID, Uptime, MemoryMB
+- [x] `internal/services/nginx.go` — NginxService: Start (TestConfig first), Stop (SIGQUIT + waitForExit), Reload (SIGHUP), PID, Uptime, MemoryMB, ConfigPath, BinaryPath
+- [x] `internal/services/fpm.go` — FPMService: NewSharedFPM, NewDedicatedFPM, Start (--daemonize), Stop (SIGTERM), Reload (SIGUSR2), PID, Uptime, MemoryMB, ConfigPath, BinaryPath, SockPath
 - [x] `internal/services/process.go` — readPIDFile, processAlive, waitForPID, waitForExit, waitForSocket, processUptime (/proc/pid/stat), processMemoryMB (/proc/pid/status), FormatUptime
 - [x] `internal/services/ports.go` — IsPortAvailable (net.Listen), FindProcessOnPort (/proc/net/tcp inode walk)
 - [x] `internal/services/manager.go` — Manager: StartAll (FPM→socket wait→nginx), StopAll (nginx→FPM), AllFPM (shared sorted + dedicated), ReloadAll
 - [x] `internal/system/portforward.go` — iptables state tracking, PortForwardingCommands, IsPortForwardingActive
-- [x] `chauf start` — start nginx + PHP-FPM in correct order (shared FPM → dedicated FPM → nginx)
+- [x] `chauf start` — start nginx + PHP-FPM in correct order (shared FPM → dedicated FPM → nginx); `--verbose` shows workspace path, ports, start order, per-service binary/config/socket paths
   - [x] Socket readiness wait before nginx starts
   - [x] Port conflict detection with process identification
   - [x] `--project <path>` — start project-specific services only

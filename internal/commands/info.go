@@ -94,21 +94,29 @@ func RunInfo(args []string) error {
 
 	allProjects, _ := projects.ListAll(root)
 	fmt.Printf("  %s  %s\n", lib.Bold("Projects"), lib.Gray(fmt.Sprintf("(%d)", len(allProjects))))
+	fmt.Println()
 
 	if len(allProjects) == 0 {
 		fmt.Printf("  %s\n", lib.Gray("No projects registered. Run: chauf link"))
 	} else {
+		const domW = 32
+		header := fmt.Sprintf(" %-20s  %-*s  %-5s  %-9s  %s",
+			"Project", domW, "Domain", "PHP", "FPM", "SSL")
+		sep := strings.Repeat("─", len(header))
+		fmt.Printf(" %s\n%s\n", lib.Bold(header[1:]), sep)
+
 		for _, p := range allProjects {
 			fpmMode := "shared"
 			if p.FPM.Dedicated {
 				fpmMode = "dedicated"
 			}
+			fmt.Printf(" %-20s  %-*s  %-5s  %-9s  %s\n",
+				p.Slug, domW, p.Domain, p.PHPVersion, fpmMode, schemeLabel(p.SSL))
 			if *detail {
-				lib.Pair("  "+p.Slug, fmt.Sprintf("%-28s PHP %-4s %-10s %s",
-					p.Domain, p.PHPVersion, fpmMode, lib.Gray(p.ConfigPath(root))))
-			} else {
-				lib.Pair("  "+p.Slug, fmt.Sprintf("%-28s PHP %-4s %-10s %s",
-					p.Domain, p.PHPVersion, fpmMode, schemeLabel(p.SSL)))
+				fmt.Printf(" %-20s  %-*s\n", "", domW, lib.Gray(p.ConfigPath(root)))
+			}
+			for _, a := range p.Aliases {
+				fmt.Printf(" %-20s  %-*s\n", "", domW, lib.Gray("↳ "+a))
 			}
 		}
 	}

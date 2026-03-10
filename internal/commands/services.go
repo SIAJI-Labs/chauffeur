@@ -29,6 +29,11 @@ func RunStart(args []string) error {
 	}
 
 	root := workspace.Root()
+	lib.Step("workspace:  " + shortenHome(root))
+
+	cfg := workspace.Load()
+	lib.Step(fmt.Sprintf("ports:      HTTP %d  HTTPS %d", cfg.Nginx.HTTPPort, cfg.Nginx.HTTPSPort))
+
 	mgr := services.NewManager(root)
 
 	fmt.Println()
@@ -37,6 +42,25 @@ func RunStart(args []string) error {
 
 	if *projectPath != "" {
 		return startForProject(mgr, root, *projectPath)
+	}
+
+	// Verbose: show what will be started and in what order.
+	if lib.Verbose {
+		fpms, err := mgr.AllFPM()
+		if err == nil {
+			lib.Step(fmt.Sprintf("start order: %d FPM pool(s) → nginx", len(fpms)))
+			for _, fpm := range fpms {
+				lib.Step("php-fpm " + fpm.Label())
+				lib.Step("  binary:  " + shortenHome(fpm.BinaryPath()))
+				lib.Step("  config:  " + shortenHome(fpm.ConfigPath()))
+				lib.Step("  socket:  " + shortenHome(fpm.SockPath()))
+			}
+			nginx := mgr.Nginx()
+			lib.Step("nginx")
+			lib.Step("  binary:  " + shortenHome(nginx.BinaryPath()))
+			lib.Step("  config:  " + shortenHome(nginx.ConfigPath()))
+		}
+		fmt.Println()
 	}
 
 	results, err := mgr.StartAll()
@@ -63,7 +87,6 @@ func RunStart(args []string) error {
 
 	// Print active domains
 	all, _ := projects.ListAll(root)
-	cfg := workspace.Load()
 	if len(all) > 0 {
 		fmt.Println()
 		for _, p := range all {
@@ -81,6 +104,8 @@ func RunStart(args []string) error {
 }
 
 func startForProject(mgr *services.Manager, root, path string) error {
+	lib.Step("looking up project at: " + shortenHome(path))
+
 	p, err := projects.FindByPath(root, path)
 	if err != nil {
 		return err
@@ -89,6 +114,8 @@ func startForProject(mgr *services.Manager, root, path string) error {
 		return fmt.Errorf("no project registered at %s", path)
 	}
 
+	lib.Step(fmt.Sprintf("found project: %s  (PHP %s, %s FPM)", p.Slug, p.PHPVersion, fpmModeStr(p)))
+
 	// Start the FPM pool for this project
 	var fpm *services.FPMService
 	if p.FPM.Dedicated {
@@ -96,6 +123,11 @@ func startForProject(mgr *services.Manager, root, path string) error {
 	} else {
 		fpm = services.NewSharedFPM(root, p.PHPVersion)
 	}
+
+	lib.Step("php-fpm " + fpm.Label())
+	lib.Step("  binary:  " + shortenHome(fpm.BinaryPath()))
+	lib.Step("  config:  " + shortenHome(fpm.ConfigPath()))
+	lib.Step("  socket:  " + shortenHome(fpm.SockPath()))
 
 	r := services.StartResult{Label: "php-fpm " + fpm.Label()}
 	if fpm.IsRunning() {
@@ -112,6 +144,10 @@ func startForProject(mgr *services.Manager, root, path string) error {
 
 	// Then nginx
 	nginx := mgr.Nginx()
+	lib.Step("nginx")
+	lib.Step("  binary:  " + shortenHome(nginx.BinaryPath()))
+	lib.Step("  config:  " + shortenHome(nginx.ConfigPath()))
+
 	nr := services.StartResult{Label: "nginx"}
 	if nginx.IsRunning() {
 		nr.AlreadyRunning = true
