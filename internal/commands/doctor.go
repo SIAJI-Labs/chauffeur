@@ -20,11 +20,12 @@ import (
 // ── types ──────────────────────────────────────────────────────────────────────
 
 type checkResult struct {
-	name   string
-	ok     bool   // true = pass
-	warn   bool   // true = warning (not blocking)
-	status string // one-line status message
-	fix    string // command(s) to print when --fix is passed
+	name        string
+	ok          bool   // true = pass
+	warn        bool   // true = warning (not blocking)
+	status      string // one-line status message
+	fix         string // command(s) to print when --fix is passed
+	skipAutoFix bool   // true = skip this check in auto-fix mode
 }
 
 // ── RunDoctor ─────────────────────────────────────────────────────────────────
@@ -37,12 +38,12 @@ func RunDoctor(args []string) error {
 	flags := flag.NewFlagSet("doctor", flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
 
-	doDeps    := flags.Bool("check-deps", false, "Check system build dependencies")
-	doPHP     := flags.Bool("check-php", false, "Check PHP build libraries")
-	doSSL     := flags.Bool("check-ssl", false, "Check SSL tools")
+	doDeps := flags.Bool("check-deps", false, "Check system build dependencies")
+	doPHP := flags.Bool("check-php", false, "Check PHP build libraries")
+	doSSL := flags.Bool("check-ssl", false, "Check SSL tools")
 	doNetwork := flags.Bool("check-network", false, "Check port availability and iptables")
-	doDNS     := flags.Bool("check-dns", false, "Check DNS resolution for .test domains")
-	doFix     := flags.Bool("fix", false, "Print fix commands for failed checks")
+	doDNS := flags.Bool("check-dns", false, "Check DNS resolution for .test domains")
+	doFix := flags.Bool("fix", false, "Print fix commands for failed checks")
 	doAutoFix := flags.Bool("auto-fix", false, "Execute fix commands for failed checks")
 
 	if err := flags.Parse(args); err != nil {
@@ -109,7 +110,7 @@ func RunDoctor(args []string) error {
 
 	var fixes []checkResult
 	for _, r := range all {
-		if !r.ok && r.fix != "" {
+		if !r.ok && r.fix != "" && !r.skipAutoFix {
 			fixes = append(fixes, r)
 		}
 	}
@@ -161,14 +162,14 @@ func doctorSystemDeps() []checkResult {
 		pkgs pkgNames
 	}
 	tools := []toolDef{
-		{"git",        []string{"--version"}, pkgNames{"git", "git", "git"}},
-		{"curl",       []string{"--version"}, pkgNames{"curl", "curl", "curl"}},
-		{"tar",        []string{"--version"}, pkgNames{"tar", "tar", "tar"}},
-		{"gcc",        []string{"--version"}, pkgNames{"gcc", "build-essential", "gcc"}},
-		{"make",       []string{"--version"}, pkgNames{"make", "make", "make"}},
+		{"git", []string{"--version"}, pkgNames{"git", "git", "git"}},
+		{"curl", []string{"--version"}, pkgNames{"curl", "curl", "curl"}},
+		{"tar", []string{"--version"}, pkgNames{"tar", "tar", "tar"}},
+		{"gcc", []string{"--version"}, pkgNames{"gcc", "build-essential", "gcc"}},
+		{"make", []string{"--version"}, pkgNames{"make", "make", "make"}},
 		{"pkg-config", []string{"--version"}, pkgNames{"pkgconf", "pkg-config", "pkgconf"}},
-		{"autoconf",   []string{"--version"}, pkgNames{"autoconf", "autoconf", "autoconf"}},
-		{"bison",      []string{"--version"}, pkgNames{"bison", "bison", "bison"}},
+		{"autoconf", []string{"--version"}, pkgNames{"autoconf", "autoconf", "autoconf"}},
+		{"bison", []string{"--version"}, pkgNames{"bison", "bison", "bison"}},
 	}
 
 	dm := detectDistroType()
@@ -198,17 +199,17 @@ func doctorPHPDeps() []checkResult {
 		optional  bool
 	}
 	deps := []depDef{
-		{"libzip",     "libzip",      pkgNames{"libzip", "libzip-dev", "libzip-devel"}, false},
-		{"libjpeg",    "libjpeg",     pkgNames{"libjpeg-turbo", "libjpeg-dev", "libjpeg-devel"}, false},
-		{"libpng",     "libpng",      pkgNames{"libpng", "libpng-dev", "libpng-devel"}, false},
-		{"freetype2",  "freetype2",   pkgNames{"freetype2", "libfreetype6-dev", "freetype-devel"}, false},
-		{"libxml-2.0", "libxml2",     pkgNames{"libxml2", "libxml2-dev", "libxml2-devel"}, false},
-		{"libcurl",    "libcurl",     pkgNames{"curl", "libcurl4-openssl-dev", "libcurl-devel"}, false},
-		{"zlib",       "zlib",        pkgNames{"zlib", "zlib1g-dev", "zlib-devel"}, false},
-		{"readline",   "readline",    pkgNames{"readline", "libreadline-dev", "readline-devel"}, false},
-		{"libxslt",    "libxslt",     pkgNames{"libxslt", "libxslt1-dev", "libxslt-devel"}, false},
-		{"gmp",        "gmp",         pkgNames{"gmp", "libgmp-dev", "gmp-devel"}, false},
-		{"openssl",    "openssl",     pkgNames{"openssl", "libssl-dev", "openssl-devel"}, false},
+		{"libzip", "libzip", pkgNames{"libzip", "libzip-dev", "libzip-devel"}, false},
+		{"libjpeg", "libjpeg", pkgNames{"libjpeg-turbo", "libjpeg-dev", "libjpeg-devel"}, false},
+		{"libpng", "libpng", pkgNames{"libpng", "libpng-dev", "libpng-devel"}, false},
+		{"freetype2", "freetype2", pkgNames{"freetype2", "libfreetype6-dev", "freetype-devel"}, false},
+		{"libxml-2.0", "libxml2", pkgNames{"libxml2", "libxml2-dev", "libxml2-devel"}, false},
+		{"libcurl", "libcurl", pkgNames{"curl", "libcurl4-openssl-dev", "libcurl-devel"}, false},
+		{"zlib", "zlib", pkgNames{"zlib", "zlib1g-dev", "zlib-devel"}, false},
+		{"readline", "readline", pkgNames{"readline", "libreadline-dev", "readline-devel"}, false},
+		{"libxslt", "libxslt", pkgNames{"libxslt", "libxslt1-dev", "libxslt-devel"}, false},
+		{"gmp", "gmp", pkgNames{"gmp", "libgmp-dev", "gmp-devel"}, false},
+		{"openssl", "openssl", pkgNames{"openssl", "libssl-dev", "openssl-devel"}, false},
 		{"MagickWand", "ImageMagick", pkgNames{"imagemagick", "libmagickwand-dev", "ImageMagick-devel"}, true},
 	}
 
@@ -326,13 +327,15 @@ func doctorNetwork(root string, cfg workspace.Config) []checkResult {
 			status: lib.Gray(fmt.Sprintf("80→%d  443→%d", cfg.Nginx.HTTPPort, cfg.Nginx.HTTPSPort)),
 		})
 	} else {
-		cmds := system.PortForwardingCommands(cfg.Nginx.HTTPPort, cfg.Nginx.HTTPSPort)
+		cmds := system.PortForwardingSystemdCommands(cfg.Nginx.HTTPPort, cfg.Nginx.HTTPSPort)
+		fix := "# Installs a systemd service — runs at boot, requires sudo once:\n" +
+			strings.Join(cmds, "\n")
 		results = append(results, checkResult{
 			name:   "port forwarding",
 			ok:     false,
 			warn:   true,
 			status: fmt.Sprintf("not configured — access needs :%d / :%d", cfg.Nginx.HTTPPort, cfg.Nginx.HTTPSPort),
-			fix:    strings.Join(cmds, "\n"),
+			fix:    fix,
 		})
 	}
 
@@ -340,18 +343,37 @@ func doctorNetwork(root string, cfg workspace.Config) []checkResult {
 	nginxSvc := services.NewNginxService(root)
 	for _, port := range []int{cfg.Nginx.HTTPPort, cfg.Nginx.HTTPSPort} {
 		label := fmt.Sprintf("port %d", port)
-		if nginxSvc.IsRunning() || services.IsPortAvailable(port) {
-			extra := "available"
-			if nginxSvc.IsRunning() {
-				extra = fmt.Sprintf("nginx pid %d", nginxSvc.PID())
-			}
-			results = append(results, checkResult{name: label, ok: true, status: lib.Gray(extra)})
-		} else {
-			pid, name, _ := services.FindProcessOnPort(port)
+
+		if nginxSvc.IsRunning() {
+			// PID file confirms our nginx owns this port.
+			results = append(results, checkResult{
+				name: label, ok: true,
+				status: lib.Gray(fmt.Sprintf("nginx pid %d", nginxSvc.PID())),
+			})
+			continue
+		}
+
+		pid, procName, _ := services.FindProcessOnPort(port)
+
+		switch {
+		case services.IsPortAvailable(port):
+			// Port is free — nginx can start.
+			results = append(results, checkResult{name: label, ok: true, status: lib.Gray("available")})
+
+		case pid > 0 && strings.Contains(procName, "nginx"):
+			// Port is held by an nginx process — that's our nginx even if the
+			// PID file is stale (e.g. after a failed systemd handoff).
+			results = append(results, checkResult{
+				name: label, ok: true,
+				status: lib.Gray(fmt.Sprintf("nginx pid %d", pid)),
+			})
+
+		default:
+			// Genuinely occupied by a foreign process.
 			msg := "in use by another process"
 			fix := ""
 			if pid > 0 {
-				msg = fmt.Sprintf("in use by %s (pid %d)", name, pid)
+				msg = fmt.Sprintf("in use by %s (pid %d)", procName, pid)
 				fix = fmt.Sprintf("kill %d", pid)
 			}
 			results = append(results, checkResult{name: label, ok: false, status: msg, fix: fix})
@@ -509,9 +531,9 @@ type pkgNames [3]string
 type distroType int
 
 const (
-	distroArch    distroType = iota
-	distroDebian             // Ubuntu / Debian
-	distroFedora             // Fedora / RHEL / Rocky
+	distroArch   distroType = iota
+	distroDebian            // Ubuntu / Debian
+	distroFedora            // Fedora / RHEL / Rocky
 	distroUnknown
 )
 
@@ -696,7 +718,7 @@ func doctorAutoFix(fixes []checkResult) {
 					}
 				}
 				anyFailed = true
-				break // stop on first failure within this fix block
+				continue // continue with other commands
 			}
 			if output != "" {
 				for _, line := range strings.Split(output, "\n") {

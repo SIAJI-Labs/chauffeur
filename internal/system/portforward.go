@@ -7,7 +7,10 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 )
+
+const systemServicePath = "/etc/systemd/system/chauffeur-portforward.service"
 
 type portForwardState struct {
 	HTTP  int `json:"http_port"`
@@ -18,17 +21,20 @@ func portForwardStatePath(root string) string {
 	return filepath.Join(root, "system", "port-forwarding.json")
 }
 
-// IsPortForwardingActive returns true if iptables redirect rules for the given
-// ports are currently in place. Falls back to the state file when iptables
-// requires root (exit code 4 = permission denied).
+// IsPortForwardingActive returns true if port forwarding is in place.
+// Checks (in order): systemd service active → iptables rule → state file fallback.
 func IsPortForwardingActive(root string, httpPort, httpsPort int) bool {
-	httpOK := redirectRuleExists(80, httpPort)
-	httpsOK := redirectRuleExists(443, httpsPort)
-	if httpOK && httpsOK {
+	// Preferred: systemd system service (no root needed to query)
+	if isPortForwardSystemdActive() {
 		return true
 	}
 
-	// Fall back to state file (written after user confirms setup).
+	// Fallback: iptables check (requires passwordless sudo -n)
+	if redirectRuleExists(80, httpPort) && redirectRuleExists(443, httpsPort) {
+		return true
+	}
+
+	// Fallback: state file written after manual confirmation
 	state, err := loadPortForwardState(root)
 	if err != nil {
 		return false
@@ -37,19 +43,62 @@ func IsPortForwardingActive(root string, httpPort, httpsPort int) bool {
 }
 
 // MarkPortForwardingConfigured persists the active port mapping to the state file.
-// Call this after confirming the user has applied the iptables rules.
 func MarkPortForwardingConfigured(root string, httpPort, httpsPort int) error {
 	return savePortForwardState(root, portForwardState{HTTP: httpPort, HTTPS: httpsPort})
 }
 
-// ClearPortForwardingState removes the state file (call on uninstall or when
-// rules are removed).
+// ClearPortForwardingState removes the state file (call on uninstall).
 func ClearPortForwardingState(root string) {
 	_ = os.Remove(portForwardStatePath(root))
 }
 
-// PortForwardingCommands returns the iptables commands needed to redirect
-// standard ports (80/443) to the chauffeur nginx ports.
+// PortForwardingSystemdServiceContent returns the systemd system service unit
+// that redirects ports 80/443 to the Chauffeur nginx ports via iptables NAT.
+func PortForwardingSystemdServiceContent(httpPort, httpsPort int) string {
+	return fmt.Sprintf(`[Unit]
+Description=Chauffeur Port Forwarding (80->%d, 443->%d)
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/iptables -t nat -A OUTPUT -p tcp -d 127.0.0.1 --dport 80 -j REDIRECT --to-ports %d
+ExecStart=/usr/bin/iptables -t nat -A OUTPUT -p tcp -d 127.0.0.1 --dport 443 -j REDIRECT --to-ports %d
+ExecStop=/usr/bin/iptables -t nat -D OUTPUT -p tcp -d 127.0.0.1 --dport 80 -j REDIRECT --to-ports %d
+ExecStop=/usr/bin/iptables -t nat -D OUTPUT -p tcp -d 127.0.0.1 --dport 443 -j REDIRECT --to-ports %d
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+`, httpPort, httpsPort, httpPort, httpsPort, httpPort, httpsPort)
+}
+
+// PortForwardingSystemdCommands returns the shell commands to install the
+// port-forwarding systemd system service and start it immediately.
+// Requires sudo (runs once; survives reboots automatically after that).
+func PortForwardingSystemdCommands(httpPort, httpsPort int) []string {
+	content := PortForwardingSystemdServiceContent(httpPort, httpsPort)
+	// Convert to printf-safe single-line: newlines → \n, escape single quotes
+	printfContent := strings.ReplaceAll(content, "\n", "\\n")
+	printfContent = strings.ReplaceAll(printfContent, "'", "'\\''")
+	return []string{
+		fmt.Sprintf("printf '%s' | sudo tee %s", printfContent, systemServicePath),
+		"sudo systemctl daemon-reload",
+		"sudo systemctl enable --now chauffeur-portforward.service",
+	}
+}
+
+// PortForwardingRemoveCommands returns the commands to disable and remove the
+// port-forwarding service.
+func PortForwardingRemoveCommands() []string {
+	return []string{
+		"sudo systemctl disable --now chauffeur-portforward.service",
+		"sudo rm -f " + systemServicePath,
+		"sudo systemctl daemon-reload",
+	}
+}
+
+// PortForwardingCommands returns one-time iptables commands (non-persistent).
+// Prefer PortForwardingSystemdCommands for a setup that survives reboots.
 func PortForwardingCommands(httpPort, httpsPort int) []string {
 	return []string{
 		fmt.Sprintf("sudo iptables -t nat -A OUTPUT -p tcp -d 127.0.0.1 --dport 80 -j REDIRECT --to-ports %d", httpPort),
@@ -57,12 +106,11 @@ func PortForwardingCommands(httpPort, httpsPort int) []string {
 	}
 }
 
-// PortForwardingRemoveCommands returns the iptables commands to remove the rules.
-func PortForwardingRemoveCommands(httpPort, httpsPort int) []string {
-	return []string{
-		fmt.Sprintf("sudo iptables -t nat -D OUTPUT -p tcp -d 127.0.0.1 --dport 80 -j REDIRECT --to-ports %d", httpPort),
-		fmt.Sprintf("sudo iptables -t nat -D OUTPUT -p tcp -d 127.0.0.1 --dport 443 -j REDIRECT --to-ports %d", httpsPort),
-	}
+// isPortForwardSystemdActive returns true when the chauffeur-portforward
+// system service is currently active (does not require root).
+func isPortForwardSystemdActive() bool {
+	out, err := exec.Command("systemctl", "is-active", "chauffeur-portforward.service").Output()
+	return err == nil && strings.TrimSpace(string(out)) == "active"
 }
 
 // redirectRuleExists checks if an iptables OUTPUT redirect rule is in place.
