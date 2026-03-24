@@ -42,7 +42,8 @@ func RunPHP(args []string) error {
 
 func phpList(args []string) error {
 	flags := flag.NewFlagSet("php list", flag.ContinueOnError)
-	flags.SetOutput(os.Stderr)
+	flags.SetOutput(os.Stdout)
+	lib.SetFlagUsage(flags, "chauf php list — list installed PHP versions", "chauf php list")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -89,7 +90,8 @@ func phpList(args []string) error {
 
 func phpUse(args []string) error {
 	flags := flag.NewFlagSet("php use", flag.ContinueOnError)
-	flags.SetOutput(os.Stderr)
+	flags.SetOutput(os.Stdout)
+	lib.SetFlagUsage(flags, "chauf php use — set the global default PHP version", "chauf php use <version>")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -135,7 +137,8 @@ func phpUse(args []string) error {
 
 func phpIsolate(args []string) error {
 	flags := flag.NewFlagSet("php isolate", flag.ContinueOnError)
-	flags.SetOutput(os.Stderr)
+	flags.SetOutput(os.Stdout)
+	lib.SetFlagUsage(flags, "chauf php isolate — pin a project to a specific PHP version", "chauf php isolate <version> [--project <path>]")
 	projectPath := flags.String("project", "", "Path to the project (defaults to current directory)")
 	if err := flags.Parse(args); err != nil {
 		return err

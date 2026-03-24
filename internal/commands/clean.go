@@ -40,7 +40,8 @@ type cleanOpts struct {
 
 func parseCleanFlags(name string, args []string) (cleanOpts, error) {
 	flags := flag.NewFlagSet("clean "+name, flag.ContinueOnError)
-	flags.SetOutput(os.Stderr)
+	flags.SetOutput(os.Stdout)
+	lib.SetFlagUsage(flags, "chauf clean — remove cached downloads and logs", "chauf clean <cache|logs|all> [--dry-run] [--older-than <duration>]")
 
 	dryRun := flags.Bool("dry-run", false, "Show what would be removed without deleting")
 	olderThan := flags.String("older-than", "", "Only remove files older than this duration (e.g. 7d, 24h, 30m)")

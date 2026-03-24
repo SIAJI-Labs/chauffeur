@@ -16,7 +16,8 @@ import (
 
 func RunInfo(args []string) error {
 	flags := flag.NewFlagSet("info", flag.ContinueOnError)
-	flags.SetOutput(os.Stderr)
+	flags.SetOutput(os.Stdout)
+	lib.SetFlagUsage(flags, "chauf info — show workspace status", "chauf info [--detail]")
 	detail := flags.Bool("detail", false, "Show full paths, config files, socket paths")
 
 	if err := flags.Parse(args); err != nil {

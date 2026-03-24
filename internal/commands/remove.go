@@ -16,7 +16,8 @@ import (
 
 func RunRemove(args []string) error {
 	flags := flag.NewFlagSet("remove", flag.ContinueOnError)
-	flags.SetOutput(os.Stderr)
+	flags.SetOutput(os.Stdout)
+	lib.SetFlagUsage(flags, "chauf remove — remove an installed service", "chauf remove <nginx|php <version>|composer> [--force]")
 	force := flags.Bool("force", false, "Skip confirmation prompt")
 
 	flagArgs, positionals := splitArgs(args)

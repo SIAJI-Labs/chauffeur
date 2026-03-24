@@ -16,7 +16,8 @@ import (
 
 func RunUninstall(args []string) error {
 	flags := flag.NewFlagSet("uninstall", flag.ContinueOnError)
-	flags.SetOutput(os.Stderr)
+	flags.SetOutput(os.Stdout)
+	lib.SetFlagUsage(flags, "chauf uninstall — remove the entire Chauffeur workspace", "chauf uninstall [--force] [--purge]")
 	force := flags.Bool("force", false, "Skip confirmation prompt")
 	purge := flags.Bool("purge", false, "Also remove the chauf binary")
 

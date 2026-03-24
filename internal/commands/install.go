@@ -12,7 +12,8 @@ import (
 
 func RunInstall(args []string) error {
 	flags := flag.NewFlagSet("install", flag.ContinueOnError)
-	flags.SetOutput(os.Stderr)
+	flags.SetOutput(os.Stdout)
+	lib.SetFlagUsage(flags, "chauf install — install nginx, PHP, or Composer from source", "chauf install <nginx|php <version>|composer> [--force] [--no-cache]")
 	force := flags.Bool("force", false, "Reinstall even if already present")
 	noCache := flags.Bool("no-cache", false, "Skip download cache")
 	verbose := flags.Bool("verbose", false, "Stream build output to terminal")

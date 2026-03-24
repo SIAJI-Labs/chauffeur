@@ -15,7 +15,8 @@ import (
 
 func RunInit(args []string) error {
 	flags := flag.NewFlagSet("init", flag.ContinueOnError)
-	flags.SetOutput(os.Stderr)
+	flags.SetOutput(os.Stdout)
+	lib.SetFlagUsage(flags, "chauf init — initialize the Chauffeur workspace", "chauf init [--force] [--quiet]")
 	force := flags.Bool("force", false, "Overwrite existing config with defaults")
 	quiet := flags.Bool("quiet", false, "Suppress output; only print errors")
 	flags.BoolVar(quiet, "q", false, "Suppress output; only print errors")

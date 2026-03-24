@@ -22,7 +22,8 @@ import (
 
 func RunStart(args []string) error {
 	flags := flag.NewFlagSet("start", flag.ContinueOnError)
-	flags.SetOutput(os.Stderr)
+	flags.SetOutput(os.Stdout)
+	lib.SetFlagUsage(flags, "chauf start — start nginx and PHP-FPM", "chauf start [--project <path>]")
 	projectPath := flags.String("project", "", "Start only services for a specific project path")
 	if err := flags.Parse(args); err != nil {
 		return err
@@ -182,7 +183,8 @@ func printStartResult(r services.StartResult) {
 
 func RunStop(args []string) error {
 	flags := flag.NewFlagSet("stop", flag.ContinueOnError)
-	flags.SetOutput(os.Stderr)
+	flags.SetOutput(os.Stdout)
+	lib.SetFlagUsage(flags, "chauf stop — stop all services", "chauf stop [--project <path>]")
 	projectPath := flags.String("project", "", "Stop only dedicated FPM for a specific project")
 	if err := flags.Parse(args); err != nil {
 		return err
@@ -254,7 +256,8 @@ func printStopResult(r services.StopResult) {
 
 func RunRestart(args []string) error {
 	flags := flag.NewFlagSet("restart", flag.ContinueOnError)
-	flags.SetOutput(os.Stderr)
+	flags.SetOutput(os.Stdout)
+	lib.SetFlagUsage(flags, "chauf restart — reload services without downtime", "chauf restart [nginx|php <version>] [--project <path>]")
 	projectPath := flags.String("project", "", "Restart dedicated FPM for a specific project")
 	if err := flags.Parse(args); err != nil {
 		return err
@@ -377,7 +380,8 @@ func restartForProject(mgr *services.Manager, root, path string) error {
 
 func RunStatus(args []string) error {
 	flags := flag.NewFlagSet("status", flag.ContinueOnError)
-	flags.SetOutput(os.Stderr)
+	flags.SetOutput(os.Stdout)
+	lib.SetFlagUsage(flags, "chauf status — show service health", "chauf status [--detail] [--project <path>]")
 	detail := flags.Bool("detail", false, "Show memory, socket paths, config paths")
 	projectPath := flags.String("project", "", "Show status for a specific project")
 	if err := flags.Parse(args); err != nil {
@@ -537,7 +541,8 @@ func fpmModeStr(p *projects.Project) string {
 
 func RunLogs(args []string) error {
 	flags := flag.NewFlagSet("logs", flag.ContinueOnError)
-	flags.SetOutput(os.Stderr)
+	flags.SetOutput(os.Stdout)
+	lib.SetFlagUsage(flags, "chauf logs — view nginx or PHP-FPM logs", "chauf logs [nginx|access|php [version]] [--follow] [--lines <n>] [--project <path>]")
 	follow := flags.Bool("follow", false, "Tail mode — stream new lines as they arrive")
 	lines := flags.Int("lines", 50, "Number of lines to show")
 	projectPath := flags.String("project", "", "Show logs for a specific project")

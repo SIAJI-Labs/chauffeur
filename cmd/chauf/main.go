@@ -1,6 +1,8 @@
 package main
 
 import (
+	"errors"
+	"flag"
 	"fmt"
 	"os"
 
@@ -95,7 +97,10 @@ func main() {
 
 	// ── Config ─────────────────────────────────────────────────────────────────
 
-	case "config", "env", "autostart":
+	case "autostart":
+		err = commands.RunAutostart(args[1:])
+
+	case "config", "env":
 		notImplemented(args[0])
 
 	// ── Maintenance ────────────────────────────────────────────────────────────
@@ -123,6 +128,9 @@ func main() {
 	}
 
 	if err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			os.Exit(0) // -h / --help: usage already printed, exit cleanly
+		}
 		lib.Error(err.Error())
 		os.Exit(1)
 	}
@@ -223,9 +231,9 @@ func printCommands() {
 		{
 			"Configuration",
 			[]entry{
+				{"autostart", "Manage systemd user services for auto-start on login"},
 				{"config", "Read and write workspace or project config"},
 				{"env", "Manage per-project environment variables"},
-				{"autostart", "Manage systemd auto-start services"},
 			},
 		},
 		{

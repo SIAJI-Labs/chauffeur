@@ -1,6 +1,7 @@
 package lib
 
 import (
+	"flag"
 	"fmt"
 	"io/fs"
 	"os"
@@ -41,6 +42,19 @@ func Info(msg string)    { fmt.Printf("  %s\n", msg) }
 
 // Pair prints an indented label-value line with consistent column alignment.
 func Pair(key, val string) { fmt.Printf("  %-14s  %s\n", key, val) }
+
+// SetFlagUsage sets a styled usage function on fs. Commands should call this
+// immediately after flag.NewFlagSet so that -h / --help prints a proper header
+// instead of the raw "Usage of <name>:" default.
+func SetFlagUsage(fs *flag.FlagSet, title, synopsis string) {
+	fs.Usage = func() {
+		w := fs.Output()
+		fmt.Fprintf(w, "\n%s\n\n", Bold(title))
+		fmt.Fprintf(w, "  %s\n\n", Gray("Usage: "+synopsis))
+		fs.PrintDefaults()
+		fmt.Fprintln(w)
+	}
+}
 
 // Step prints a detail line visible only when Verbose is true.
 func Step(msg string) {

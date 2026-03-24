@@ -24,7 +24,8 @@ const githubRepo = "siegg/chauffeur"
 
 func RunSelfUpdate(args []string, currentVersion string) error {
 	flags := flag.NewFlagSet("self-update", flag.ContinueOnError)
-	flags.SetOutput(os.Stderr)
+	flags.SetOutput(os.Stdout)
+	lib.SetFlagUsage(flags, "chauf self-update — update the chauf binary", "chauf self-update [--dev] [--dry-run] [--version <tag>]")
 	dev        := flags.Bool("dev", false, "Build from local source repository")
 	dryRun     := flags.Bool("dry-run", false, "Show what would happen without replacing the binary")
 	reqVersion := flags.String("version", "", "Install a specific release version (e.g. v2.1.0)")

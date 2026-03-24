@@ -18,12 +18,14 @@ import (
 
 func RunLink(args []string) error {
 	flags := flag.NewFlagSet("link", flag.ContinueOnError)
-	flags.SetOutput(os.Stderr)
+	flags.SetOutput(os.Stdout)
+	lib.SetFlagUsage(flags, "chauf link — register a project directory", "chauf link [path] [--php <version>] [--site <domain>] [--secure] [--dedicated-fpm] [--name <slug>] [--alias <domain>]")
 
 	phpFlag := flags.String("php", "", "PHP version for this project")
 	secureFlag := flags.Bool("secure", false, "Enable SSL from the start")
 	dedicatedFPM := flags.Bool("dedicated-fpm", false, "Use a dedicated PHP-FPM pool")
 	nameFlag := flags.String("name", "", "Custom slug (required when two directories share the same name)")
+	siteFlag := flags.String("site", "", "Custom primary domain (e.g. myapp.test)")
 	var aliases []string
 	flags.Func("alias", "Add alias domain (repeatable)", func(v string) error {
 		aliases = append(aliases, v)
@@ -87,6 +89,25 @@ func RunLink(args []string) error {
 		slug = custom
 	}
 	domain := projects.DomainFromSlug(slug, cfg.DNS.TLD)
+
+	// --site overrides the primary domain; if --name was not also given,
+	// derive the slug from the site name so the project identifier matches.
+	if *siteFlag != "" {
+		site := *siteFlag
+		if !strings.HasSuffix(site, "."+cfg.DNS.TLD) {
+			site = site + "." + cfg.DNS.TLD
+		}
+		if !projects.IsValidDomain(site) {
+			return fmt.Errorf("invalid --site domain %q — must be a valid *.%s domain", *siteFlag, cfg.DNS.TLD)
+		}
+		domain = site
+		if *nameFlag == "" {
+			base := strings.TrimSuffix(site, "."+cfg.DNS.TLD)
+			if derived := projects.GenerateSlug(base); derived != "" {
+				slug = derived
+			}
+		}
+	}
 
 	// Check if this path is already linked
 	existing, err := projects.FindByPath(root, dirPath)
@@ -240,7 +261,8 @@ func RunLink(args []string) error {
 
 func RunLinks(args []string) error {
 	flags := flag.NewFlagSet("links", flag.ContinueOnError)
-	flags.SetOutput(os.Stderr)
+	flags.SetOutput(os.Stdout)
+	lib.SetFlagUsage(flags, "chauf links — list registered projects", "chauf links [--detail] [--project <name>]")
 	detail := flags.Bool("detail", false, "Show paths, socket paths, config paths")
 	projectFlag := flags.String("project", "", "Show detail for a specific project by name")
 	if err := flags.Parse(args); err != nil {
@@ -376,7 +398,8 @@ func printProjectDetail(p *projects.Project, root string, cfg workspace.Config) 
 
 func RunUnlink(args []string) error {
 	flags := flag.NewFlagSet("unlink", flag.ContinueOnError)
-	flags.SetOutput(os.Stderr)
+	flags.SetOutput(os.Stdout)
+	lib.SetFlagUsage(flags, "chauf unlink — unregister a project", "chauf unlink [path] [--alias <domain>] [--all] [--yes]")
 	aliasFlag := flags.String("alias", "", "Remove a specific alias domain only")
 	allFlag := flags.Bool("all", false, "Remove all aliases then unlink the project")
 	yesFlag := flags.Bool("yes", false, "Skip confirmation prompt")
@@ -461,7 +484,8 @@ func RunUnlink(args []string) error {
 
 func RunSecure(args []string) error {
 	flags := flag.NewFlagSet("secure", flag.ContinueOnError)
-	flags.SetOutput(os.Stderr)
+	flags.SetOutput(os.Stdout)
+	lib.SetFlagUsage(flags, "chauf secure — enable HTTPS for a project", "chauf secure [--project <path>]")
 	projectPath := flags.String("project", "", "Target project by path")
 	if err := flags.Parse(args); err != nil {
 		return err
@@ -536,7 +560,8 @@ func RunSecure(args []string) error {
 
 func RunUnsecure(args []string) error {
 	flags := flag.NewFlagSet("unsecure", flag.ContinueOnError)
-	flags.SetOutput(os.Stderr)
+	flags.SetOutput(os.Stdout)
+	lib.SetFlagUsage(flags, "chauf unsecure — disable HTTPS for a project", "chauf unsecure [--project <path>]")
 	projectPath := flags.String("project", "", "Target project by path")
 	if err := flags.Parse(args); err != nil {
 		return err
