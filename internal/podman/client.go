@@ -57,6 +57,20 @@ func (c *PodmanClient) runLines(ctx context.Context, args ...string) ([]string, 
 	return lines, nil
 }
 
+// RunWithStdin executes a podman command with stdin data.
+func (c *PodmanClient) RunWithStdin(ctx context.Context, args []string, stdinData []byte) (string, error) {
+	cmd := exec.CommandContext(ctx, "podman", args...)
+	cmd.Stdin = bytes.NewReader(stdinData)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("podman %s: %w", strings.Join(args, " "), err)
+	}
+	return strings.TrimSpace(stdout.String()), nil
+}
+
 // ContainerExists checks if a container with the given name exists.
 func (c *PodmanClient) ContainerExists(ctx context.Context, name string) (bool, error) {
 	_, err := c.Run(ctx, "container", "exists", name)

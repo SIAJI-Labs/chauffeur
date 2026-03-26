@@ -39,6 +39,10 @@ func RunPodman(args []string) error {
 		return runPodmanConsole(args[1:])
 	case "import":
 		return runPodmanImport(args[1:])
+	case "backup":
+		return runPodmanBackup(args[1:])
+	case "restore":
+		return runPodmanRestore(args[1:])
 	case "help", "--help", "-h":
 		return runPodmanHelp(args[1:])
 	default:
@@ -54,7 +58,7 @@ func runPodmanHelp(args []string) error {
 	flags := flag.NewFlagSet("podman help", flag.ContinueOnError)
 	flags.SetOutput(os.Stdout)
 	lib.SetFlagUsage(flags, "chauf podman — manage shared database containers via Podman",
-		"chauf podman <create|start|stop|status|list|remove|console> [args]")
+		"chauf podman <create|start|stop|status|list|remove|console|backup|restore> [args]")
 
 	fmt.Println()
 	fmt.Printf("  %s\n", lib.Bold("Podman database containers"))
@@ -70,6 +74,8 @@ func runPodmanHelp(args []string) error {
 	fmt.Printf("    %-16s  %s\n", "list", lib.Gray("List all managed containers"))
 	fmt.Printf("    %-16s  %s\n", "remove", lib.Gray("Remove a container"))
 	fmt.Printf("    %-16s  %s\n", "console", lib.Gray("Attach to container for CLI access"))
+	fmt.Printf("    %-16s  %s\n", "backup", lib.Gray("Backup a container to file"))
+	fmt.Printf("    %-16s  %s\n", "restore", lib.Gray("Restore a container from backup"))
 	fmt.Println()
 	fmt.Printf("  %s\n", lib.Gray(`Run "chauf podman <command> --help" for detailed usage.`))
 	fmt.Println()
@@ -98,9 +104,6 @@ func runPodmanCreate(args []string) error {
 	verbose := lib.Verbose
 	ctx := context.Background()
 	client := podman.NewPodmanClient()
-
-	// Debug
-	fmt.Fprintf(os.Stderr, "DEBUG: lib.Verbose=%v verbose=%v\n", lib.Verbose, verbose)
 
 	// Check podman availability
 	if err := client.Available(ctx); err != nil {
@@ -1232,4 +1235,202 @@ func (l *verboseLogger) Print(args ...interface{}) {
 	if l.verbose {
 		fmt.Println(args...)
 	}
+}
+
+// ── chauf podman backup ───────────────────────────────────────────────────────
+
+func runPodmanBackup(args []string) error {
+	flags := flag.NewFlagSet("podman backup", flag.ContinueOnError)
+	flags.SetOutput(os.Stdout)
+	lib.SetFlagUsage(flags, "chauf podman backup — backup a container to file",
+		"chauf podman backup <container-name> [--output <path>]")
+
+	outputFlag := flags.String("output", "", "Output file path (default: <container-name>-<timestamp>.tar.gz in current dir)")
+
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+
+	verbose := lib.Verbose
+	ctx := context.Background()
+	client := podman.NewPodmanClient()
+
+	if err := client.Available(ctx); err != nil {
+		if err == podman.ErrPodmanNotFound {
+			lib.Error("Podman is not installed or not in PATH.")
+			return nil
+		}
+		return err
+	}
+
+	target := ""
+	if flags.NArg() > 0 {
+		target = flags.Arg(0)
+	}
+
+	containers, err := resolveContainers(target)
+	if err != nil || len(containers) == 0 {
+		lib.Warn("No containers found matching " + lib.Bold(target))
+		return nil
+	}
+
+	if len(containers) > 1 {
+		lib.Warn("Backup requires exactly one container. Use container name.")
+		return nil
+	}
+
+	cfg := containers[0]
+	container := podman.NewContainer(client, cfg)
+	container.SetLogger(&verboseLogger{verbose: verbose})
+
+	// Check if running
+	running, _ := container.IsRunning(ctx)
+	if !running {
+		lib.Warn(fmt.Sprintf("Container %s is not running. Start it first.", lib.Bold(cfg.ContainerName)))
+		return nil
+	}
+
+	// Determine output path
+	outputPath := *outputFlag
+	if outputPath == "" {
+		timestamp := time.Now().Format("20060102-150405")
+		outputPath = fmt.Sprintf("%s-%s.tar.gz", cfg.ContainerName, timestamp)
+	}
+
+	fmt.Println()
+	fmt.Printf("  %s\n", lib.Bold("Backing up container:"))
+	fmt.Printf("    Container:  %s\n", cfg.ContainerName)
+	fmt.Printf("    Engine:     %s\n", cfg.Engine)
+	fmt.Printf("    Database:   app\n", cfg.Username)
+	fmt.Printf("    Output:     %s\n", outputPath)
+	fmt.Println()
+
+	backupData, err := container.Backup(ctx, outputPath)
+	if err != nil {
+		lib.Error("Backup failed: " + err.Error())
+		return err
+	}
+
+	fmt.Println()
+	lib.Success(fmt.Sprintf("Backup created: %s (%d bytes)", outputPath, len(backupData)))
+
+	// Show DSN for reference
+	fmt.Println()
+	fmt.Printf("  %s\n", lib.Gray("Connection string:"))
+	fmt.Printf("    %s\n", podman.DSN(cfg))
+	fmt.Println()
+
+	return nil
+}
+
+// ── chauf podman restore ──────────────────────────────────────────────────────
+
+func runPodmanRestore(args []string) error {
+	flags := flag.NewFlagSet("podman restore", flag.ContinueOnError)
+	flags.SetOutput(os.Stdout)
+	lib.SetFlagUsage(flags, "chauf podman restore — restore a container from backup",
+		"chauf podman restore <container-name> [--input <path>]")
+
+	inputFlag := flags.String("input", "", "Input backup file path (required)")
+	yesFlag := flags.Bool("yes", false, "Skip confirmation if container is running")
+
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+
+	verbose := lib.Verbose
+	ctx := context.Background()
+	client := podman.NewPodmanClient()
+
+	if err := client.Available(ctx); err != nil {
+		if err == podman.ErrPodmanNotFound {
+			lib.Error("Podman is not installed or not in PATH.")
+			return nil
+		}
+		return err
+	}
+
+	target := ""
+	if flags.NArg() > 0 {
+		target = flags.Arg(0)
+	}
+
+	if *inputFlag == "" {
+		lib.Error("Missing --input flag. Usage: chauf podman restore <container> --input <backup-file>")
+		return nil
+	}
+
+	// Read backup file
+	backupData, err := os.ReadFile(*inputFlag)
+	if err != nil {
+		return fmt.Errorf("read backup file: %w", err)
+	}
+
+	containers, err := resolveContainers(target)
+	if err != nil || len(containers) == 0 {
+		lib.Warn("No containers found matching " + lib.Bold(target))
+		return nil
+	}
+
+	if len(containers) > 1 {
+		lib.Warn("Restore requires exactly one container. Use container name.")
+		return nil
+	}
+
+	cfg := containers[0]
+	container := podman.NewContainer(client, cfg)
+	container.SetLogger(&verboseLogger{verbose: verbose})
+
+	// Check if running - need to stop for restore
+	running, _ := container.IsRunning(ctx)
+	if running && !*yesFlag {
+		fmt.Println()
+		lib.Info(fmt.Sprintf("Container %s is running. Stop it first?", lib.Bold(cfg.ContainerName)))
+		if !interactiveConfirm("Stop container") {
+			return nil
+		}
+		if err := container.Stop(ctx, 10*time.Second); err != nil {
+			return fmt.Errorf("stop container: %w", err)
+		}
+	}
+
+	// Ensure container exists and is started
+	exists, _ := client.ContainerExists(ctx, cfg.ContainerName)
+	if !exists {
+		lib.Warn(fmt.Sprintf("Container %s does not exist. Create it first with 'chauf podman create'.", lib.Bold(cfg.ContainerName)))
+		return nil
+	}
+
+	if !running {
+		fmt.Println()
+		fmt.Printf("  %s\n", lib.Bold("Starting container for restore..."))
+		if err := container.Start(ctx); err != nil {
+			return fmt.Errorf("start container: %w", err)
+		}
+		// Wait for database to be ready
+		time.Sleep(2 * time.Second)
+	}
+
+	fmt.Println()
+	fmt.Printf("  %s\n", lib.Bold("Restoring container:"))
+	fmt.Printf("    Container:  %s\n", cfg.ContainerName)
+	fmt.Printf("    Engine:     %s\n", cfg.Engine)
+	fmt.Printf("    Backup:     %s\n", *inputFlag)
+	fmt.Println()
+
+	if err := container.Restore(ctx, backupData); err != nil {
+		lib.Error("Restore failed: " + err.Error())
+		return err
+	}
+
+	fmt.Println()
+	lib.Success(fmt.Sprintf("Container %s restored successfully", lib.Bold(cfg.ContainerName)))
+
+	// Show DSN
+	fmt.Println()
+	fmt.Printf("  %s\n", lib.Gray("Connection string:"))
+	fmt.Printf("    %s\n", podman.DSN(cfg))
+	fmt.Println()
+
+	return nil
 }
