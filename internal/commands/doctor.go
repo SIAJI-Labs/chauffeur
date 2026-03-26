@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/siegg/chauffeur/internal/lib"
+	"github.com/siegg/chauffeur/internal/projects"
 	"github.com/siegg/chauffeur/internal/services"
 	"github.com/siegg/chauffeur/internal/system"
 	"github.com/siegg/chauffeur/internal/workspace"
@@ -267,24 +268,53 @@ func doctorSSL(root string) []checkResult {
 		ver := firstLine(cmdOutput(mkcertPath, "-version"))
 		results = append(results, checkResult{name: "mkcert", ok: true, status: lib.Gray(ver)})
 
-		// CA installed?
-		caRoot := strings.TrimSpace(cmdOutput(mkcertPath, "-CAROOT"))
-		_, e1 := os.Stat(filepath.Join(caRoot, "rootCA.pem"))
-		_, e2 := os.Stat(filepath.Join(caRoot, "rootCA-key.pem"))
-		if e1 == nil && e2 == nil {
+		// CA in system trust? Use the improved projects.MkcertCAInstalled()
+		// which checks both CAROOT existence AND presence in the system bundle.
+		if projects.MkcertCAInstalled() {
+			caRoot := strings.TrimSpace(cmdOutput(mkcertPath, "-CAROOT"))
 			results = append(results, checkResult{
 				name:   "mkcert CA",
 				ok:     true,
-				status: lib.Gray(shortenHome(caRoot)),
+				status: lib.Gray(shortenHome(caRoot) + " (system trusted)"),
 			})
 		} else {
-			results = append(results, checkResult{
-				name:   "mkcert CA",
-				ok:     false,
-				status: "CA not installed — browsers will show SSL warnings",
-				fix:    "mkcert -install",
-			})
+			// CA files exist but not trusted, or not installed at all.
+			caRoot := strings.TrimSpace(cmdOutput(mkcertPath, "-CAROOT"))
+			_, e1 := os.Stat(filepath.Join(caRoot, "rootCA.pem"))
+			_, e2 := os.Stat(filepath.Join(caRoot, "rootCA-key.pem"))
+			if e1 == nil && e2 == nil {
+				results = append(results, checkResult{
+					name:   "mkcert CA",
+					ok:     false,
+					status: "CA files exist but NOT in system trust store",
+					fix: "sudo mkcert -install",
+				})
+			} else {
+				results = append(results, checkResult{
+					name:   "mkcert CA",
+					ok:     false,
+					status: "CA not installed — SSL errors will occur for HTTPS sites",
+					fix:    "sudo mkcert -install",
+				})
+			}
 		}
+	}
+
+	// PHP CA bundle (curl.cainfo / openssl.cafile)
+	if phpini := doctorPHPCertBundle(); phpini.ok {
+		results = append(results, checkResult{
+			name:   "PHP CA bundle",
+			ok:     true,
+			status: lib.Gray(phpini.status),
+		})
+	} else {
+		results = append(results, checkResult{
+			name:   "PHP CA bundle",
+			ok:     false,
+			warn:   phpini.warn,
+			status: phpini.status,
+			fix:    phpini.fix,
+		})
 	}
 
 	// cert directory
@@ -306,6 +336,155 @@ func doctorSSL(root string) []checkResult {
 	}
 
 	return results
+}
+
+// doctorPHPCertBundle checks if PHP's curl.cainfo and openssl.cafile are
+// configured to use the system CA bundle, and whether that bundle includes
+// the mkcert CA. Returns a checkResult-style struct (name excluded since caller uses it).
+func doctorPHPCertBundle() struct {
+	ok    bool
+	warn  bool
+	status string
+	fix   string
+} {
+	ret := struct {
+		ok    bool
+		warn  bool
+		status string
+		fix   string
+	}{warn: true}
+
+	// Find php binary
+	phpPath, err := exec.LookPath("php")
+	if err != nil {
+		ret.status = "php not found"
+		ret.fix = "php is required for this check"
+		return ret
+	}
+
+	// Get loaded php.ini via: php --ini | grep "Loaded Configuration"
+	iniOut := cmdOutput(phpPath, "--ini")
+	var phpIniFile string
+	for _, line := range strings.Split(iniOut, "\n") {
+		if strings.Contains(line, "Loaded Configuration") {
+			parts := strings.Split(line, ":")
+			if len(parts) >= 2 {
+				phpIniFile = strings.TrimSpace(parts[len(parts)-1])
+			}
+			break
+		}
+	}
+
+	// Get php -i output for parsing curl.cainfo / openssl.cafile
+	// We run it once and reuse the output.
+	infoOut := cmdOutput(phpPath, "-i")
+
+	// Parse curl.cainfo and openssl.cafile from php -i output.
+	// Format is typically:
+	//   curl.cainfo => /path/to/bundle => /path/to/bundle
+	//   curl.cainfo => no value        (when not configured)
+	//   openssl.cafile => /path/to/bundle => /path/to/bundle
+	parsePHPValue := func(raw string) string {
+		val := strings.TrimSpace(raw)
+		if val == "" || strings.EqualFold(val, "no value") {
+			return ""
+		}
+		return val
+	}
+
+	var curlCA, opensslCA string
+	for _, line := range strings.Split(infoOut, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "curl.cainfo =>") {
+			parts := strings.Split(trimmed, "=>")
+			if len(parts) >= 2 {
+				curlCA = parsePHPValue(parts[1])
+			}
+		}
+		if strings.HasPrefix(trimmed, "openssl.cafile =>") {
+			parts := strings.Split(trimmed, "=>")
+			if len(parts) >= 2 {
+				opensslCA = parsePHPValue(parts[1])
+			}
+		}
+	}
+
+	// Determine the effective CA bundle path (prefer curl.cainfo, fall back to openssl.cafile)
+	caBundle := curlCA
+	if caBundle == "" {
+		caBundle = opensslCA
+	}
+
+	// Build status line components
+	var details []string
+	if curlCA != "" {
+		details = append(details, "curl.cainfo="+shortenHome(curlCA))
+	}
+	if opensslCA != "" && opensslCA != curlCA {
+		details = append(details, "openssl.cafile="+shortenHome(opensslCA))
+	}
+
+	if caBundle == "" {
+		ret.status = "not configured"
+		if phpIniFile != "" && phpIniFile != "none" {
+			ret.fix = fmt.Sprintf("printf 'curl.cainfo=/etc/ssl/certs/ca-certificates.crt\\nopenssl.cafile=/etc/ssl/certs/ca-certificates.crt\\n' >> %s", phpIniFile)
+		} else {
+			ret.fix = "Configure curl.cainfo and openssl.cafile in php.ini"
+		}
+		return ret
+	}
+
+	// Check if bundle file exists
+	info, err := os.Stat(caBundle)
+	if err != nil {
+		ret.status = fmt.Sprintf("%s (file missing)", shortenHome(caBundle))
+		ret.fix = fmt.Sprintf("sudo tee %s </dev/null # create empty file, then add curl.cainfo/openssl.cafile to php.ini", shortenHome(caBundle))
+		return ret
+	}
+	if info.IsDir() {
+		ret.status = fmt.Sprintf("%s (is a directory, not a file)", shortenHome(caBundle))
+		ret.fix = "Set curl.cainfo to a file path, not a directory, in php.ini"
+		return ret
+	}
+
+	// Check if mkcert CA is in the bundle (only relevant when mkcert is installed)
+	mkcertInstalled := projects.MkcertCAInstalled()
+	if !mkcertInstalled {
+		// mkcert not trusted, but PHP might still work for public SSL
+		ret.status = strings.Join(details, "  ") + fmt.Sprintf("  %s", shortenHome(caBundle))
+		ret.ok = true
+		ret.warn = true
+		return ret
+	}
+
+	// mkcert is trusted — check if bundle contains mkcert cert
+	data, _ := os.ReadFile(caBundle)
+	if strings.Contains(string(data), "mkcert") {
+		ret.ok = true
+		ret.status = strings.Join(details, "  ") + fmt.Sprintf("  %s (mkcert OK)", shortenHome(caBundle))
+		return ret
+	}
+
+	// mkcert CA is in system trust but NOT in PHP's configured bundle
+	ret.ok = false
+	ret.status = fmt.Sprintf("mkcert CA not in bundle (%s)", shortenHome(caBundle))
+	// Suggest mkcert bundle path on Arch/Debian
+	dist := detectDistroType()
+	var suggested string
+	switch dist {
+	case distroArch, distroDebian:
+		suggested = "/etc/ssl/certs/ca-certificates.crt"
+	case distroFedora:
+		suggested = "/etc/pki/tls/certs/ca-bundle.crt"
+	default:
+		suggested = caBundle // already set
+	}
+	if suggested != caBundle && phpIniFile != "" {
+		ret.fix = fmt.Sprintf("printf 'curl.cainfo=%s\\nopenssl.cafile=%s\\n' | tee -a %s", suggested, suggested, phpIniFile)
+	} else {
+		ret.fix = "sudo mkcert -install"
+	}
+	return ret
 }
 
 func doctorNetwork(root string, cfg workspace.Config) []checkResult {

@@ -120,6 +120,11 @@ func main() {
 	case "migrate":
 		notImplemented(args[0])
 
+	// ── Podman ────────────────────────────────────────────────────────────────
+
+	case "podman":
+		err = commands.RunPodman(args[1:])
+
 	default:
 		lib.Error(fmt.Sprintf("unknown command %q", args[0]))
 		fmt.Println()
@@ -243,6 +248,18 @@ func printCommands() {
 				{"clean", "Remove cached downloads, logs, stale certs"},
 				{"migrate", "Move a project between workspaces"},
 				{"self-update", "Update the chauf binary"},
+			},
+		},
+		{
+			"Podman",
+			[]entry{
+				{"podman create", "Create a database container (mysql|postgres|maria|mongo|redis)"},
+				{"podman start", "Start a container (or 'all')"},
+				{"podman stop", "Stop a container (or 'all')"},
+				{"podman status", "Show container status"},
+				{"podman list", "List all managed containers"},
+				{"podman remove", "Remove a container"},
+				{"podman console", "Attach to container for CLI access"},
 			},
 		},
 	}

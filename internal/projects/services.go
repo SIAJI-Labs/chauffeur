@@ -77,7 +77,8 @@ func MkcertInstalled() bool {
 	return err == nil
 }
 
-// MkcertCAInstalled returns true if the mkcert CA root is present.
+// MkcertCAInstalled returns true if the mkcert CA root is present AND
+// trusted by the system OpenSSL bundle (i.e. usable by PHP/curl).
 func MkcertCAInstalled() bool {
 	cmd := exec.Command("mkcert", "-CAROOT")
 	out, err := cmd.Output()
@@ -89,7 +90,51 @@ func MkcertCAInstalled() bool {
 		return false
 	}
 	info, err := os.Stat(caroot)
-	return err == nil && info.IsDir()
+	if err != nil || !info.IsDir() {
+		return false
+	}
+
+	// Check CA is in system trust: look for the PEM in /etc/ssl/certs or
+	// /etc/ca-certificates/extracted/cadir (Arch/Debian patterns).
+	caPEM := filepath.Join(caroot, "rootCA.pem")
+	if _, err := os.Stat(caPEM); err != nil {
+		return false
+	}
+
+	// Check if the CA appears in the OpenSSL cert bundle or trust dirs.
+	certBundle := "/etc/ssl/cert.pem"
+	if data, err := os.ReadFile(certBundle); err == nil {
+		if strings.Contains(string(data), "mkcert") {
+			return true
+		}
+	}
+
+	// Fallback: check if mkcert symlink exists in /etc/ssl/certs (Arch pattern)
+	if entries, err := os.ReadDir("/etc/ssl/certs"); err == nil {
+		for _, e := range entries {
+			if strings.HasPrefix(e.Name(), "mkcert_") {
+				return true
+			}
+		}
+	}
+
+	// Fallback: check Debian/Ubuntu trust paths
+	trustAnchors := []string{
+		"/usr/local/share/ca-certificates/",
+		"/usr/share/ca-certificates/",
+		"/etc/ca-certificates/trust/",
+	}
+	for _, dir := range trustAnchors {
+		if entries, err := os.ReadDir(dir); err == nil {
+			for _, e := range entries {
+				if strings.Contains(e.Name(), "mkcert") {
+					return true
+				}
+			}
+		}
+	}
+
+	return false
 }
 
 func readPIDFile(path string) (int, error) {
