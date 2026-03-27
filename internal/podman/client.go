@@ -37,6 +37,7 @@ func (c *PodmanClient) Run(ctx context.Context, args ...string) (string, error) 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
+	cmd.Stdin = nil // Explicitly don't inherit stdin
 
 	if err := cmd.Run(); err != nil {
 		return "", fmt.Errorf("podman %s: %w", strings.Join(args, " "), err)

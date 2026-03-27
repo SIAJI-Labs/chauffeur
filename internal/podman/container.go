@@ -462,6 +462,82 @@ func (c *Container) Backup(ctx context.Context, backupPath string) ([]byte, erro
 	return backupData, nil
 }
 
+// BackupDatabase creates a backup of a specific database and returns it as tar.gz.
+func (c *Container) BackupDatabase(ctx context.Context, database string) ([]byte, error) {
+	c.log(fmt.Sprintf("  → Running backup for database %s...", database))
+
+	var dumpData []byte
+	var err error
+
+	switch c.config.Engine {
+	case EngineMySQL8, EngineMySQL57:
+		dumpData, err = c.mysqldumpDatabase(ctx, database)
+	case EnginePostgres:
+		dumpData, err = c.pgdumpDatabase(ctx, database)
+	case EngineMaria:
+		dumpData, err = c.mysqldumpDatabase(ctx, database)
+	case EngineMongo:
+		dumpData, err = c.mongodumpDatabase(ctx, database)
+	case EngineRedis:
+		dumpData, err = c.redisDump(ctx)
+	default:
+		return nil, fmt.Errorf("unsupported engine: %s", c.config.Engine)
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("backup failed: %w", err)
+	}
+
+	// Create tar.gz archive
+	meta := BackupMeta{
+		Engine:        c.config.Engine,
+		ContainerName: c.config.ContainerName,
+		Timestamp:     time.Now().UTC(),
+		Username:      c.config.Username,
+		Database:      database,
+	}
+
+	metaBytes, _ := json.MarshalIndent(meta, "", "  ")
+
+	var buf bytes.Buffer
+	gzw := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gzw)
+
+	// Add metadata file
+	if err := tw.WriteHeader(&tar.Header{
+		Name: "meta.json",
+		Mode: 0644,
+		Size: int64(len(metaBytes)),
+	}); err != nil {
+		return nil, fmt.Errorf("write meta header: %w", err)
+	}
+	if _, err := tw.Write(metaBytes); err != nil {
+		return nil, fmt.Errorf("write meta: %w", err)
+	}
+
+	// Add dump file
+	dumpName := c.dumpFilenameForDB(database)
+	if err := tw.WriteHeader(&tar.Header{
+		Name: dumpName,
+		Mode: 0644,
+		Size: int64(len(dumpData)),
+	}); err != nil {
+		return nil, fmt.Errorf("write dump header: %w", err)
+	}
+	if _, err := tw.Write(dumpData); err != nil {
+		return nil, fmt.Errorf("write dump: %w", err)
+	}
+
+	if err := tw.Close(); err != nil {
+		return nil, fmt.Errorf("close tar: %w", err)
+	}
+	if err := gzw.Close(); err != nil {
+		return nil, fmt.Errorf("close gzip: %w", err)
+	}
+
+	return buf.Bytes(), nil
+}
+
 // Restore restores a database from a backup tar.gz.
 func (c *Container) Restore(ctx context.Context, backupData []byte) error {
 	c.log("  → Extracting backup archive...")
@@ -546,6 +622,21 @@ func (c *Container) dumpFilename() string {
 	return "dump"
 }
 
+// dumpFilenameForDB returns the expected dump filename for a specific database.
+func (c *Container) dumpFilenameForDB(database string) string {
+	switch c.config.Engine {
+	case EngineMySQL8, EngineMySQL57, EngineMaria:
+		return database + ".sql"
+	case EnginePostgres:
+		return database + ".sql"
+	case EngineMongo:
+		return database + ".archive"
+	case EngineRedis:
+		return "dump.rdb"
+	}
+	return database + ".dump"
+}
+
 // mysqldump runs mysqldump inside the container.
 func (c *Container) mysqldump(ctx context.Context) ([]byte, error) {
 	output, err := c.ExecOutput(ctx,
@@ -582,6 +673,51 @@ func (c *Container) mongodump(ctx context.Context) ([]byte, error) {
 		"--password="+c.config.Password,
 		"--authenticationDatabase=admin",
 		"--db=app",
+		"--archive",
+		"--quiet",
+	)
+	if err != nil {
+		return []byte(output), err
+	}
+	return []byte(output), nil
+}
+
+// mysqldumpDatabase runs mysqldump for a specific database.
+func (c *Container) mysqldumpDatabase(ctx context.Context, database string) ([]byte, error) {
+	output, err := c.ExecOutput(ctx,
+		"mysqldump",
+		"--user="+c.config.Username,
+		"--password="+c.config.Password,
+		"--single-transaction",
+		database,
+	)
+	if err != nil {
+		return []byte(output), err
+	}
+	return []byte(output), nil
+}
+
+// pgdumpDatabase runs pg_dump for a specific database.
+func (c *Container) pgdumpDatabase(ctx context.Context, database string) ([]byte, error) {
+	output, err := c.ExecOutput(ctx,
+		"pg_dump",
+		"--username="+c.config.Username,
+		"--dbname="+database,
+	)
+	if err != nil {
+		return []byte(output), err
+	}
+	return []byte(output), nil
+}
+
+// mongodumpDatabase runs mongodump for a specific database.
+func (c *Container) mongodumpDatabase(ctx context.Context, database string) ([]byte, error) {
+	output, err := c.ExecOutput(ctx,
+		"mongodump",
+		"--username="+c.config.Username,
+		"--password="+c.config.Password,
+		"--authenticationDatabase=admin",
+		"--db="+database,
 		"--archive",
 		"--quiet",
 	)
@@ -667,4 +803,110 @@ func (c *Container) redisrestore(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// ListDatabases returns a list of database names in the container.
+func (c *Container) ListDatabases(ctx context.Context) ([]string, error) {
+	switch c.config.Engine {
+	case EngineMySQL8, EngineMySQL57, EngineMaria:
+		return c.listMySQLDatabases(ctx)
+	case EnginePostgres:
+		return c.listPostgresDatabases(ctx)
+	case EngineMongo:
+		return c.listMongoDatabases(ctx)
+	case EngineRedis:
+		return c.listRedisKeys(ctx)
+	default:
+		return nil, fmt.Errorf("unsupported engine: %s", c.config.Engine)
+	}
+}
+
+func (c *Container) listMySQLDatabases(ctx context.Context) ([]string, error) {
+	output, err := c.ExecOutput(ctx,
+		"mysql",
+		"--user="+c.config.Username,
+		"--password="+c.config.Password,
+		"-N",
+		"-e", "SHOW DATABASES;",
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list databases: %w", err)
+	}
+
+	var dbs []string
+	for _, line := range strings.Split(output, "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" && line != "Database" && line != "information_schema" && line != "performance_schema" && line != "mysql" && line != "sys" {
+			dbs = append(dbs, line)
+		}
+	}
+	return dbs, nil
+}
+
+func (c *Container) listPostgresDatabases(ctx context.Context) ([]string, error) {
+	output, err := c.ExecOutput(ctx,
+		"psql",
+		"--username="+c.config.Username,
+		"--tuples-only",
+		"--no-align",
+		"-c", "SELECT datname FROM pg_database WHERE datistemplate = false;",
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list databases: %w", err)
+	}
+
+	var dbs []string
+	for _, line := range strings.Split(output, "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			dbs = append(dbs, line)
+		}
+	}
+	return dbs, nil
+}
+
+func (c *Container) listMongoDatabases(ctx context.Context) ([]string, error) {
+	output, err := c.ExecOutput(ctx,
+		"mongosh",
+		"--username="+c.config.Username,
+		"--password="+c.config.Password,
+		"--authenticationDatabase=admin",
+		"--quiet",
+		"--eval", "db.adminCommand('listDatabases').databases.map(d => d.name).join('\\n')",
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list databases: %w", err)
+	}
+
+	var dbs []string
+	for _, line := range strings.Split(output, "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" && line != "admin" && line != "config" && line != "local" {
+			dbs = append(dbs, line)
+		}
+	}
+	return dbs, nil
+}
+
+func (c *Container) listRedisKeys(ctx context.Context) ([]string, error) {
+	// Redis doesn't have "databases" but we can list keyspaces (db0, db1, etc.)
+	output, err := c.ExecOutput(ctx, "redis-cli", "INFO", "keyspace")
+	if err != nil {
+		return nil, fmt.Errorf("list keys: %w", err)
+	}
+
+	var dbs []string
+	for _, line := range strings.Split(output, "\n") {
+		if strings.HasPrefix(line, "db") {
+			parts := strings.Split(line, ":")
+			if len(parts) > 0 {
+				db := strings.TrimSpace(strings.Split(parts[0], ",")[0])
+				dbs = append(dbs, db)
+			}
+		}
+	}
+	if len(dbs) == 0 {
+		dbs = append(dbs, "db0")
+	}
+	return dbs, nil
 }
