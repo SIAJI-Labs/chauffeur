@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -23,6 +24,7 @@ type ContainerStatus struct {
 	Running   bool
 	StartedAt time.Time
 	Health    string
+	HostPort  int // Actual host port if available
 }
 
 // Container wraps a podman container with its config.
@@ -285,7 +287,41 @@ func (c *Container) Status(ctx context.Context) (*ContainerStatus, error) {
 		status.Health = strings.TrimSpace(parts[2])
 	}
 
+	// Get actual host port
+	status.HostPort, _ = c.GetHostPort(ctx)
+
 	return status, nil
+}
+
+// GetHostPort returns the actual host port mapped to the container's default port.
+func (c *Container) GetHostPort(ctx context.Context) (int, error) {
+	// Query the actual port mapping from podman
+	output, err := c.client.Run(ctx, "port", c.containerName())
+	if err != nil {
+		return 0, err
+	}
+
+	// Parse output like "3306/tcp -> 0.0.0.0:3306" or "3306/tcp -> :3306"
+	// We need the host port for the container's default port (e.g., 3306 for mysql)
+	containerPort := fmt.Sprintf("%d/tcp", c.config.Port)
+
+	for _, line := range strings.Split(output, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, containerPort+" -> ") {
+			// Extract host port
+			hostPart := strings.TrimPrefix(line, containerPort+" -> ")
+			// Handle formats: "0.0.0.0:3306" or ":3306" or "127.0.0.1:3306"
+			hostPart = strings.TrimPrefix(hostPart, "0.0.0.0:")
+			hostPart = strings.TrimPrefix(hostPart, "127.0.0.1:")
+			hostPart = strings.TrimPrefix(hostPart, ":")
+			if port, err := strconv.Atoi(hostPart); err == nil {
+				return port, nil
+			}
+		}
+	}
+
+	// Fallback to configured port
+	return c.config.Port, nil
 }
 
 // Logs returns the container logs.

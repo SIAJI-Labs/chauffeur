@@ -562,7 +562,7 @@ func runPodmanStatus(args []string) error {
 				statusStr = lib.Green("● running")
 			}
 
-			fmt.Printf("  %s  %s  :%d\n", lib.Bold(cfg.ContainerName), statusStr, cfg.Port)
+			fmt.Printf("  %s  %s  :%d\n", lib.Bold(cfg.ContainerName), statusStr, status.HostPort)
 			fmt.Printf("    Engine:  %s\n", cfg.Engine)
 			fmt.Printf("    Image:   %s\n", cfg.Image)
 			fmt.Printf("    Volume:  %s\n", cfg.VolumePath)
@@ -591,7 +591,7 @@ func runPodmanStatus(args []string) error {
 			}
 
 			fmt.Printf(" %-20s  %-10s  %-8s  :%d\n",
-				cfg.ContainerName, string(cfg.Engine), statusStr, cfg.Port)
+				cfg.ContainerName, string(cfg.Engine), statusStr, status.HostPort)
 		}
 	}
 
@@ -661,8 +661,12 @@ func runPodmanList(args []string) error {
 			}
 		}
 
+		port := cfg.Port
+		if status != nil && status.HostPort > 0 {
+			port = status.HostPort
+		}
 		fmt.Printf(" %-20s  %-10s  %-8s  :%d\n",
-			cfg.ContainerName, string(cfg.Engine), statusStr, cfg.Port)
+			cfg.ContainerName, string(cfg.Engine), statusStr, port)
 	}
 
 	if verbose {
