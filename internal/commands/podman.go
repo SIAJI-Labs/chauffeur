@@ -1268,6 +1268,44 @@ func runPodmanBackup(args []string) error {
 		target = flags.Arg(0)
 	}
 
+	// Interactive mode if no target specified
+	if target == "" {
+		engines, _ := podman.ListEngines()
+		if len(engines) == 0 {
+			lib.Info("No containers configured.")
+			return nil
+		}
+		fmt.Println()
+		fmt.Printf("  %s\n", lib.Bold("Select container to backup:"))
+		fmt.Println()
+		for i, e := range engines {
+			cfg, _ := podman.Load(e)
+			status := lib.Gray("unknown")
+			if cfg != nil {
+				container := podman.NewContainer(client, cfg)
+				running, _ := container.IsRunning(ctx)
+				if running {
+					status = lib.Green("running")
+				} else {
+					status = lib.Gray("stopped")
+				}
+			}
+			fmt.Printf("    %d) %-20s  %s (%s)\n", i+1, cfg.ContainerName, string(cfg.Engine), status)
+		}
+		fmt.Println()
+		fmt.Print("  " + lib.Bold("Choice") + " " + lib.Gray("[1-" + fmt.Sprintf("%d", len(engines)) + " or container name]: "))
+		scanner := bufio.NewScanner(os.Stdin)
+		scanner.Scan()
+		input := strings.TrimSpace(scanner.Text())
+
+		var idx int
+		if _, err := fmt.Sscanf(input, "%d", &idx); err == nil && idx >= 1 && idx <= len(engines) {
+			target = engines[idx-1]
+		} else {
+			target = strings.ToLower(input)
+		}
+	}
+
 	containers, err := resolveContainers(target)
 	if err != nil || len(containers) == 0 {
 		lib.Warn("No containers found matching " + lib.Bold(target))
@@ -1353,6 +1391,44 @@ func runPodmanRestore(args []string) error {
 	target := ""
 	if flags.NArg() > 0 {
 		target = flags.Arg(0)
+	}
+
+	// Interactive mode if no target specified
+	if target == "" {
+		engines, _ := podman.ListEngines()
+		if len(engines) == 0 {
+			lib.Info("No containers configured.")
+			return nil
+		}
+		fmt.Println()
+		fmt.Printf("  %s\n", lib.Bold("Select container to restore:"))
+		fmt.Println()
+		for i, e := range engines {
+			cfg, _ := podman.Load(e)
+			status := lib.Gray("unknown")
+			if cfg != nil {
+				container := podman.NewContainer(client, cfg)
+				running, _ := container.IsRunning(ctx)
+				if running {
+					status = lib.Red("running")
+				} else {
+					status = lib.Gray("stopped")
+				}
+			}
+			fmt.Printf("    %d) %-20s  %s (%s)\n", i+1, cfg.ContainerName, string(cfg.Engine), status)
+		}
+		fmt.Println()
+		fmt.Print("  " + lib.Bold("Choice") + " " + lib.Gray("[1-" + fmt.Sprintf("%d", len(engines)) + " or container name]: "))
+		scanner := bufio.NewScanner(os.Stdin)
+		scanner.Scan()
+		input := strings.TrimSpace(scanner.Text())
+
+		var idx int
+		if _, err := fmt.Sscanf(input, "%d", &idx); err == nil && idx >= 1 && idx <= len(engines) {
+			target = engines[idx-1]
+		} else {
+			target = strings.ToLower(input)
+		}
 	}
 
 	if *inputFlag == "" {
