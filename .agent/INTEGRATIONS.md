@@ -5,13 +5,14 @@ This document indexes all service integration guides.
 ## Integrations Overview
 
 | Document | Description |
-|----------|-------------|dwiaji03
+|----------|-------------|
 | [integrations/nginx.md](./integrations/nginx.md) | Nginx build from source, config templates, management |
 | [integrations/php.md](./integrations/php.md) | PHP compilation, version management, FPM config |
 | [integrations/dnsmasq.md](./integrations/dnsmasq.md) | DNS routing for `.test` domains |
 | [integrations/mkcert.md](./integrations/mkcert.md) | Local trusted SSL certificates |
 | [integrations/composer.md](./integrations/composer.md) | Composer PHAR download and shim setup |
 | [integrations/systemd.md](./integrations/systemd.md) | Systemd user services for auto-start |
+| [specs/podman.md](./specs/podman.md) | Podman database containers and backup/restore |
 
 ## Service Architecture Overview
 

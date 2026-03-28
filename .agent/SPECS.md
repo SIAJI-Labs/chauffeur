@@ -12,6 +12,7 @@ This document indexes all feature specifications. Each spec file contains detail
 | [specs/ssl.md](./specs/ssl.md) | SSL certificate generation and management |
 | [specs/multi-domain.md](./specs/multi-domain.md) | Multiple domains and alias support |
 | [specs/service-orchestration.md](./specs/service-orchestration.md) | Service lifecycle management |
+| [specs/podman.md](./specs/podman.md) | Podman database containers and backup/restore |
 | [specs/cli-commands.md](./specs/cli-commands.md) | Complete CLI command reference |
 | [specs/future-plans.md](./specs/future-plans.md) | Planned V2 features |
 
@@ -44,6 +45,11 @@ This document indexes all feature specifications. Each spec file contains detail
 │   └── logs/
 ├── composer/
 │   └── composer.phar
+├── podman/
+│   ├── <container-name>.yaml  # Container config (e.g., chauf-mysql57.yaml)
+│   ├── volumes/
+│   │   └── <container-name>/  # Bind mount volumes for data persistence
+│   └── backups/              # Database backup files (*.tar.gz)
 ├── cache/                  # PHP tarballs, Composer PHAR
 ├── logs/                   # Command and service logs
 └── system/                 # Port forwarding state, DNS metadata
@@ -110,6 +116,20 @@ logging:
 | `chauf migrate` | Migrate project to new workspace |
 | `chauf self-update` | Update CLI binary |
 | `chauf uninstall` | Remove workspace |
+
+### Podman Commands
+
+| Command | Description |
+|---------|-------------|
+| `chauf podman create` | Create a database container |
+| `chauf podman start` | Start a container |
+| `chauf podman stop` | Stop a container |
+| `chauf podman remove` | Remove a container |
+| `chauf podman list` | List all containers |
+| `chauf podman status` | Show container status |
+| `chauf podman console` | Attach to container's database CLI |
+| `chauf podman backup` | Interactive database backup |
+| `chauf podman restore` | Interactive database restore |
 
 ### PHP Version Support
 

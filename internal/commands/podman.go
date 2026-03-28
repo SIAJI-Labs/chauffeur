@@ -8,12 +8,15 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbletea"
 	"github.com/siegg/chauffeur/internal/lib"
 	"github.com/siegg/chauffeur/internal/podman"
 	"github.com/siegg/chauffeur/internal/services"
+	"github.com/siegg/chauffeur/internal/workspace"
 )
 
 // RunPodman dispatches to the appropriate podman subcommand.
@@ -97,7 +100,28 @@ func runPodmanCreate(args []string) error {
 	volumeFlag := flags.String("volume", "", "Volume path for data persistence")
 	yesFlag := flags.Bool("yes", false, "Skip confirmation if container exists")
 
-	if err := flags.Parse(args); err != nil {
+	// Reorder args: move all flags (with their values) before positional args
+	// This allows: chauf podman create mysql57 --name foo --port 3307
+	// We need to keep flag-value pairs together
+	var flagArgs, posArgs []string
+	i := 0
+	for i < len(args) {
+		arg := args[i]
+		if strings.HasPrefix(arg, "-") {
+			// This is a flag
+			flagArgs = append(flagArgs, arg)
+			// Check if next arg is a value (not a flag)
+			if i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+				flagArgs = append(flagArgs, args[i+1])
+				i++
+			}
+		} else {
+			posArgs = append(posArgs, arg)
+		}
+		i++
+	}
+	reorderedArgs := append(flagArgs, posArgs...)
+	if err := flags.Parse(reorderedArgs); err != nil {
 		return err
 	}
 
@@ -364,10 +388,11 @@ func runPodmanStart(args []string) error {
 			fmt.Printf("    %d) %-20s  %s (%s)\n", i+1, cfg.ContainerName, string(cfg.Engine), status)
 		}
 		fmt.Println()
-		fmt.Print("  " + lib.Bold("Choice") + " " + lib.Gray("[1-" + fmt.Sprintf("%d", len(engines)) + " or container name]: "))
-		scanner := bufio.NewScanner(os.Stdin)
-		scanner.Scan()
-		input := strings.TrimSpace(scanner.Text())
+		fmt.Print("  " + lib.Bold("Choice") + " " + lib.Gray("[1-"+fmt.Sprintf("%d", len(engines))+" or container name]: "))
+		reader := bufio.NewReader(os.Stdin)
+		input, _ := reader.ReadString('\n')
+		input = strings.TrimSpace(input)
+		input = strings.ReplaceAll(input, "\r", "")
 
 		// Try parsing as number first
 		var idx int
@@ -414,7 +439,27 @@ func runPodmanStop(args []string) error {
 
 	timeout := flags.Int("time", 10, "Seconds to wait before killing the container")
 
-	if err := flags.Parse(args); err != nil {
+	// Reorder args: move all flags (with their values) before positional args
+	// This allows: chauf podman stop chauf-mysql57 --time 20
+	var flagArgs, posArgs []string
+	i := 0
+	for i < len(args) {
+		arg := args[i]
+		if strings.HasPrefix(arg, "-") {
+			// This is a flag
+			flagArgs = append(flagArgs, arg)
+			// Check if next arg is a value (not a flag)
+			if i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+				flagArgs = append(flagArgs, args[i+1])
+				i++
+			}
+		} else {
+			posArgs = append(posArgs, arg)
+		}
+		i++
+	}
+	reorderedArgs := append(flagArgs, posArgs...)
+	if err := flags.Parse(reorderedArgs); err != nil {
 		return err
 	}
 
@@ -463,7 +508,7 @@ func runPodmanStop(args []string) error {
 			return nil
 		}
 		fmt.Println()
-		fmt.Print("  " + lib.Bold("Choice") + " " + lib.Gray("[1-" + fmt.Sprintf("%d", len(runningList)) + " or container name]: "))
+		fmt.Print("  " + lib.Bold("Choice") + " " + lib.Gray("[1-"+fmt.Sprintf("%d", len(runningList))+" or container name]: "))
 		scanner := bufio.NewScanner(os.Stdin)
 		scanner.Scan()
 		input := strings.TrimSpace(scanner.Text())
@@ -653,7 +698,11 @@ func runPodmanList(args []string) error {
 		container := podman.NewContainer(client, cfg)
 		status, err := container.Status(ctx)
 		statusStr := lib.Gray("○ unknown")
-		if err == nil && status != nil {
+		if err != nil {
+			if err == podman.ErrContainerNotFound {
+				statusStr = lib.Red("⚠ missing")
+			}
+		} else if status != nil {
 			if status.Running {
 				statusStr = lib.Green("● running")
 			} else {
@@ -695,13 +744,25 @@ func runPodmanRemove(args []string) error {
 	forceFlag := flags.Bool("force", false, "Force remove running container")
 	yesFlag := flags.Bool("yes", false, "Skip confirmation prompt")
 
-	if err := flags.Parse(args); err != nil {
+	// Reorder args: move all flags (starting with -) before positional args
+	// This allows: chauf podman remove <container> --force --yes
+	var flagArgs, posArgs []string
+	for _, arg := range args {
+		if strings.HasPrefix(arg, "-") {
+			flagArgs = append(flagArgs, arg)
+		} else {
+			posArgs = append(posArgs, arg)
+		}
+	}
+	reorderedArgs := append(flagArgs, posArgs...)
+	if err := flags.Parse(reorderedArgs); err != nil {
 		return err
 	}
 
 	verbose := lib.Verbose
 	ctx := context.Background()
 	client := podman.NewPodmanClient()
+	reader := bufio.NewReader(os.Stdin)
 
 	if err := client.Available(ctx); err != nil {
 		if err == podman.ErrPodmanNotFound {
@@ -748,10 +809,10 @@ func runPodmanRemove(args []string) error {
 			fmt.Printf("    %d) %-20s  %s (%s)\n", i+1, c.ContainerName, string(c.Engine), status)
 		}
 		fmt.Println()
-		fmt.Print("  " + lib.Bold("Choice") + " " + lib.Gray("[1-" + fmt.Sprintf("%d", len(engines)) + " or container name]: "))
-		scanner := bufio.NewScanner(os.Stdin)
-		scanner.Scan()
-		input := strings.TrimSpace(scanner.Text())
+		fmt.Print("  " + lib.Bold("Choice") + " " + lib.Gray("[1-"+fmt.Sprintf("%d", len(engines))+" or container name]: "))
+		input, _ := reader.ReadString('\n')
+		input = strings.TrimSpace(input)
+		input = strings.ReplaceAll(input, "\r", "")
 
 		var idx int
 		if _, err := fmt.Sscanf(input, "%d", &idx); err == nil && idx >= 1 && idx <= len(engines) {
@@ -770,6 +831,28 @@ func runPodmanRemove(args []string) error {
 	for _, c := range containers {
 		container := podman.NewContainer(client, c)
 
+		// Check if container exists in podman
+		exists, _ := client.ContainerExists(ctx, c.ContainerName)
+		if !exists {
+			// Orphaned config - container doesn't exist, just clean up config
+			fmt.Println()
+			lib.Warn(fmt.Sprintf("Container %s not found in podman ( orphaned config)", lib.Bold(c.ContainerName)))
+			fmt.Println()
+			if *yesFlag || interactiveConfirm("Remove orphaned config?", reader) {
+				if err := podman.Delete(c.ContainerName); err != nil {
+					lib.Error("Failed to remove config: " + err.Error())
+				} else {
+					fmt.Printf("  %s Config removed for %s\n", lib.Green("✓"), c.ContainerName)
+				}
+			} else {
+				lib.Info("Cancelled.")
+			}
+			continue
+		}
+
+		// Check if running
+		running, _ := container.IsRunning(ctx)
+
 		// Confirm removal
 		if !*yesFlag {
 			fmt.Println()
@@ -779,20 +862,44 @@ func runPodmanRemove(args []string) error {
 			lib.Pair("  Volume", c.VolumePath)
 			fmt.Println()
 			fmt.Print("  Confirm [y/N]: ")
-			scanner := bufio.NewScanner(os.Stdin)
-			scanner.Scan()
-			resp := strings.ToLower(strings.TrimSpace(scanner.Text()))
+			resp, _ := reader.ReadString('\n')
+			resp = strings.ReplaceAll(strings.ToLower(strings.TrimSpace(resp)), "\r", "")
 			if resp != "y" && resp != "yes" {
 				lib.Info("Cancelled.")
 				return nil
 			}
 		}
 
+		// If running and not force, ask to stop first
+		if running && !*forceFlag {
+			fmt.Println()
+			lib.Info(fmt.Sprintf("Container %s is running.", lib.Bold(c.ContainerName)))
+			fmt.Print("  Stop it first? [y/N]: ")
+			resp, _ := reader.ReadString('\n')
+			resp = strings.ReplaceAll(strings.ToLower(strings.TrimSpace(resp)), "\r", "")
+			if resp != "y" && resp != "yes" {
+				lib.Info("Cancelled.")
+				return nil
+			}
+			if err := container.Stop(ctx, 10*time.Second); err != nil {
+				lib.Error("Failed to stop container: " + err.Error())
+				return err
+			}
+			fmt.Printf("  %s Stopped %s\n", lib.Green("✓"), c.ContainerName)
+		}
+
 		if verbose {
 			fmt.Printf("  Removing container %s...\n", c.ContainerName)
 		}
-		if err := container.Remove(ctx, *forceFlag); err != nil {
+		// If force flag was used, remove even if running
+		removeForce := *forceFlag
+		if err := container.Remove(ctx, removeForce); err != nil {
 			return fmt.Errorf("remove container: %w", err)
+		}
+
+		// Clean up config after successful removal
+		if err := podman.Delete(c.ContainerName); err != nil {
+			lib.Warn("Container removed but failed to clean up config: " + err.Error())
 		}
 
 		// Remove config file
@@ -990,7 +1097,7 @@ func runPodmanImport(args []string) error {
 			engine := podman.EngineType(engineStr)
 			defaults := map[podman.EngineType]int{
 				podman.EngineMySQL8:   3306,
-				podman.EngineMySQL57: 3307,
+				podman.EngineMySQL57:  3307,
 				podman.EnginePostgres: 5432,
 				podman.EngineMaria:    3306,
 				podman.EngineMongo:    27017,
@@ -1229,8 +1336,221 @@ func interactiveConfirm(prompt string, reader *bufio.Reader) bool {
 		reader = bufio.NewReader(os.Stdin)
 	}
 	resp, _ := reader.ReadString('\n')
-	resp = strings.TrimSpace(resp)
+	resp = strings.ReplaceAll(strings.TrimSpace(resp), "\r", "")
 	return strings.ToLower(resp) == "y" || strings.ToLower(resp) == "yes"
+}
+
+// interactiveSelectDatabases shows an interactive list with tick marks for selection.
+// Uses bubbletea for proper TUI rendering.
+func interactiveSelectDatabases(databases []string) []string {
+	model := multiSelectModel{
+		choices:  databases,
+		selected: make(map[int]bool),
+		cursor:   0,
+		title:    "Select databases to backup",
+	}
+
+	p := tea.NewProgram(model)
+	result, err := p.Run()
+	if err != nil {
+		// Fall back to simple text input if TTY is not available
+		return interactiveSelectDatabasesSimple(databases)
+	}
+
+	if finalModel, ok := result.(multiSelectModel); ok {
+		if finalModel.aborted {
+			return []string{}
+		}
+
+		var selected []string
+		for i, sel := range finalModel.selected {
+			if sel {
+				selected = append(selected, finalModel.choices[i])
+			}
+		}
+		return selected
+	}
+
+	return []string{}
+}
+
+// multiSelectModel is the bubbletea model for database selection
+type multiSelectModel struct {
+	choices  []string
+	selected map[int]bool
+	cursor   int
+	done     bool
+	aborted  bool
+	title    string
+}
+
+// Init initializes the model
+func (m multiSelectModel) Init() tea.Cmd {
+	return nil
+}
+
+// Update handles messages
+func (m multiSelectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.Type {
+		case tea.KeyUp:
+			if m.cursor > 0 {
+				m.cursor--
+			}
+		case tea.KeyDown:
+			if m.cursor < len(m.choices)-1 {
+				m.cursor++
+			}
+		case tea.KeySpace:
+			m.selected[m.cursor] = !m.selected[m.cursor]
+		case tea.KeyEnter:
+			m.done = true
+			return m, tea.Quit
+		case tea.KeyCtrlC:
+			m.aborted = true
+			return m, tea.Quit
+		}
+	}
+	return m, nil
+}
+
+// View renders the UI
+func (m multiSelectModel) View() string {
+	// Count selections
+	selectedCount := 0
+	for _, sel := range m.selected {
+		if sel {
+			selectedCount++
+		}
+	}
+
+	var lines []string
+
+	// Title
+	lines = append(lines, fmt.Sprintf("  %s", lib.Bold(m.title)))
+	lines = append(lines, "")
+	lines = append(lines, fmt.Sprintf("  %s", lib.Gray("[↑/↓] Move  [space] Select  [enter] Confirm")))
+	lines = append(lines, "")
+
+	// Choices
+	for i, choice := range m.choices {
+		cursor := "  "
+		if m.cursor == i {
+			cursor = lib.Green(">")
+		}
+
+		selected := "[ ]"
+		if m.selected[i] {
+			selected = lib.Green("[x]")
+		}
+
+		// Truncate long names
+		displayName := choice
+		if len(displayName) > 50 {
+			displayName = displayName[:47] + "..."
+		}
+
+		lines = append(lines, fmt.Sprintf("  %s %s %s", cursor, selected, displayName))
+	}
+
+	lines = append(lines, "")
+
+	// Footer with selection count
+	if selectedCount == 0 {
+		lines = append(lines, fmt.Sprintf("  %s", lib.Gray("No databases selected")))
+	} else if selectedCount == len(m.choices) {
+		lines = append(lines, fmt.Sprintf("  %s %s", lib.Green("✓"), lib.Gray(fmt.Sprintf("All %d selected", selectedCount))))
+	} else {
+		lines = append(lines, fmt.Sprintf("  %s %d of %d selected", lib.Green("✓"), selectedCount, len(m.choices)))
+	}
+
+	return strings.Join(lines, "\n")
+}
+
+// interactiveSelectDatabasesSimple is the fallback text-based selector when TTY is not available.
+func interactiveSelectDatabasesSimple(databases []string) []string {
+	reader := bufio.NewReader(os.Stdin)
+
+	selected := make(map[int]bool)
+
+	fmt.Println()
+	fmt.Printf("  %s\n", lib.Bold("Select databases to backup:"))
+	fmt.Println()
+	fmt.Printf("    %s  %s\n", lib.Gray("[a]"), lib.Gray("Toggle all"))
+	fmt.Printf("    %s  %s\n", lib.Gray("[space]"), lib.Gray("Toggle selected"))
+	fmt.Printf("    %s  %s\n", lib.Gray("[enter]"), lib.Gray("Confirm selection"))
+	fmt.Println()
+
+	for {
+		// Display current selection state
+		fmt.Print("  ")
+		for i, db := range databases {
+			tick := " "
+			if selected[i] {
+				tick = "✓"
+			}
+			fmt.Printf("[%s] %d) %s  ", tick, i+1, db)
+			if (i+1)%3 == 0 {
+				fmt.Println()
+				fmt.Print("  ")
+			}
+		}
+		if len(databases)%3 != 0 {
+			fmt.Println()
+		}
+		fmt.Println()
+
+		// Count selected
+		selCount := 0
+		for _, v := range selected {
+			if v {
+				selCount++
+			}
+		}
+
+		fmt.Print("  " + lib.Bold("Choice") + " " + lib.Gray("[1-"+fmt.Sprintf("%d", len(databases))+", a=all, enter=done]: "))
+		input, _ := reader.ReadString('\n')
+		input = strings.TrimSpace(input)
+		input = strings.ToLower(input)
+
+		if input == "d" || input == "done" || input == "" {
+			if selCount > 0 {
+				break
+			}
+			continue
+		}
+
+		if input == "a" || input == "all" {
+			// Toggle all
+			if selCount == len(databases) {
+				for i := range selected {
+					selected[i] = false
+				}
+			} else {
+				for i := range selected {
+					selected[i] = true
+				}
+			}
+			continue
+		}
+
+		// Try to parse as number
+		var idx int
+		if _, err := fmt.Sscanf(input, "%d", &idx); err == nil && idx >= 1 && idx <= len(databases) {
+			selected[idx-1] = !selected[idx-1]
+		}
+	}
+
+	// Collect selected databases
+	var result []string
+	for i, db := range databases {
+		if selected[i] {
+			result = append(result, db)
+		}
+	}
+
+	return result
 }
 
 // verboseLogger implements podman.Logger for verbose output.
@@ -1247,16 +1567,21 @@ func (l *verboseLogger) Print(args ...interface{}) {
 // ── chauf podman backup ───────────────────────────────────────────────────────
 
 func runPodmanBackup(args []string) error {
-	flags := flag.NewFlagSet("podman backup", flag.ContinueOnError)
-	flags.SetOutput(os.Stdout)
-	lib.SetFlagUsage(flags, "chauf podman backup — backup databases from a container",
-		"chauf podman backup [<container-name>]")
-
-	if err := flags.Parse(args); err != nil {
-		return err
+	// Check for help flag
+	for _, arg := range args {
+		if arg == "--help" || arg == "-h" || arg == "help" {
+			fmt.Println()
+			fmt.Printf("  %s\n", lib.Bold("chauf podman backup"))
+			fmt.Println()
+			fmt.Printf("  %s\n", lib.Gray("Interactively backup databases from a running container."))
+			fmt.Printf("  %s\n", lib.Gray("Shows running containers, lets you select databases,"))
+			fmt.Printf("  %s\n", lib.Gray("optionally add descriptions, and creates backup files."))
+			fmt.Println()
+			return nil
+		}
 	}
 
-	verbose := lib.Verbose
+	// 1. Setup (client, ctx, verbose)
 	ctx := context.Background()
 	client := podman.NewPodmanClient()
 	reader := bufio.NewReader(os.Stdin)
@@ -1269,169 +1594,99 @@ func runPodmanBackup(args []string) error {
 		return err
 	}
 
-	// Get all containers
-	allEngines, _ := podman.ListEngines()
-	if len(allEngines) == 0 {
-		lib.Info("No containers configured.")
+	// 2. Container selection (show running containers only)
+	engines, _ := podman.ListEngines()
+	runningContainers := filterRunningContainers(client, engines, ctx)
+	if len(runningContainers) == 0 {
+		lib.Info("No running containers. Start a container first.")
 		return nil
 	}
 
-	target := ""
-	if flags.NArg() > 0 {
-		target = flags.Arg(0)
-	}
-
-	// Step 1: Select container
+	target := interactiveSelectContainer(runningContainers, ctx, client, "Select container to backup:")
 	if target == "" {
-		engines, _ := podman.ListEngines()
-		if len(engines) == 0 {
-			lib.Info("No containers configured.")
-			return nil
-		}
-		fmt.Println()
-		fmt.Printf("  %s\n", lib.Bold("Select container:"))
-		fmt.Println()
-		for i, e := range engines {
-			cfg, _ := podman.Load(e)
-			status := lib.Gray("stopped")
-			if cfg != nil {
-				container := podman.NewContainer(client, cfg)
-				running, _ := container.IsRunning(ctx)
-				if running {
-					status = lib.Green("running")
-				}
-			}
-			fmt.Printf("    %d) %-20s  %s (%s)\n", i+1, cfg.ContainerName, string(cfg.Engine), status)
-		}
-		fmt.Println()
-		var input string
-		fmt.Print("  " + lib.Bold("Choice") + " " + lib.Gray("[1-" + fmt.Sprintf("%d", len(engines)) + " or container name]: "))
-		input, _ = reader.ReadString('\n')
-		input = strings.TrimSpace(input)
-
-		var idx int
-		if _, err := fmt.Sscanf(input, "%d", &idx); err == nil && idx >= 1 && idx <= len(engines) {
-			target = engines[idx-1]
-		} else {
-			target = strings.ToLower(input)
-		}
+		return nil // User cancelled
 	}
 
-	containers, _ := resolveContainers(target)
-	if len(containers) == 0 {
-		lib.Warn("No containers found matching " + lib.Bold(target))
+	// 3. Load container config
+	cfg, err := podman.Load(target)
+	if err != nil {
+		lib.Error("Could not load config: " + err.Error())
 		return nil
 	}
-
-	cfg := containers[0]
 	container := podman.NewContainer(client, cfg)
 
-	// Check if running
-	running, _ := container.IsRunning(ctx)
-	if !running {
-		lib.Warn(fmt.Sprintf("Container %s is not running. Start it first.", lib.Bold(cfg.ContainerName)))
-		return nil
-	}
-
-	// Step 2: List databases in the container
-	fmt.Println()
-	fmt.Printf("  %s\n", lib.Bold("Listing databases in "+cfg.ContainerName+"..."))
-
+	// 4. Test connection, prompt for credentials if needed
 	databases, err := container.ListDatabases(ctx)
 	if err != nil {
-		lib.Warn(fmt.Sprintf("Could not list databases: %v", err))
-		databases = []string{"app"} // fallback
+		databases, err = promptCredentialsLoop(container, ctx)
+		if err != nil {
+			lib.Error("Could not connect: " + err.Error())
+			return nil
+		}
 	}
 
 	if len(databases) == 0 {
-		databases = []string{"app"}
+		lib.Warn("No databases found in container.")
+		return nil
 	}
 
-	fmt.Println()
-	fmt.Printf("  %s\n", lib.Bold("Select databases to backup:"))
-	fmt.Println()
-	fmt.Printf("    %s  %s\n", lib.Gray("all"), lib.Gray("Select all databases"))
-	for i, db := range databases {
-		fmt.Printf("    %d) %s\n", i+1, db)
+	// 5. Database selection (TTY interactive)
+	selected := interactiveSelectDatabases(databases)
+	if len(selected) == 0 {
+		lib.Info("No databases selected.")
+		return nil
 	}
+
+	// 6. Ask if user wants to add descriptions
+	descriptions := make(map[string]string)
 	fmt.Println()
-	fmt.Print("  " + lib.Bold("Choice") + " " + lib.Gray("[all, 1,2,3 or 1-3]: "))
+	fmt.Print("  " + lib.Bold("Add descriptions?") + " " + lib.Gray("[y/N]: "))
 	input, _ := reader.ReadString('\n')
-	input = strings.TrimSpace(input)
+	input = strings.ReplaceAll(strings.TrimSpace(input), "\r", "")
+	addDescriptions := strings.ToLower(input) == "y" || strings.ToLower(input) == "yes"
 
-	var selected []string
-	if input == "all" || input == "*" {
-		selected = databases
-	} else {
-		// Parse ranges and individual numbers
-		parts := strings.Split(input, ",")
-		for _, part := range parts {
-			part = strings.TrimSpace(part)
-			if strings.Contains(part, "-") {
-				rangeParts := strings.Split(part, "-")
-				if len(rangeParts) == 2 {
-					var start, end int
-					fmt.Sscanf(rangeParts[0], "%d", &start)
-					fmt.Sscanf(rangeParts[1], "%d", &end)
-					for i := start; i <= end && i <= len(databases); i++ {
-						if i >= 1 && i <= len(databases) {
-							selected = append(selected, databases[i-1])
-						}
-					}
-				}
-			} else {
-				var idx int
-				if _, err := fmt.Sscanf(part, "%d", &idx); err == nil && idx >= 1 && idx <= len(databases) {
-					selected = append(selected, databases[idx-1])
-				}
-			}
+	if addDescriptions {
+		for _, db := range selected {
+			desc := promptDescription(db)
+			descriptions[db] = desc
 		}
 	}
 
-	if len(selected) == 0 {
-		lib.Warn("No databases selected")
+	// 7. Backup summary & confirmation
+	if !confirmBackup(cfg.ContainerName, selected, descriptions) {
 		return nil
 	}
 
-	// Step 3: Confirm and backup
-	fmt.Println()
-	fmt.Printf("  %s\n", lib.Bold("Backup summary:"))
-	fmt.Printf("    Container: %s\n", cfg.ContainerName)
-	fmt.Printf("    Databases: %s\n", strings.Join(selected, ", "))
-	fmt.Println()
-
-	if !interactiveConfirm("Create backup", reader) {
-		return nil
-	}
-
-	fmt.Println()
+	// 8. Execute backups
 	timestamp := time.Now().Format("20060102-150405")
+	backupDir := workspace.Path("podman", "backups")
+	if err := os.MkdirAll(backupDir, 0755); err != nil {
+		lib.Error("Could not create backup directory: " + err.Error())
+		return err
+	}
+
 	successCount := 0
 	for _, db := range selected {
-		container.SetLogger(&verboseLogger{verbose: verbose})
-		outputPath := fmt.Sprintf("%s-%s-%s.tar.gz", cfg.ContainerName, db, timestamp)
-
-		fmt.Printf("  %s Backing up %s...\n", lib.Gray("→"), db)
-
-		backupData, err := container.BackupDatabase(ctx, db)
+		backupData, err := container.BackupDatabaseWithDescription(ctx, db, descriptions[db])
 		if err != nil {
 			lib.Warn(fmt.Sprintf("Backup failed for %s: %v", db, err))
 			continue
 		}
 
-		// Save to file
+		filename := fmt.Sprintf("%s-%s-%s.tar.gz", cfg.ContainerName, db, timestamp)
+		outputPath := filepath.Join(backupDir, filename)
 		if err := os.WriteFile(outputPath, backupData, 0644); err != nil {
 			lib.Warn(fmt.Sprintf("Failed to save %s: %v", outputPath, err))
 			continue
 		}
 
-		fmt.Printf("  %s %s (%d bytes)\n", lib.Green("✓"), outputPath, len(backupData))
+		fmt.Printf("  %s %s (%d bytes)\n", lib.Green("✓"), filename, len(backupData))
 		successCount++
 	}
 
 	fmt.Println()
 	if successCount == len(selected) {
-		lib.Success(fmt.Sprintf("Backed up %d database(s)", successCount))
+		lib.Success(fmt.Sprintf("Backed up %d database(s) to %s", successCount, backupDir))
 	} else {
 		lib.Warn(fmt.Sprintf("Backed up %d/%d database(s)", successCount, len(selected)))
 	}
@@ -1439,24 +1694,187 @@ func runPodmanBackup(args []string) error {
 	return nil
 }
 
+// runningContainer holds a container config with its lookup key
+type runningContainer struct {
+	Key    string
+	Config *podman.DatabaseConfig
+}
+
+// filterRunningContainers returns only running containers with their config keys
+func filterRunningContainers(client *podman.PodmanClient, engines []string, ctx context.Context) []runningContainer {
+	var running []runningContainer
+	for _, e := range engines {
+		cfg, err := podman.Load(e)
+		if err != nil || cfg == nil {
+			continue
+		}
+		container := podman.NewContainer(client, cfg)
+		runningNow, _ := container.IsRunning(ctx)
+		if runningNow {
+			running = append(running, runningContainer{Key: e, Config: cfg})
+		}
+	}
+	return running
+}
+
+// interactiveSelectContainer shows running containers and returns selected container name
+func interactiveSelectContainer(containers []runningContainer, ctx context.Context, client *podman.PodmanClient, title string) string {
+	fmt.Println()
+	fmt.Printf("  %s\n", lib.Bold(title))
+	fmt.Println()
+
+	for i, c := range containers {
+		status := lib.Green("running")
+		fmt.Printf("    %d) %-20s  %s (%s)\n", i+1, c.Config.ContainerName, string(c.Config.Engine), status)
+	}
+	fmt.Println()
+
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Print("  " + lib.Bold("Choice") + " " + lib.Gray("[1-"+fmt.Sprintf("%d", len(containers))+" or container name]: "))
+	input, _ := reader.ReadString('\n')
+	input = strings.TrimSpace(input)
+	input = strings.ReplaceAll(input, "\r", "")
+
+	// Try parsing as number first
+	var idx int
+	if _, err := fmt.Sscanf(input, "%d", &idx); err == nil && idx >= 1 && idx <= len(containers) {
+		return containers[idx-1].Key
+	}
+
+	// Try as container name or engine name
+	inputLower := strings.ToLower(input)
+	for _, c := range containers {
+		if strings.ToLower(c.Config.ContainerName) == inputLower || strings.ToLower(string(c.Config.Engine)) == inputLower {
+			return c.Key
+		}
+	}
+
+	// No match found, return the input as-is for resolveContainers to handle
+	return inputLower
+}
+
+// promptCredentialsLoop asks for user/pass and retries connection
+func promptCredentialsLoop(container *podman.Container, ctx context.Context) ([]string, error) {
+	reader := bufio.NewReader(os.Stdin)
+
+	// Get current config for defaults
+	cfg := container.Config()
+	username := cfg.Username
+	password := cfg.Password
+
+	fmt.Println()
+	fmt.Printf("  %s\n", lib.Bold("Connection failed. Enter credentials:"))
+	fmt.Println()
+	fmt.Printf("  %s %s%s%s\n", lib.Gray("Username"), lib.Gray("["), lib.Gray(username), lib.Gray("]"))
+	fmt.Printf("  %s\n", lib.Gray("Password [********]"))
+	fmt.Println()
+
+	for {
+		fmt.Print("  " + lib.Bold("Username") + " " + lib.Gray("[default: "+username+"]: "))
+		input, _ := reader.ReadString('\n')
+		input = strings.ReplaceAll(strings.TrimSpace(input), "\r", "")
+		if input != "" {
+			username = input
+		}
+
+		fmt.Print("  " + lib.Bold("Password") + " " + lib.Gray("[********]: "))
+		input, _ = reader.ReadString('\n')
+		input = strings.ReplaceAll(strings.TrimSpace(input), "\r", "")
+		if input != "" {
+			password = input
+		}
+
+		// Update container config with new credentials
+		cfg.Username = username
+		cfg.Password = password
+
+		// Retry connection
+		databases, err := container.ListDatabases(ctx)
+		if err == nil {
+			return databases, nil
+		}
+
+		fmt.Println()
+		lib.Warn(fmt.Sprintf("Connection failed: %v", err))
+		fmt.Println()
+		fmt.Print("  " + lib.Bold("Try again? [Y/n]: "))
+		input, _ = reader.ReadString('\n')
+		input = strings.ReplaceAll(strings.TrimSpace(input), "\r", "")
+		if input == "n" || input == "N" {
+			return nil, fmt.Errorf("cancelled")
+		}
+	}
+}
+
+// promptDescription asks for a description for a database backup
+func promptDescription(database string) string {
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Println()
+	fmt.Printf("  %s %s %s\n", lib.Bold("Description for"), lib.Green(`"`+database+`"`), lib.Bold(" (optional, press enter to skip):"))
+	fmt.Print("  > ")
+	input, _ := reader.ReadString('\n')
+	input = strings.ReplaceAll(strings.TrimSpace(input), "\r", "")
+	return input
+}
+
+// confirmBackup shows summary and asks for confirmation
+func confirmBackup(containerName string, databases []string, descriptions map[string]string) bool {
+	reader := bufio.NewReader(os.Stdin)
+
+	fmt.Println()
+	fmt.Printf("  %s\n", lib.Bold("Backup summary:"))
+	fmt.Printf("    Container: %s\n", containerName)
+	fmt.Printf("    Databases: %s\n", strings.Join(databases, ", "))
+
+	// Show descriptions if any
+	hasDescriptions := false
+	for _, db := range databases {
+		if descriptions[db] != "" {
+			hasDescriptions = true
+			break
+		}
+	}
+	if hasDescriptions {
+		fmt.Println()
+		fmt.Printf("    %s\n", lib.Bold("Descriptions:"))
+		for _, db := range databases {
+			if descriptions[db] != "" {
+				fmt.Printf("      %s: %s\n", db, descriptions[db])
+			}
+		}
+	}
+	fmt.Println()
+
+	fmt.Print("  " + lib.Bold("Proceed? [Y/n]: "))
+	input, _ := reader.ReadString('\n')
+	input = strings.ReplaceAll(strings.TrimSpace(input), "\r", "")
+	if input == "n" || input == "N" {
+		return false
+	}
+	return true
+}
+
 // ── chauf podman restore ──────────────────────────────────────────────────────
 
 func runPodmanRestore(args []string) error {
-	flags := flag.NewFlagSet("podman restore", flag.ContinueOnError)
-	flags.SetOutput(os.Stdout)
-	lib.SetFlagUsage(flags, "chauf podman restore — restore a container from backup",
-		"chauf podman restore <container-name> [--input <path>]")
-
-	inputFlag := flags.String("input", "", "Input backup file path (required)")
-	yesFlag := flags.Bool("yes", false, "Skip confirmation if container is running")
-
-	if err := flags.Parse(args); err != nil {
-		return err
+	// Check for help flag
+	for _, arg := range args {
+		if arg == "--help" || arg == "-h" || arg == "help" {
+			fmt.Println()
+			fmt.Printf("  %s\n", lib.Bold("chauf podman restore"))
+			fmt.Println()
+			fmt.Printf("  %s\n", lib.Gray("Interactively restore a database from a backup file."))
+			fmt.Printf("  %s\n", lib.Gray("Shows running containers, lists available backups,"))
+			fmt.Printf("  %s\n", lib.Gray("lets you select the database and backup to restore."))
+			fmt.Println()
+			return nil
+		}
 	}
 
-	verbose := lib.Verbose
+	// 1. Setup (client, ctx, reader)
 	ctx := context.Background()
 	client := podman.NewPodmanClient()
+	reader := bufio.NewReader(os.Stdin)
 
 	if err := client.Available(ctx); err != nil {
 		if err == podman.ErrPodmanNotFound {
@@ -1466,111 +1884,151 @@ func runPodmanRestore(args []string) error {
 		return err
 	}
 
-	target := ""
-	if flags.NArg() > 0 {
-		target = flags.Arg(0)
-	}
-
-	// Interactive mode if no target specified
-	if target == "" {
-		engines, _ := podman.ListEngines()
-		if len(engines) == 0 {
-			lib.Info("No containers configured.")
-			return nil
-		}
-		fmt.Println()
-		fmt.Printf("  %s\n", lib.Bold("Select container to restore:"))
-		fmt.Println()
-		for i, e := range engines {
-			cfg, _ := podman.Load(e)
-			status := lib.Gray("unknown")
-			if cfg != nil {
-				container := podman.NewContainer(client, cfg)
-				running, _ := container.IsRunning(ctx)
-				if running {
-					status = lib.Red("running")
-				} else {
-					status = lib.Gray("stopped")
-				}
-			}
-			fmt.Printf("    %d) %-20s  %s (%s)\n", i+1, cfg.ContainerName, string(cfg.Engine), status)
-		}
-		fmt.Println()
-		fmt.Print("  " + lib.Bold("Choice") + " " + lib.Gray("[1-" + fmt.Sprintf("%d", len(engines)) + " or container name]: "))
-		scanner := bufio.NewScanner(os.Stdin)
-		scanner.Scan()
-		input := strings.TrimSpace(scanner.Text())
-
-		var idx int
-		if _, err := fmt.Sscanf(input, "%d", &idx); err == nil && idx >= 1 && idx <= len(engines) {
-			target = engines[idx-1]
-		} else {
-			target = strings.ToLower(input)
-		}
-	}
-
-	if *inputFlag == "" {
-		lib.Error("Missing --input flag. Usage: chauf podman restore <container> --input <backup-file>")
+	// 2. Container selection (show running containers only)
+	engines, _ := podman.ListEngines()
+	runningContainers := filterRunningContainers(client, engines, ctx)
+	if len(runningContainers) == 0 {
+		lib.Info("No running containers. Start a container first.")
 		return nil
 	}
 
-	// Read backup file
-	backupData, err := os.ReadFile(*inputFlag)
+	target := interactiveSelectContainer(runningContainers, ctx, client, "Select container to restore:")
+	if target == "" {
+		return nil // User cancelled
+	}
+
+	// 3. Load container config
+	cfg, err := podman.Load(target)
+	if err != nil {
+		lib.Error("Could not load config: " + err.Error())
+		return nil
+	}
+	container := podman.NewContainer(client, cfg)
+
+	// 4. Test connection, prompt for credentials if needed
+	_, err = container.ListDatabases(ctx)
+	if err != nil {
+		_, err = promptCredentialsLoop(container, ctx)
+		if err != nil {
+			lib.Error("Could not connect: " + err.Error())
+			return nil
+		}
+	}
+
+	// 5. List available backups for this container
+	backups, err := listBackupsForContainer(cfg.ContainerName)
+	if err != nil {
+		lib.Warn("Could not list backups: " + err.Error())
+		return nil
+	}
+
+	if len(backups) == 0 {
+		lib.Info("No backup files found for " + lib.Bold(cfg.ContainerName))
+		return nil
+	}
+
+	// Group backups by database
+	backupsByDB := groupBackupsByDatabase(backups)
+
+	// Show database and backup count
+	fmt.Println()
+	fmt.Printf("  %s\n", lib.Bold("Available backups for "+cfg.ContainerName+":"))
+	fmt.Println()
+	for db, files := range backupsByDB {
+		fmt.Printf("    %-20s  %d backup(s)\n", lib.Green(db), len(files))
+	}
+	fmt.Println()
+
+	// 6. Select database to restore
+	dbNames := make([]string, 0, len(backupsByDB))
+	for db := range backupsByDB {
+		dbNames = append(dbNames, db)
+	}
+	sort.Strings(dbNames)
+
+	if len(dbNames) == 1 {
+		fmt.Printf("  %s %s\n", lib.Gray("Only one database, selecting:"), lib.Green(dbNames[0]))
+	} else {
+		fmt.Printf("  %s\n", lib.Bold("Select database to restore:"))
+		for i, db := range dbNames {
+			fmt.Printf("    %d) %s\n", i+1, db)
+		}
+		fmt.Println()
+		fmt.Print("  " + lib.Bold("Choice") + " " + lib.Gray("[1-"+fmt.Sprintf("%d", len(dbNames))+"]: "))
+		input, _ := reader.ReadString('\n')
+		input = strings.ReplaceAll(strings.TrimSpace(input), "\r", "")
+
+		var idx int
+		if _, err := fmt.Sscanf(input, "%d", &idx); err != nil || idx < 1 || idx > len(dbNames) {
+			if input != "" {
+				lib.Warn("Invalid selection, using first option.")
+			}
+			idx = 1
+		}
+		dbNames = []string{dbNames[idx-1]}
+	}
+
+	selectedDB := dbNames[0]
+	availableBackups := backupsByDB[selectedDB]
+
+	// 7. Select which backup to restore
+	var selected BackupFile
+	if len(availableBackups) == 1 {
+		selected = availableBackups[0]
+		fmt.Printf("  %s %s\n", lib.Gray("Only one backup, using:"), lib.Green(selected.Filename()))
+	} else {
+		fmt.Println()
+		fmt.Printf("  %s %s\n", lib.Bold("Select backup to restore for"), lib.Green(selectedDB)+":")
+		fmt.Println()
+		fmt.Printf("  %s  %s  %s\n", lib.Gray(""), lib.Gray("Timestamp"), lib.Gray("Description"))
+		fmt.Printf("  %s  %s  %s\n", lib.Gray("---"), lib.Gray("---------"), lib.Gray("-----------"))
+		for i, b := range availableBackups {
+			desc := lib.Gray("-")
+			if b.Description != "" {
+				desc = b.Description
+			}
+			fmt.Printf("  %d) %s  %s\n", i+1, b.FormattedTime(), desc)
+		}
+		fmt.Println()
+		fmt.Print("  " + lib.Bold("Choice") + " " + lib.Gray("[1-"+fmt.Sprintf("%d", len(availableBackups))+"]: "))
+		input, _ := reader.ReadString('\n')
+		input = strings.ReplaceAll(strings.TrimSpace(input), "\r", "")
+
+		var idx int
+		if _, err := fmt.Sscanf(input, "%d", &idx); err != nil || idx < 1 || idx > len(availableBackups) {
+			if input != "" {
+				lib.Warn("Invalid selection, using first option.")
+			}
+			idx = 1
+		}
+		selected = availableBackups[idx-1]
+	}
+
+	// 8. Confirm restore
+	fmt.Println()
+	fmt.Printf("  %s\n", lib.Bold("Restore summary:"))
+	fmt.Printf("    Container:  %s\n", cfg.ContainerName)
+	fmt.Printf("    Database:  %s\n", selectedDB)
+	fmt.Printf("    Backup:    %s (%s)\n", selected.Filename(), selected.FormattedSize())
+	fmt.Printf("    Created:   %s\n", selected.FormattedTime())
+	if selected.Description != "" {
+		fmt.Printf("    Description: %s\n", selected.Description)
+	}
+	fmt.Println()
+
+	fmt.Print("  " + lib.Bold("Proceed? [y/N]: "))
+	input, _ := reader.ReadString('\n')
+	input = strings.ReplaceAll(strings.TrimSpace(input), "\r", "")
+	if input != "y" && input != "Y" && input != "yes" {
+		lib.Info("Cancelled.")
+		return nil
+	}
+
+	// 9. Read and restore backup
+	backupData, err := os.ReadFile(selected.Path)
 	if err != nil {
 		return fmt.Errorf("read backup file: %w", err)
 	}
-
-	containers, err := resolveContainers(target)
-	if err != nil || len(containers) == 0 {
-		lib.Warn("No containers found matching " + lib.Bold(target))
-		return nil
-	}
-
-	if len(containers) > 1 {
-		lib.Warn("Restore requires exactly one container. Use container name.")
-		return nil
-	}
-
-	cfg := containers[0]
-	container := podman.NewContainer(client, cfg)
-	container.SetLogger(&verboseLogger{verbose: verbose})
-
-	// Check if running - need to stop for restore
-	running, _ := container.IsRunning(ctx)
-	if running && !*yesFlag {
-		fmt.Println()
-		lib.Info(fmt.Sprintf("Container %s is running. Stop it first?", lib.Bold(cfg.ContainerName)))
-		if !interactiveConfirm("Stop container", nil) {
-			return nil
-		}
-		if err := container.Stop(ctx, 10*time.Second); err != nil {
-			return fmt.Errorf("stop container: %w", err)
-		}
-	}
-
-	// Ensure container exists and is started
-	exists, _ := client.ContainerExists(ctx, cfg.ContainerName)
-	if !exists {
-		lib.Warn(fmt.Sprintf("Container %s does not exist. Create it first with 'chauf podman create'.", lib.Bold(cfg.ContainerName)))
-		return nil
-	}
-
-	if !running {
-		fmt.Println()
-		fmt.Printf("  %s\n", lib.Bold("Starting container for restore..."))
-		if err := container.Start(ctx); err != nil {
-			return fmt.Errorf("start container: %w", err)
-		}
-		// Wait for database to be ready
-		time.Sleep(2 * time.Second)
-	}
-
-	fmt.Println()
-	fmt.Printf("  %s\n", lib.Bold("Restoring container:"))
-	fmt.Printf("    Container:  %s\n", cfg.ContainerName)
-	fmt.Printf("    Engine:     %s\n", cfg.Engine)
-	fmt.Printf("    Backup:     %s\n", *inputFlag)
-	fmt.Println()
 
 	if err := container.Restore(ctx, backupData); err != nil {
 		lib.Error("Restore failed: " + err.Error())
@@ -1578,7 +2036,7 @@ func runPodmanRestore(args []string) error {
 	}
 
 	fmt.Println()
-	lib.Success(fmt.Sprintf("Container %s restored successfully", lib.Bold(cfg.ContainerName)))
+	lib.Success(fmt.Sprintf("Database %s restored successfully", lib.Bold(selectedDB)))
 
 	// Show DSN
 	fmt.Println()
@@ -1587,4 +2045,95 @@ func runPodmanRestore(args []string) error {
 	fmt.Println()
 
 	return nil
+}
+
+// BackupFile represents a backup file with its metadata
+type BackupFile struct {
+	Path        string
+	Meta        podman.BackupMeta
+	Description string
+	Size        int64
+}
+
+func (b BackupFile) Filename() string {
+	parts := strings.Split(b.Path, "/")
+	return parts[len(parts)-1]
+}
+
+func (b BackupFile) FormattedTime() string {
+	return b.Meta.Timestamp.Format("2006-01-02 15:04:05")
+}
+
+func (b BackupFile) FormattedSize() string {
+	const unit = 1024
+	if b.Size < unit {
+		return fmt.Sprintf("%d B", b.Size)
+	}
+	if b.Size < unit*unit {
+		return fmt.Sprintf("%.1f KB", float64(b.Size)/unit)
+	}
+	if b.Size < unit*unit*unit {
+		return fmt.Sprintf("%.1f MB", float64(b.Size)/(unit*unit))
+	}
+	return fmt.Sprintf("%.1f GB", float64(b.Size)/(unit*unit*unit))
+}
+
+// listBackupsForContainer finds all backup files for a given container
+func listBackupsForContainer(containerName string) ([]BackupFile, error) {
+	var backups []BackupFile
+
+	backupDir := workspace.Path("podman", "backups")
+	entries, err := os.ReadDir(backupDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	prefix := containerName + "-"
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasPrefix(entry.Name(), prefix) || !strings.HasSuffix(entry.Name(), ".tar.gz") {
+			continue
+		}
+
+		path := filepath.Join(backupDir, entry.Name())
+		meta, err := podman.ReadBackupMeta(path)
+		if err != nil {
+			continue
+		}
+
+		info, _ := os.Stat(path)
+		size := int64(0)
+		if info != nil {
+			size = info.Size()
+		}
+
+		backups = append(backups, BackupFile{
+			Path:        path,
+			Meta:        meta,
+			Description: meta.Description,
+			Size:        size,
+		})
+	}
+
+	return backups, nil
+}
+
+// groupBackupsByDatabase groups backup files by database name
+func groupBackupsByDatabase(backups []BackupFile) map[string][]BackupFile {
+	result := make(map[string][]BackupFile)
+	for _, b := range backups {
+		db := b.Meta.Database
+		result[db] = append(result[db], b)
+	}
+
+	// Sort each group by timestamp (newest first)
+	for db := range result {
+		sort.Slice(result[db], func(i, j int) bool {
+			return result[db][i].Meta.Timestamp.After(result[db][j].Meta.Timestamp)
+		})
+	}
+
+	return result
 }

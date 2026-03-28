@@ -125,6 +125,22 @@ See [index.md](./index.md) for the complete documentation index.
 - Checksum verification for all cached downloads
 - `chauf clean cache` for cache management
 
+### 13. Podman Database Containers (V2 New)
+
+- Integrated database container management via `chauf podman`
+- Supported engines: MySQL 5.7/8, PostgreSQL, MariaDB, MongoDB, Redis
+- Interactive creation with persistent volume configuration
+- Container lifecycle management (start/stop/remove)
+- Database CLI access via `chauf podman console`
+
+### 14. Database Backup & Restore (V2 New)
+
+- Interactive backup with TUI database selection (bubbletea)
+- Per-backup metadata with optional descriptions
+- Backups stored in `~/.chauffeur/podman/backups/`
+- Multiple backup versions per database with restore selection
+- Backup metadata includes: timestamp, description, size, engine
+
 ---
 
 ## Design Philosophy

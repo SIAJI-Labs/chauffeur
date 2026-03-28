@@ -71,16 +71,16 @@ var engineDefaults = map[EngineType]struct {
 
 // DatabaseConfig describes a managed database container.
 type DatabaseConfig struct {
-	Name          string      `json:"name"`
-	Engine        EngineType  `json:"engine"`
-	Image         string      `json:"image"`
-	ContainerName string      `json:"container_name"`
-	Username      string      `json:"username"`
-	Password      string      `json:"password"`
-	Port          int         `json:"port"`
-	VolumePath    string      `json:"volume_path"`
-	Env           []EnvVar    `json:"env"`
-	CreatedAt     string      `json:"created_at"`
+	Name          string     `json:"name"`
+	Engine        EngineType `json:"engine"`
+	Image         string     `json:"image"`
+	ContainerName string     `json:"container_name"`
+	Username      string     `json:"username"`
+	Password      string     `json:"password"`
+	Port          int        `json:"port"`
+	VolumePath    string     `json:"volume_path"`
+	Env           []EnvVar   `json:"env"`
+	CreatedAt     string     `json:"created_at"`
 }
 
 // EnvVar represents a single environment variable.
@@ -152,6 +152,18 @@ func Save(cfg *DatabaseConfig) error {
 	}
 	path := ConfigPath(cfg.ContainerName)
 	return os.WriteFile(path, []byte(marshalConfig(cfg)), 0644)
+}
+
+// Delete removes the config file for a given engine/container name.
+func Delete(name string) error {
+	path := ConfigPath(name)
+	if err := os.Remove(path); err != nil {
+		if os.IsNotExist(err) {
+			return nil // Already gone
+		}
+		return err
+	}
+	return nil
 }
 
 // ListEngines returns all container names that have config files.
