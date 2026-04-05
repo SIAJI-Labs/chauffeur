@@ -161,7 +161,7 @@ func (s *Server) handleGetContainer(w http.ResponseWriter, r *http.Request) {
 		Config: ContainerConfigResponse{
 			DatabaseUser:     cfg.Username,
 			DatabaseName:     "app",
-			DatabasePassword: "******",
+			DatabasePassword: cfg.Password,
 		},
 	}
 

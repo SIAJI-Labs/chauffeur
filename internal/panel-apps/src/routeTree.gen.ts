@@ -10,17 +10,14 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as DocsRouteImport } from './routes/docs'
-import { Route as ContainersRouteImport } from './routes/containers'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ContainersBackupRouteImport } from './routes/containers.backup'
+import { Route as ContainersIndexRouteImport } from './routes/containers._index'
+import { Route as ContainersNameRouteImport } from './routes/containers.$name'
 
 const DocsRoute = DocsRouteImport.update({
   id: '/docs',
   path: '/docs',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ContainersRoute = ContainersRouteImport.update({
-  id: '/containers',
-  path: '/containers',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -28,35 +25,69 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ContainersBackupRoute = ContainersBackupRouteImport.update({
+  id: '/containers/backup',
+  path: '/containers/backup',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ContainersIndexRoute = ContainersIndexRouteImport.update({
+  id: '/containers/_index',
+  path: '/containers',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ContainersNameRoute = ContainersNameRouteImport.update({
+  id: '/containers/$name',
+  path: '/containers/$name',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/containers': typeof ContainersRoute
   '/docs': typeof DocsRoute
+  '/containers/$name': typeof ContainersNameRoute
+  '/containers': typeof ContainersIndexRoute
+  '/containers/backup': typeof ContainersBackupRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/containers': typeof ContainersRoute
   '/docs': typeof DocsRoute
+  '/containers/$name': typeof ContainersNameRoute
+  '/containers': typeof ContainersIndexRoute
+  '/containers/backup': typeof ContainersBackupRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/containers': typeof ContainersRoute
   '/docs': typeof DocsRoute
+  '/containers/$name': typeof ContainersNameRoute
+  '/containers/_index': typeof ContainersIndexRoute
+  '/containers/backup': typeof ContainersBackupRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/containers' | '/docs'
+  fullPaths:
+    | '/'
+    | '/docs'
+    | '/containers/$name'
+    | '/containers'
+    | '/containers/backup'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/containers' | '/docs'
-  id: '__root__' | '/' | '/containers' | '/docs'
+  to: '/' | '/docs' | '/containers/$name' | '/containers' | '/containers/backup'
+  id:
+    | '__root__'
+    | '/'
+    | '/docs'
+    | '/containers/$name'
+    | '/containers/_index'
+    | '/containers/backup'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  ContainersRoute: typeof ContainersRoute
   DocsRoute: typeof DocsRoute
+  ContainersNameRoute: typeof ContainersNameRoute
+  ContainersIndexRoute: typeof ContainersIndexRoute
+  ContainersBackupRoute: typeof ContainersBackupRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -68,13 +99,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DocsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/containers': {
-      id: '/containers'
-      path: '/containers'
-      fullPath: '/containers'
-      preLoaderRoute: typeof ContainersRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/': {
       id: '/'
       path: '/'
@@ -82,13 +106,36 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/containers/backup': {
+      id: '/containers/backup'
+      path: '/containers/backup'
+      fullPath: '/containers/backup'
+      preLoaderRoute: typeof ContainersBackupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/containers/_index': {
+      id: '/containers/_index'
+      path: '/containers'
+      fullPath: '/containers'
+      preLoaderRoute: typeof ContainersIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/containers/$name': {
+      id: '/containers/$name'
+      path: '/containers/$name'
+      fullPath: '/containers/$name'
+      preLoaderRoute: typeof ContainersNameRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  ContainersRoute: ContainersRoute,
   DocsRoute: DocsRoute,
+  ContainersNameRoute: ContainersNameRoute,
+  ContainersIndexRoute: ContainersIndexRoute,
+  ContainersBackupRoute: ContainersBackupRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

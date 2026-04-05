@@ -132,7 +132,7 @@ func runDevServer(port int) error {
 
 	lib.Success("Chauffeur Panel dev mode")
 	lib.Info(fmt.Sprintf("  Go API server: http://localhost:%d", port))
-	lib.Info("  Frontend: http://localhost:5173")
+	lib.Info("  Frontend: http://localhost:5173 (API proxy: /api -> localhost:3000)")
 	fmt.Println()
 	fmt.Printf("  %s\n", lib.Gray("Press Ctrl+C to stop both servers"))
 
