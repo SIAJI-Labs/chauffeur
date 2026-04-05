@@ -25,3 +25,8 @@ Thumbs.db
 # Chauffeur workspace (never commit the actual workspace)
 ~/.chauffeur/
 node_modules/
+
+# Panel apps
+internal/panel-apps/.output/
+internal/panel-apps/node_modules/
+internal/panel/static/assets/

@@ -1,5 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router"
-import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar"
+import {
+  SidebarInset,
+  SidebarProvider,
+  SidebarTrigger,
+} from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/app-sidebar"
 import { Separator } from "@/components/ui/separator"
 import {
@@ -10,12 +14,29 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
+import {
+  Server,
+  Play,
+  HardDrive,
+  Globe,
+  Activity,
+  Clock,
+  Database,
+  Shield,
+} from "lucide-react"
 
 export const Route = createFileRoute("/")({
-  component: App,
+  component: DashboardPage,
 })
 
-function App() {
+function DashboardPage() {
   return (
     <SidebarProvider>
       <AppSidebar />
@@ -26,9 +47,7 @@ function App() {
           <Breadcrumb>
             <BreadcrumbList>
               <BreadcrumbItem className="hidden md:block">
-                <BreadcrumbLink href="#">
-                  Build Your Application
-                </BreadcrumbLink>
+                <BreadcrumbLink href="#">Dashboard</BreadcrumbLink>
               </BreadcrumbItem>
               <BreadcrumbSeparator className="hidden md:block">
                 <svg
@@ -47,17 +66,110 @@ function App() {
                 </svg>
               </BreadcrumbSeparator>
               <BreadcrumbItem>
-                <BreadcrumbPage className="font-normal text-foreground">Data Fetching</BreadcrumbPage>
+                <BreadcrumbPage className="font-normal text-foreground">Overview</BreadcrumbPage>
               </BreadcrumbItem>
             </BreadcrumbList>
           </Breadcrumb>
         </header>
         <div className="flex flex-1 flex-col gap-4 p-4">
-          <div className="flex min-h-[350px] flex-1 flex-col items-center justify-center rounded-xl border border-dashed p-8 text-center">
-            <h1 className="text-lg font-medium">Project ready!</h1>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Sidebar-08 layout loaded.
-            </p>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Total Containers</CardTitle>
+                <Server className="size-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">0</div>
+                <p className="text-xs text-muted-foreground">
+                  Database containers managed
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Running</CardTitle>
+                <Play className="size-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">0</div>
+                <p className="text-xs text-muted-foreground">
+                  Containers currently running
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Backups</CardTitle>
+                <HardDrive className="size-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">0</div>
+                <p className="text-xs text-muted-foreground">
+                  Total backups available
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Chauf Sites</CardTitle>
+                <Globe className="size-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">0</div>
+                <p className="text-xs text-muted-foreground">
+                  Sites configured
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <Card className="lg:col-span-2">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Activity className="size-4" />
+                  Recent Activity
+                </CardTitle>
+                <CardDescription>Latest actions and events</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center justify-center h-32 text-muted-foreground text-sm">
+                  No recent activity
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Clock className="size-4" />
+                  System Status
+                </CardTitle>
+                <CardDescription>Current system health</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Database className="size-4 text-muted-foreground" />
+                    <span className="text-sm">Podman Service</span>
+                  </div>
+                  <span className="text-xs text-muted-foreground">Unknown</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Globe className="size-4 text-muted-foreground" />
+                    <span className="text-sm">Chauf Service</span>
+                  </div>
+                  <span className="text-xs text-muted-foreground">Unknown</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Shield className="size-4 text-muted-foreground" />
+                    <span className="text-sm">SSL Certificates</span>
+                  </div>
+                  <span className="text-xs text-muted-foreground">Unknown</span>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         </div>
       </SidebarInset>

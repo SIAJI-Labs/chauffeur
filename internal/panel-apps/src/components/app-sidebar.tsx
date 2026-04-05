@@ -1,7 +1,23 @@
 import * as React from "react"
 
+import {
+  BookOpen,
+  Container,
+  FileCode,
+  Globe,
+  HardDrive,
+  Home,
+  LayoutDashboard,
+  List,
+  Network,
+  RotateCcw,
+  ScrollText,
+  Server,
+  Settings,
+  Settings2,
+  Shield,
+} from "lucide-react"
 import { NavMain } from "@/components/nav-main"
-import { NavProjects } from "@/components/nav-projects"
 import { NavSecondary } from "@/components/nav-secondary"
 import { NavUser } from "@/components/nav-user"
 import {
@@ -13,81 +29,70 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import { HugeiconsIcon } from "@hugeicons/react"
-import { ComputerTerminalIcon, RoboticIcon, BookOpen02Icon, Settings05Icon, ChartRingIcon, SentIcon, CropIcon, PieChartIcon, MapsIcon, CommandIcon } from "@hugeicons/core-free-icons"
 
 const data = {
   user: {
-    name: "shadcn",
-    email: "m@example.com",
-    avatar: "/avatars/shadcn.jpg",
+    name: "Chauffeur",
+    email: "admin@chauffeur.dev",
+    avatar: "",
   },
   navMain: [
     {
-      title: "Playground",
+      title: "Podman Service",
       url: "#",
       icon: (
-        <HugeiconsIcon icon={ComputerTerminalIcon} strokeWidth={2} />
+        <Server className="size-4" />
       ),
       isActive: true,
       items: [
         {
-          title: "History",
-          url: "#",
+          title: "Container List",
+          url: "/containers",
+          icon: <Container className="size-4" />,
         },
         {
-          title: "Starred",
+          title: "Backup",
           url: "#",
+          icon: <HardDrive className="size-4" />,
         },
         {
-          title: "Settings",
+          title: "Restore",
           url: "#",
-        },
-      ],
-    },
-    {
-      title: "Models",
-      url: "#",
-      icon: (
-        <HugeiconsIcon icon={RoboticIcon} strokeWidth={2} />
-      ),
-      items: [
-        {
-          title: "Genesis",
-          url: "#",
+          icon: <RotateCcw className="size-4" />,
         },
         {
-          title: "Explorer",
+          title: "Logs",
           url: "#",
-        },
-        {
-          title: "Quantum",
-          url: "#",
+          icon: <ScrollText className="size-4" />,
         },
       ],
     },
     {
-      title: "Documentation",
+      title: "Chauf Service",
       url: "#",
       icon: (
-        <HugeiconsIcon icon={BookOpen02Icon} strokeWidth={2} />
+        <Globe className="size-4" />
       ),
       items: [
         {
-          title: "Introduction",
+          title: "Site List",
           url: "#",
+          icon: <List className="size-4" />,
         },
         {
-          title: "Get Started",
+          title: "Config",
           url: "#",
+          icon: <FileCode className="size-4" />,
         },
         {
-          title: "Tutorials",
+          title: "DNS",
           url: "#",
+          icon: <Network className="size-4" />,
         },
         {
-          title: "Changelog",
+          title: "SSL",
           url: "#",
+          icon: <Shield className="size-4" />,
         },
       ],
     },
@@ -95,64 +100,33 @@ const data = {
       title: "Settings",
       url: "#",
       icon: (
-        <HugeiconsIcon icon={Settings05Icon} strokeWidth={2} />
+        <Settings className="size-4" />
       ),
       items: [
         {
           title: "General",
           url: "#",
+          icon: <Settings2 className="size-4" />,
         },
         {
-          title: "Team",
+          title: "Appearance",
           url: "#",
+          icon: <LayoutDashboard className="size-4" />,
         },
         {
-          title: "Billing",
+          title: "About",
           url: "#",
-        },
-        {
-          title: "Limits",
-          url: "#",
+          icon: <BookOpen className="size-4" />,
         },
       ],
     },
   ],
   navSecondary: [
     {
-      title: "Support",
-      url: "#",
+      title: "Documentation",
+      url: "/docs",
       icon: (
-        <HugeiconsIcon icon={ChartRingIcon} strokeWidth={2} />
-      ),
-    },
-    {
-      title: "Feedback",
-      url: "#",
-      icon: (
-        <HugeiconsIcon icon={SentIcon} strokeWidth={2} />
-      ),
-    },
-  ],
-  projects: [
-    {
-      name: "Design Engineering",
-      url: "#",
-      icon: (
-        <HugeiconsIcon icon={CropIcon} strokeWidth={2} />
-      ),
-    },
-    {
-      name: "Sales & Marketing",
-      url: "#",
-      icon: (
-        <HugeiconsIcon icon={PieChartIcon} strokeWidth={2} />
-      ),
-    },
-    {
-      name: "Travel",
-      url: "#",
-      icon: (
-        <HugeiconsIcon icon={MapsIcon} strokeWidth={2} />
+        <BookOpen className="size-4" />
       ),
     },
   ],
@@ -163,13 +137,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton size="lg" render={<a href="#" />}>
+            <SidebarMenuButton size="lg" render={<a href="/" />}>
               <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-                <HugeiconsIcon icon={CommandIcon} strokeWidth={2} className="size-4" />
+                <Home className="size-4" />
               </div>
-              <div className="grid flex-1 text-start text-sm leading-tight">
-                <span className="truncate font-medium">Acme Inc</span>
-                <span className="truncate text-xs">Enterprise</span>
+              <div className="grid flex-1 text-left text-sm leading-tight">
+                <span className="truncate font-medium">Dashboard</span>
+                <span className="truncate text-xs">Overview</span>
               </div>
             </SidebarMenuButton>
           </SidebarMenuItem>
@@ -177,7 +151,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       </SidebarHeader>
       <SidebarContent>
         <NavMain items={data.navMain} />
-        <NavProjects projects={data.projects} />
         <NavSecondary items={data.navSecondary} className="mt-auto" />
       </SidebarContent>
       <SidebarFooter>
