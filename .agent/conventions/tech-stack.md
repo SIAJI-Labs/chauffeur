@@ -224,9 +224,77 @@ goreleaser build --single-target --snapshot  # Local snapshot
 
 ---
 
+## Admin Panel (Web UI)
+
+### Architecture
+
+The admin panel is a React SPA served by the Go binary via `chauf serve`.
+
+```
+chauffeur-v2/
+├── internal/
+│   ├── panel/              # Go backend
+│   │   ├── server.go       # HTTP server, routes, API handlers
+│   │   ├── types.go        # Request/response types
+│   │   ├── embed.go        # Static file embedding
+│   │   └── static/         # Built frontend assets
+│   └── panel-apps/         # React frontend source
+│       └── src/
+│           ├── components/ui/  # shadcn components
+│           ├── lib/             # Utils, theme
+│           ├── App.tsx          # Dashboard
+│           └── main.tsx         # Entry point
+```
+
+### Running the Panel
+
+```bash
+chauf serve              # Start in background (default)
+chauf serve -f          # Run in foreground
+chauf serve --stop      # Stop running server
+chauf serve --port 8080 # Custom port (default: 3000)
+chauf serve --host app.test # Custom hostname (default: panel.test)
+```
+
+### Frontend Tech Stack
+
+| Layer | Technology | Purpose |
+|-------|------------|---------|
+| Framework | React 19 + TypeScript | UI components |
+| Routing | TanStack Router | Type-safe routing |
+| Data | TanStack Query | Server state, caching |
+| Styling | Tailwind CSS v4 | Utility-first CSS |
+| Components | shadcn/ui (manual) | Button, Card, Skeleton |
+| Theme | CSS Variables + React Context | Dark/light mode |
+
+### Backend API
+
+REST API at `/api/*`:
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/health` | Health check |
+| GET | `/api/containers` | List containers |
+| GET | `/api/containers/:name` | Container details |
+| POST | `/api/containers/:name/start` | Start container |
+| POST | `/api/containers/:name/stop` | Stop container |
+| GET | `/api/containers/:name/logs` | SSE log stream |
+| GET | `/api/backups` | List backups |
+
+### Building Frontend
+
+```bash
+cd internal/panel-apps
+npm install
+npm run build
+# Output copied to internal/panel/static/
+```
+
+---
+
 ## Versioning Policy
 
-Chauffeur follows **Semantic Versioning 2.0.0**:
+Chauffeur V2 follows **Semantic Versioning 2.0.0**:
 - **MAJOR**: Breaking CLI changes or workspace format changes
 - **MINOR**: New commands or features (backward compatible)
 - **PATCH**: Bug fixes

@@ -219,6 +219,143 @@ chauffeur-v2/
 
 ---
 
+## Phase 7: Admin Panel (Web UI)
+
+### Overview
+
+A web-based admin panel served via `chauf serve`, providing a GUI alternative to the CLI for users unfamiliar with terminal interfaces. Single binary deployment — frontend embedded in Go binary.
+
+### Goals
+
+1. **Accessible**: Web UI for users who prefer GUI over CLI
+2. **Real-time**: WebSocket streaming for logs and status updates
+3. **Embedded**: Single `chauf serve` command, no separate frontend process
+4. **Minimal**: Start with podman container management (start/stop/status/logs/backup/restore)
+
+### Architecture
+
+```
+chauffeur-v2/
+├── internal/
+│   ├── panel/                  # Admin panel Go backend
+│   │   ├── server.go           # HTTP server + WebSocket
+│   │   ├── api/                # REST API handlers
+│   │   │   ├── containers.go   # Container CRUD
+│   │   │   ├── backups.go      # Backup management
+│   │   │   └── health.go        # Health check endpoint
+│   │   ├── ws/                 # WebSocket handlers
+│   │   │   └── logs.go         # Log streaming
+│   │   └── embed/              # Embedded static files
+│   │       └── static.go       # go:embed directives
+│   └── panel-apps/             # React frontend (Vite + React)
+│       ├── src/
+│       │   ├── components/     # React components
+│       │   ├── hooks/           # Custom hooks
+│       │   ├── pages/           # Route pages
+│       │   ├── api/             # API client
+│       │   │   └── client.ts    # Fetch + WebSocket client
+│       │   ├── stores/          # TanStack Query setup
+│       │   └── App.tsx
+│       ├── index.html
+│       └── vite.config.ts
+├── cmd/chauf/main.go           # Add `serve` command
+```
+
+### Tech Stack
+
+| Layer | Technology | Reason |
+|-------|------------|--------|
+| Backend | Go net/http | Standard library, embed support |
+| Real-time | WebSocket | Bidirectional, native Go support |
+| Frontend | Vite + React + TypeScript | Fast DX |
+| Routing | TanStack Router | Type-safe routing |
+| Data | TanStack Query | Data fetching/caching |
+| UI | shadcn/ui + Tailwind v4 | Accessible components |
+| Icons | Inline SVG | Lightweight, no extra deps |
+
+### API Design
+
+#### REST Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/health` | Server health check |
+| GET | `/api/containers` | List all containers |
+| GET | `/api/containers/:name` | Get container details |
+| POST | `/api/containers/:name/start` | Start container |
+| POST | `/api/containers/:name/stop` | Stop container |
+| GET | `/api/containers/:name/logs` | Stream logs (SSE) |
+| GET | `/api/backups` | List all backups |
+| POST | `/api/backups` | Create backup |
+| POST | `/api/backups/:name/restore` | Restore from backup |
+
+#### WebSocket Messages
+
+```go
+// Client → Server
+type WSMessage struct {
+    Type    string          `json:"type"`    // "subscribe" | "unsubscribe"
+    Target  string          `json:"target"`  // "container:logs:name"
+}
+
+// Server → Client
+type WSMessage struct {
+    Type    string          `json:"type"`    // "log" | "status" | "error"
+    Target  string          `json:"target"`
+    Data    json.RawMessage `json:"data"`
+}
+```
+
+### Pages / Routes
+
+| Path | Component | Description |
+|------|-----------|-------------|
+| `/` | Dashboard | Overview: container count, status, recent backups |
+| `/containers` | ContainerList | All containers with start/stop actions |
+| `/containers/:name` | ContainerDetail | Single container: status, logs, actions |
+| `/containers/:name/logs` | ContainerLogs | Real-time log streaming |
+| `/containers/:name/backup` | ContainerBackup | Backup/restore for container |
+| `/backups` | BackupList | All backups across containers |
+
+### Implementation Steps
+
+1. [ ] Create `internal/panel/` package structure
+2. [ ] Implement basic HTTP server with `chauf serve` command
+3. [ ] Add REST API handlers for containers
+4. [ ] Implement WebSocket server for log streaming
+5. [ ] Create React frontend scaffold (Vite + React + TypeScript)
+6. [ ] Set up TanStack Query + Router
+7. [ ] Build Dashboard page
+8. [ ] Build Container List page with start/stop
+9. [ ] Build Container Detail page with logs
+10. [ ] Build Backup/Restore page
+11. [ ] Embed static files in Go binary
+12. [ ] Add `chauf serve` to CLI commands
+
+### Key Decisions
+
+1. **SSE vs WebSocket for logs**: Using SSE for simplicity (Go `http.Flusher`), WebSocket only if bidirectional needed
+2. **No auth initially**: Logging only; auth can be added later via middleware
+3. **Embedded frontend**: Frontend builds to `internal/panel/embed/static/`, embedded via `go:embed`
+4. **API consistency**: Reuse existing podman package types where possible
+
+### Dependencies
+
+```
+Frontend:
+- react@^19
+- react-dom@^19
+- @tanstack/react-router@^1
+- @tanstack/react-query@^5
+- tailwindcss@^4
+- shadcn/ui (manual components: Button, Card, Skeleton)
+
+Go:
+- No new dependencies (standard library + existing pods package)
+```
+
+---
+
 ## Implementation Checklist Summary
 
 ### Phase 0: Bootstrap ✅
@@ -270,6 +407,24 @@ chauffeur-v2/
 
 ### Phase 6: Docs Site
 - [ ] Documentation site update
+
+### Phase 7: Admin Panel ✅ IN PROGRESS
+- [x] Create `internal/panel/` package structure
+- [x] Implement `chauf serve` HTTP server
+- [x] Add REST API handlers for containers
+- [x] Implement SSE log streaming
+- [x] Create React frontend scaffold (Vite + React + TypeScript)
+- [x] Set up TanStack Query + Router
+- [x] Build Dashboard page with stats cards
+- [x] Build Container List page with start/stop
+- [x] Build loading spinner on actions
+- [x] Add dark/light theme toggle
+- [ ] Build Container Detail + Logs pages
+- [ ] Build Backup/Restore page
+- [x] Embed static files in Go binary
+- [x] Wire up `chauf serve` command
+- [x] Add background daemon mode (default, `-f` for foreground)
+- [x] Add PID file management (`--stop` flag)
 
 ---
 

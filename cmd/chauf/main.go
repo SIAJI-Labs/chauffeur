@@ -125,6 +125,11 @@ func main() {
 	case "podman":
 		err = commands.RunPodman(args[1:])
 
+	// ── Admin Panel ──────────────────────────────────────────────────────────
+
+	case "serve":
+		err = commands.RunServe(args[1:])
+
 	default:
 		lib.Error(fmt.Sprintf("unknown command %q", args[0]))
 		fmt.Println()

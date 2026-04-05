@@ -13,6 +13,7 @@ This document indexes all feature specifications. Each spec file contains detail
 | [specs/multi-domain.md](./specs/multi-domain.md) | Multiple domains and alias support |
 | [specs/service-orchestration.md](./specs/service-orchestration.md) | Service lifecycle management |
 | [specs/podman.md](./specs/podman.md) | Podman database containers and backup/restore |
+| [specs/admin-panel.md](./specs/admin-panel.md) | Web-based admin panel for container management |
 | [specs/cli-commands.md](./specs/cli-commands.md) | Complete CLI command reference |
 | [specs/future-plans.md](./specs/future-plans.md) | Planned V2 features |
 
@@ -47,6 +48,8 @@ This document indexes all feature specifications. Each spec file contains detail
 │   └── composer.phar
 ├── podman/
 │   ├── <container-name>.yaml  # Container config (e.g., chauf-mysql57.yaml)
+├── panel.pid            # Panel server PID file
+├── panel.log           # Panel server log file
 │   ├── volumes/
 │   │   └── <container-name>/  # Bind mount volumes for data persistence
 │   └── backups/              # Database backup files (*.tar.gz)
@@ -130,6 +133,7 @@ logging:
 | `chauf podman console` | Attach to container's database CLI |
 | `chauf podman backup` | Interactive database backup |
 | `chauf podman restore` | Interactive database restore |
+| `chauf serve` | Start web admin panel |
 
 ### PHP Version Support
 
