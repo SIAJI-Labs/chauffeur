@@ -369,38 +369,39 @@ func runPodmanStart(args []string) error {
 			lib.Info("No containers configured.")
 			return nil
 		}
-		// List all and let user pick
-		fmt.Println()
-		fmt.Printf("  %s\n", lib.Bold("Select container to start:"))
-		fmt.Println()
-		for i, e := range engines {
-			cfg, _ := podman.Load(e)
-			status := lib.Gray("unknown")
-			if cfg != nil {
-				container := podman.NewContainer(client, cfg)
-				running, _ := container.IsRunning(ctx)
-				if running {
-					status = lib.Green("running")
-				} else {
-					status = lib.Gray("stopped")
-				}
-			}
-			fmt.Printf("    %d) %-20s  %s (%s)\n", i+1, cfg.ContainerName, string(cfg.Engine), status)
-		}
-		fmt.Println()
-		fmt.Print("  " + lib.Bold("Choice") + " " + lib.Gray("[1-"+fmt.Sprintf("%d", len(engines))+" or container name]: "))
-		reader := bufio.NewReader(os.Stdin)
-		input, _ := reader.ReadString('\n')
-		input = strings.TrimSpace(input)
-		input = strings.ReplaceAll(input, "\r", "")
 
-		// Try parsing as number first
-		var idx int
-		if _, err := fmt.Sscanf(input, "%d", &idx); err == nil && idx >= 1 && idx <= len(engines) {
-			target = engines[idx-1]
-		} else {
-			target = strings.ToLower(input)
+		var containerList []containerInfo
+		for _, e := range engines {
+			cfg, _ := podman.Load(e)
+			if cfg == nil {
+				continue
+			}
+			container := podman.NewContainer(client, cfg)
+			running, _ := container.IsRunning(ctx)
+			status := lib.Gray("stopped")
+			disabled := false
+			if running {
+				status = lib.Green("running")
+				disabled = true
+			}
+			containerList = append(containerList, containerInfo{
+				Name:     e,
+				Engine:   string(cfg.Engine),
+				Status:   status,
+				Disabled: disabled,
+			})
 		}
+
+		if len(containerList) == 0 {
+			lib.Info("No containers configured.")
+			return nil
+		}
+
+		selected := interactiveSelectContainers(containerList, "Select containers to start:")
+		if len(selected) == 0 {
+			return nil
+		}
+		target = strings.Join(selected, ",")
 	}
 
 	containers, err := resolveContainers(target)
@@ -487,38 +488,39 @@ func runPodmanStop(args []string) error {
 			lib.Info("No containers configured.")
 			return nil
 		}
-		// List running containers first
-		fmt.Println()
-		fmt.Printf("  %s\n", lib.Bold("Select container to stop:"))
-		fmt.Println()
-		var runningList []string
+
+		var containerList []containerInfo
 		for _, e := range engines {
 			cfg, _ := podman.Load(e)
-			if cfg != nil {
-				container := podman.NewContainer(client, cfg)
-				running, _ := container.IsRunning(ctx)
-				if running {
-					runningList = append(runningList, e)
-					fmt.Printf("    %d) %-20s  %s\n", len(runningList), cfg.ContainerName, lib.Green("running"))
-				}
+			if cfg == nil {
+				continue
 			}
+			container := podman.NewContainer(client, cfg)
+			running, _ := container.IsRunning(ctx)
+			status := lib.Green("running")
+			disabled := false
+			if !running {
+				status = lib.Gray("stopped")
+				disabled = true
+			}
+			containerList = append(containerList, containerInfo{
+				Name:     e,
+				Engine:   string(cfg.Engine),
+				Status:   status,
+				Disabled: disabled,
+			})
 		}
-		if len(runningList) == 0 {
+
+		if len(containerList) == 0 {
 			lib.Info("No running containers.")
 			return nil
 		}
-		fmt.Println()
-		fmt.Print("  " + lib.Bold("Choice") + " " + lib.Gray("[1-"+fmt.Sprintf("%d", len(runningList))+" or container name]: "))
-		scanner := bufio.NewScanner(os.Stdin)
-		scanner.Scan()
-		input := strings.TrimSpace(scanner.Text())
 
-		var idx int
-		if _, err := fmt.Sscanf(input, "%d", &idx); err == nil && idx >= 1 && idx <= len(runningList) {
-			target = runningList[idx-1]
-		} else {
-			target = strings.ToLower(input)
+		selected := interactiveSelectContainers(containerList, "Select containers to stop:")
+		if len(selected) == 0 {
+			return nil
 		}
+		target = strings.Join(selected, ",")
 	}
 
 	containers, err := resolveContainers(target)
@@ -1547,6 +1549,246 @@ func interactiveSelectDatabasesSimple(databases []string) []string {
 	for i, db := range databases {
 		if selected[i] {
 			result = append(result, db)
+		}
+	}
+
+	return result
+}
+
+// containerSelectModel is the bubbletea model for container selection
+type containerSelectModel struct {
+	containers []containerInfo
+	selected   map[int]bool
+	cursor     int
+	done       bool
+	aborted    bool
+	title      string
+}
+
+// containerInfo holds container display information
+type containerInfo struct {
+	Name     string
+	Engine   string
+	Status   string
+	Disabled bool
+}
+
+// Init initializes the model
+func (m containerSelectModel) Init() tea.Cmd {
+	return nil
+}
+
+func (m containerSelectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.Type {
+		case tea.KeyUp:
+			if m.cursor > 0 {
+				m.cursor--
+			}
+			for m.cursor > 0 && m.containers[m.cursor].Disabled {
+				m.cursor--
+			}
+		case tea.KeyDown:
+			if m.cursor < len(m.containers)-1 {
+				m.cursor++
+			}
+			for m.cursor < len(m.containers)-1 && m.containers[m.cursor].Disabled {
+				m.cursor++
+			}
+		case tea.KeySpace:
+			if !m.containers[m.cursor].Disabled {
+				m.selected[m.cursor] = !m.selected[m.cursor]
+			}
+		case tea.KeyEnter:
+			if len(m.selected) == 0 && len(m.containers) > 0 && !m.containers[m.cursor].Disabled {
+				m.selected[m.cursor] = true
+			}
+			m.done = true
+			return m, tea.Quit
+		case tea.KeyCtrlC:
+			m.aborted = true
+			return m, tea.Quit
+		}
+	}
+	return m, nil
+}
+
+// View renders the UI
+func (m containerSelectModel) View() string {
+	selectedCount := 0
+	for _, sel := range m.selected {
+		if sel {
+			selectedCount++
+		}
+	}
+
+	var lines []string
+
+	lines = append(lines, fmt.Sprintf("  %s", lib.Bold(m.title)))
+	lines = append(lines, "")
+	lines = append(lines, fmt.Sprintf("  %s", lib.Gray("[↑/↓] Move  [space] Select  [enter] Confirm")))
+
+	if len(m.containers) == 0 {
+		lines = append(lines, "")
+		lines = append(lines, fmt.Sprintf("  %s", lib.Gray("No containers available")))
+		lines = append(lines, "")
+		lines = append(lines, "  Press Ctrl+C to cancel")
+		return strings.Join(lines, "\n")
+	}
+
+	lines = append(lines, "")
+
+	for i, c := range m.containers {
+		cursor := "  "
+		if m.cursor == i {
+			cursor = lib.Green(">")
+		}
+
+		sel := "[ ]"
+		if m.selected[i] {
+			sel = lib.Green("[x]")
+		}
+
+		prefix := "  "
+		if c.Disabled {
+			prefix = lib.Gray("- ")
+			sel = lib.Gray("[ ]")
+			lines = append(lines, fmt.Sprintf("  %s%s%-20s  %s (%s)", prefix, sel, c.Name, lib.Gray(c.Engine), lib.Gray(c.Status)))
+		} else {
+			lines = append(lines, fmt.Sprintf("  %s %s %-20s  %s (%s)", cursor, sel, c.Name, c.Engine, c.Status))
+		}
+	}
+
+	lines = append(lines, "")
+
+	if selectedCount == 0 {
+		lines = append(lines, fmt.Sprintf("  %s", lib.Gray("No containers selected")))
+	} else if selectedCount == len(m.containers) {
+		lines = append(lines, fmt.Sprintf("  %s %s", lib.Green("✓"), lib.Gray(fmt.Sprintf("All %d selected", selectedCount))))
+	} else {
+		lines = append(lines, fmt.Sprintf("  %s %d of %d selected", lib.Green("✓"), selectedCount, len(m.containers)))
+	}
+
+	return strings.Join(lines, "\n")
+}
+
+// interactiveSelectContainers shows an interactive list of containers with selection.
+// Returns list of selected container names (engine keys).
+func interactiveSelectContainers(containers []containerInfo, title string) []string {
+	if len(containers) == 0 {
+		return []string{}
+	}
+
+	model := containerSelectModel{
+		containers: containers,
+		selected:   make(map[int]bool),
+		cursor:     0,
+		title:      title,
+	}
+
+	p := tea.NewProgram(model)
+	result, err := p.Run()
+	if err != nil {
+		return interactiveSelectContainersSimple(containers, title)
+	}
+
+	if finalModel, ok := result.(containerSelectModel); ok {
+		if finalModel.aborted {
+			return []string{}
+		}
+
+		var selected []string
+		for i, sel := range finalModel.selected {
+			if sel {
+				selected = append(selected, finalModel.containers[i].Name)
+			}
+		}
+		return selected
+	}
+
+	return []string{}
+}
+
+// interactiveSelectContainersSimple is the fallback text-based selector when TTY is not available.
+func interactiveSelectContainersSimple(containers []containerInfo, title string) []string {
+	reader := bufio.NewReader(os.Stdin)
+
+	selected := make(map[int]bool)
+
+	fmt.Println()
+	fmt.Printf("  %s\n", lib.Bold(title))
+	fmt.Println()
+	fmt.Printf("  %s\n", lib.Gray("[a] Toggle all  [1-N] Toggle item"))
+	fmt.Println()
+
+	for {
+		fmt.Print("  ")
+		for i, c := range containers {
+			tick := " "
+			if selected[i] {
+				tick = "✓"
+			}
+			if c.Disabled {
+				fmt.Printf("%s %d) %s (%s)  ", lib.Gray("x"), i+1, c.Name, c.Status)
+			} else {
+				fmt.Printf("[%s] %d) %s (%s)  ", tick, i+1, c.Name, c.Status)
+			}
+			if (i+1)%2 == 0 {
+				fmt.Println()
+				fmt.Print("  ")
+			}
+		}
+		if len(containers)%2 != 0 {
+			fmt.Println()
+		}
+		fmt.Println()
+
+		selCount := 0
+		for _, v := range selected {
+			if v {
+				selCount++
+			}
+		}
+
+		fmt.Print("  " + lib.Bold("Choice") + " " + lib.Gray("[1-"+fmt.Sprintf("%d", len(containers))+", a=all, enter=done]: "))
+		input, _ := reader.ReadString('\n')
+		input = strings.ReplaceAll(strings.TrimSpace(input), "\r", "")
+
+		if input == "d" || input == "done" || input == "" {
+			if selCount > 0 {
+				break
+			}
+			continue
+		}
+
+		if input == "a" || input == "all" {
+			if selCount == len(containers) {
+				for i := range selected {
+					selected[i] = false
+				}
+			} else {
+				for i := range selected {
+					if !containers[i].Disabled {
+						selected[i] = true
+					}
+				}
+			}
+			continue
+		}
+
+		var idx int
+		if _, err := fmt.Sscanf(input, "%d", &idx); err == nil && idx >= 1 && idx <= len(containers) {
+			if !containers[idx-1].Disabled {
+				selected[idx-1] = !selected[idx-1]
+			}
+		}
+	}
+
+	var result []string
+	for i, c := range containers {
+		if selected[i] && !c.Disabled {
+			result = append(result, c.Name)
 		}
 	}
 
