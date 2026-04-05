@@ -24,3 +24,4 @@ Thumbs.db
 
 # Chauffeur workspace (never commit the actual workspace)
 ~/.chauffeur/
+node_modules/

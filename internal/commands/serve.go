@@ -43,6 +43,7 @@ func RunServe(args []string) error {
 	host := flags.String("host", panelDomain, "Hostname for the panel")
 	stop := flags.Bool("stop", false, "Stop a running panel server")
 	foreground := flags.Bool("f", false, "Run in foreground instead of background")
+	dev := flags.Bool("dev", false, "Run Vite dev server for frontend development")
 
 	if err := flags.Parse(args); err != nil {
 		if err == flag.ErrHelp {
@@ -74,6 +75,10 @@ func RunServe(args []string) error {
 		return runPanelForeground(*port, *host)
 	}
 
+	if *dev {
+		return runDevServer(*port)
+	}
+
 	return runPanelDaemon(root, pidPath, logPath, *port, *host)
 }
 
@@ -99,6 +104,48 @@ func runPanelForeground(port int, host string) error {
 	fmt.Printf("  %s\n", lib.Gray("Press Ctrl+C to stop"))
 
 	return server.Start(ctx)
+}
+
+func runDevServer(port int) error {
+	panelAppsDir := filepath.Join("internal", "panel-apps")
+	goServerAddr := net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
+
+	goServer := panel.NewServerWithAddr(goServerAddr)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go func() {
+		goServer.Start(ctx)
+	}()
+
+	time.Sleep(500 * time.Millisecond)
+
+	cmd := exec.Command("npm", "run", "dev")
+	cmd.Dir = panelAppsDir
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("start vite dev server: %w", err)
+	}
+
+	lib.Success("Chauffeur Panel dev mode")
+	lib.Info(fmt.Sprintf("  Go API server: http://localhost:%d", port))
+	lib.Info("  Frontend: http://localhost:5173")
+	fmt.Println()
+	fmt.Printf("  %s\n", lib.Gray("Press Ctrl+C to stop both servers"))
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	<-sigCh
+
+	lib.Info("Shutting down servers...")
+	cmd.Process.Kill()
+	cmd.Wait()
+	cancel()
+
+	return nil
 }
 
 func getBinaryPath() string {
