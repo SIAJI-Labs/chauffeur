@@ -352,15 +352,17 @@ function ContainerDetailPage() {
                   <div className="flex items-center gap-1">
                     <span className="font-medium">localhost:{container.hostPort}</span>
                     <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-6"
-                          onClick={() => copyToClipboard(`localhost:${container.hostPort}`, "host")}
-                        >
-                          <Copy className={`size-3 ${copiedField === "host" ? "text-green-500" : ""}`} />
-                        </Button>
+                      <TooltipTrigger
+                        render={
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-6"
+                          />
+                        }
+                        onClick={() => copyToClipboard(`localhost:${container.hostPort}`, "host")}
+                      >
+                        <Copy className={`size-3 ${copiedField === "host" ? "text-green-500" : ""}`} />
                       </TooltipTrigger>
                       <TooltipContent>
                         {copiedField === "host" ? "Copied!" : "Copy"}
@@ -373,15 +375,17 @@ function ContainerDetailPage() {
                   <div className="flex items-center gap-1">
                     <span className="font-medium">{container.config?.databaseName || "app"}</span>
                     <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-6"
-                          onClick={() => copyToClipboard(container.config?.databaseName || "app", "database")}
-                        >
-                          <Copy className={`size-3 ${copiedField === "database" ? "text-green-500" : ""}`} />
-                        </Button>
+                      <TooltipTrigger
+                        render={
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-6"
+                          />
+                        }
+                        onClick={() => copyToClipboard(container.config?.databaseName || "app", "database")}
+                      >
+                        <Copy className={`size-3 ${copiedField === "database" ? "text-green-500" : ""}`} />
                       </TooltipTrigger>
                       <TooltipContent>
                         {copiedField === "database" ? "Copied!" : "Copy"}
@@ -394,15 +398,17 @@ function ContainerDetailPage() {
                   <div className="flex items-center gap-1">
                     <span className="font-medium">{container.config?.databaseUser || "-"}</span>
                     <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-6"
-                          onClick={() => copyToClipboard(container.config?.databaseUser || "", "user")}
-                        >
-                          <Copy className={`size-3 ${copiedField === "user" ? "text-green-500" : ""}`} />
-                        </Button>
+                      <TooltipTrigger
+                        render={
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-6"
+                          />
+                        }
+                        onClick={() => copyToClipboard(container.config?.databaseUser || "", "user")}
+                      >
+                        <Copy className={`size-3 ${copiedField === "user" ? "text-green-500" : ""}`} />
                       </TooltipTrigger>
                       <TooltipContent>
                         {copiedField === "user" ? "Copied!" : "Copy"}
@@ -415,15 +421,17 @@ function ContainerDetailPage() {
                   <div className="flex items-center gap-1">
                     <span className="font-medium">{container.config?.databasePassword || "-"}</span>
                     <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-6"
-                          onClick={() => copyToClipboard(container.config?.databasePassword || "", "password")}
-                        >
-                          <Copy className={`size-3 ${copiedField === "password" ? "text-green-500" : ""}`} />
-                        </Button>
+                      <TooltipTrigger
+                        render={
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-6"
+                          />
+                        }
+                        onClick={() => copyToClipboard(container.config?.databasePassword || "", "password")}
+                      >
+                        <Copy className={`size-3 ${copiedField === "password" ? "text-green-500" : ""}`} />
                       </TooltipTrigger>
                       <TooltipContent>
                         {copiedField === "password" ? "Copied!" : "Copy"}

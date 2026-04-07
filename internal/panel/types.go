@@ -31,9 +31,23 @@ type BackupResponse struct {
 	CreatedAt string `json:"createdAt"`
 }
 
-type BackupCreateRequest struct {
-	Container   string `json:"container"`
+type DatabaseBackup struct {
+	Name        string `json:"name"`
 	Description string `json:"description"`
+}
+
+type BackupCreateRequest struct {
+	Container string           `json:"container"`
+	Databases []DatabaseBackup `json:"databases"`
+}
+
+type BackupCreateResponse struct {
+	Message string   `json:"message"`
+	Backups []string `json:"backups"`
+}
+
+type DatabasesResponse struct {
+	Databases []string `json:"databases"`
 }
 
 type BackupRestoreRequest struct {

@@ -42,8 +42,10 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.HandleFunc("POST /api/containers/{name}/start", s.handleStartContainer)
 	mux.HandleFunc("POST /api/containers/{name}/stop", s.handleStopContainer)
 	mux.HandleFunc("GET /api/containers/{name}/logs", s.handleContainerLogs)
+	mux.HandleFunc("GET /api/containers/{name}/databases", s.handleListDatabases)
 	mux.HandleFunc("GET /api/backups", s.handleListBackups)
 	mux.HandleFunc("POST /api/backups", s.handleCreateBackup)
+	mux.HandleFunc("DELETE /api/backups/{name}", s.handleDeleteBackup)
 	mux.HandleFunc("POST /api/backups/{name}/restore", s.handleRestoreBackup)
 
 	mux.HandleFunc("GET /", s.handleIndex)
@@ -240,6 +242,32 @@ func (s *Server) handleContainerLogs(w http.ResponseWriter, r *http.Request) {
 	w.(http.Flusher).Flush()
 }
 
+func (s *Server) handleListDatabases(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	name := r.PathValue("name")
+
+	cfg, err := podman.Load(name)
+	if err != nil || cfg == nil {
+		jsonError(w, http.StatusNotFound, "Container not found")
+		return
+	}
+
+	container := podman.NewContainer(s.client, cfg)
+	running, _ := container.IsRunning(ctx)
+	if !running {
+		jsonError(w, http.StatusBadRequest, "Container not running")
+		return
+	}
+
+	databases, err := container.ListDatabases(ctx)
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	jsonResponse(w, http.StatusOK, DatabasesResponse{Databases: databases})
+}
+
 func (s *Server) handleListBackups(w http.ResponseWriter, r *http.Request) {
 	backups, err := listBackups()
 	if err != nil {
@@ -259,6 +287,11 @@ func (s *Server) handleCreateBackup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if len(req.Databases) == 0 {
+		jsonError(w, http.StatusBadRequest, "No databases selected")
+		return
+	}
+
 	cfg, err := podman.Load(req.Container)
 	if err != nil || cfg == nil {
 		jsonError(w, http.StatusNotFound, "Container not found")
@@ -272,17 +305,54 @@ func (s *Server) handleCreateBackup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	backupPath := backupPath(cfg.ContainerName, "")
-	_, err = container.BackupDatabaseWithDescription(ctx, "app", req.Description)
-	if err != nil {
+	timestamp := time.Now().Format("20060102-150405")
+	backupDir := backupPath(cfg.ContainerName, "")
+	if err := os.MkdirAll(backupDir, 0755); err != nil {
+		jsonError(w, http.StatusInternalServerError, "Could not create backup directory")
+		return
+	}
+
+	var createdBackups []string
+	for _, db := range req.Databases {
+		backupData, err := container.BackupDatabaseWithDescription(ctx, db.Name, db.Description)
+		if err != nil {
+			continue
+		}
+
+		filename := fmt.Sprintf("%s-%s-%s.tar.gz", cfg.ContainerName, db.Name, timestamp)
+		outputPath := filepath.Join(backupDir, filename)
+		if err := os.WriteFile(outputPath, backupData, 0644); err != nil {
+			continue
+		}
+		createdBackups = append(createdBackups, filename)
+	}
+
+	if len(createdBackups) == 0 {
+		jsonError(w, http.StatusInternalServerError, "All backups failed")
+		return
+	}
+
+	jsonResponse(w, http.StatusOK, BackupCreateResponse{
+		Message: fmt.Sprintf("Backed up %d database(s)", len(createdBackups)),
+		Backups: createdBackups,
+	})
+}
+
+func (s *Server) handleDeleteBackup(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+
+	backupPath := backupPath("", name)
+	if _, err := os.Stat(backupPath); os.IsNotExist(err) {
+		jsonError(w, http.StatusNotFound, "Backup not found")
+		return
+	}
+
+	if err := os.Remove(backupPath); err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	jsonResponse(w, http.StatusOK, map[string]string{
-		"message":    "Backup created",
-		"backupPath": backupPath,
-	})
+	jsonResponse(w, http.StatusOK, map[string]string{"message": "Backup deleted"})
 }
 
 func (s *Server) handleRestoreBackup(w http.ResponseWriter, r *http.Request) {
@@ -407,8 +477,12 @@ func listBackups() ([]BackupResponse, error) {
 			continue
 		}
 
-		parts := strings.Split(entry.Name(), "-")
-		container := parts[0]
+		backupFilePath := backupPath("", entry.Name())
+		meta, err := podman.ReadBackupMeta(backupFilePath)
+		container := entry.Name()
+		if err == nil && meta.ContainerName != "" {
+			container = meta.ContainerName
+		}
 
 		backups = append(backups, BackupResponse{
 			Name:      entry.Name(),

@@ -10,7 +10,6 @@ import {
   LayoutDashboard,
   List,
   Network,
-  RotateCcw,
   ScrollText,
   Server,
   Settings,
@@ -51,14 +50,9 @@ const data = {
           icon: <Container className="size-4" />,
         },
         {
-          title: "Backup",
+          title: "Backup & Restore",
           url: "/containers/backup",
           icon: <HardDrive className="size-4" />,
-        },
-        {
-          title: "Restore",
-          url: "#",
-          icon: <RotateCcw className="size-4" />,
         },
         {
           title: "Logs",

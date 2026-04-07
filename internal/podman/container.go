@@ -890,11 +890,11 @@ func (c *Container) Restore(ctx context.Context, backupData []byte) error {
 
 	switch meta.Engine {
 	case EngineMySQL8, EngineMySQL57:
-		err = c.mysqlrestore(ctx, dumpData)
+		err = c.mysqlrestore(ctx, meta.Database, dumpData)
 	case EnginePostgres:
-		err = c.pgrestore(ctx, dumpData)
+		err = c.pgrestore(ctx, meta.Database, dumpData)
 	case EngineMaria:
-		err = c.mysqlrestore(ctx, dumpData)
+		err = c.mysqlrestore(ctx, meta.Database, dumpData)
 	case EngineMongo:
 		err = c.mongorestore(ctx, dumpData)
 	case EngineRedis:
@@ -1032,15 +1032,15 @@ func (c *Container) mongodumpDatabase(ctx context.Context, database string) ([]b
 }
 
 // mysqlrestore restores a mysql dump.
-func (c *Container) mysqlrestore(ctx context.Context, dump []byte) error {
-	args := []string{"exec", "-i", c.containerName(), "mysql", "--user=" + c.config.Username, "--password=" + c.config.Password}
+func (c *Container) mysqlrestore(ctx context.Context, database string, dump []byte) error {
+	args := []string{"exec", "-i", c.containerName(), "mysql", "--user=" + c.config.Username, "--password=" + c.config.Password, "-D", database}
 	_, err := c.client.RunWithStdin(ctx, args, dump)
 	return err
 }
 
 // pgrestore restores a postgres dump.
-func (c *Container) pgrestore(ctx context.Context, dump []byte) error {
-	args := []string{"exec", "-i", c.containerName(), "psql", "--username=" + c.config.Username}
+func (c *Container) pgrestore(ctx context.Context, database string, dump []byte) error {
+	args := []string{"exec", "-i", c.containerName(), "psql", "--username=" + c.config.Username, "--dbname=" + database}
 	_, err := c.client.RunWithStdin(ctx, args, dump)
 	return err
 }
