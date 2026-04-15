@@ -148,17 +148,43 @@ func main() {
 
 // extractVerboseFlag strips --verbose and -v (when not at position 0, where -v
 // means the "version" command) from args, sets lib.Verbose, and returns the
-// filtered slice.
+// filtered slice. It preserves -v when it appears after what looks like a
+// PHP version (e.g., "chauf php 7.4 -v") so the inline version feature works.
 func extractVerboseFlag(args []string) []string {
 	out := args[:0:0] // same backing array, zero length
 	for i, a := range args {
 		if a == "--verbose" || (a == "-v" && i > 0) {
+			// Preserve -v if previous arg looks like a PHP version (e.g., "7.4", "8.3.0")
+			// This allows "chauf php 7.4 -v" to pass -v to PHP
+			if a == "-v" && i > 0 && looksLikePHPVersion(args[i-1]) {
+				out = append(out, a)
+				continue
+			}
 			lib.Verbose = true
 		} else {
 			out = append(out, a)
 		}
 	}
 	return out
+}
+
+// looksLikePHPVersion returns true if s looks like a PHP version (e.g., "7.4", "8.3.0", "8.4")
+func looksLikePHPVersion(s string) bool {
+	if len(s) == 0 {
+		return false
+	}
+	dots := 0
+	for _, c := range s {
+		if c == '.' {
+			dots++
+			if dots > 2 {
+				return false
+			}
+		} else if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func notImplemented(cmd string) {

@@ -4,8 +4,10 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 
 	"github.com/siegg/chauffeur/internal/installers"
 	"github.com/siegg/chauffeur/internal/lib"
@@ -13,9 +15,107 @@ import (
 	"github.com/siegg/chauffeur/internal/workspace"
 )
 
+// isInstalledPHPVersion checks if a version string matches an installed PHP.
+func isInstalledPHPVersion(version string) bool {
+	root := workspace.Root()
+	installed := installers.ListInstalledPHP(root)
+	for _, v := range installed {
+		if v == version {
+			return true
+		}
+	}
+	return false
+}
+
+// looksLikePHPVersion returns true if s looks like a PHP version (e.g., "7.4", "8.3.0", "8.4")
+func looksLikePHPVersion(s string) bool {
+	if len(s) == 0 {
+		return false
+	}
+	dots := 0
+	for _, c := range s {
+		if c == '.' {
+			dots++
+			if dots > 2 {
+				return false
+			}
+		} else if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// runPHPExtended executes a command with a specific PHP version.
+// It sets CHAUFFEUR_PHP_VERSION and routes through the composer shim
+// (for composer commands) or directly via PHP binary.
+func runPHPExtended(version string, args []string) error {
+	root := workspace.Root()
+
+	// Verify PHP is installed
+	phpBin := filepath.Join(root, "php", version, "bin", "php")
+	if _, err := os.Stat(phpBin); err != nil {
+		return fmt.Errorf("PHP %s not installed. Run: chauf install php %s", version, version)
+	}
+
+	if len(args) == 0 {
+		return fmt.Errorf("Usage: chauf php <version> <command> [args...]")
+	}
+
+	cmd := args[0]
+
+	// Set env for shim
+	env := os.Environ()
+	env = append(env, fmt.Sprintf("CHAUFFEUR_PHP_VERSION=%s", version))
+
+	shimPath := filepath.Join(root, "bin", "shims")
+
+	var execPath string
+	var execArgs []string
+
+	// Route based on command
+	// Note: execArgs[0] must be the program name for syscall.Exec
+	switch cmd {
+	case "composer":
+		// Use composer shim - argv[0] = "composer" is passed to shim
+		execPath = filepath.Join(shimPath, "composer")
+		execArgs = append([]string{"composer"}, args[1:]...)
+	case "php-fpm":
+		// Direct php-fpm binary
+		execPath = phpBin + "-fpm"
+		execArgs = append([]string{"php-fpm"}, args[1:]...)
+	case "php":
+		// Direct PHP binary - use "php" as argv[0] so flags work correctly
+		execPath = phpBin
+		execArgs = append([]string{"php"}, args[1:]...)
+	default:
+		// Treat as PHP script (e.g., artisan, phpunit, wp-cli)
+		// argv[0] = "php" so PHP doesn't interpret cmd as a script filename
+		execPath = phpBin
+		execArgs = append([]string{"php"}, args...)
+	}
+
+	// Use syscall.Exec to replace current process
+	return syscall.Exec(execPath, execArgs, env)
+}
+
 func RunPHP(args []string) error {
 	if len(args) == 0 {
 		return phpHelp()
+	}
+
+	// Inline version mode: chauf php <version> <command> [args...]
+	// Check if first arg is an installed PHP version
+	if isInstalledPHPVersion(args[0]) {
+		if len(args) == 1 {
+			return fmt.Errorf("Usage: chauf php <version> <command> [args...]")
+		}
+		return runPHPExtended(args[0], args[1:])
+	}
+
+	// If first arg looks like a PHP version but isn't installed, show specific error
+	if looksLikePHPVersion(args[0]) {
+		return fmt.Errorf("PHP %s not installed. Run: chauf install php %s", args[0], args[0])
 	}
 
 	switch strings.ToLower(args[0]) {
