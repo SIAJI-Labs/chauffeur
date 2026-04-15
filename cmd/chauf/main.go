@@ -101,7 +101,7 @@ func main() {
 		err = commands.RunAutostart(args[1:])
 
 	case "config", "env":
-		notImplemented(args[0])
+		err = commands.RunConfig(args[1:])
 
 	// ── Maintenance ────────────────────────────────────────────────────────────
 

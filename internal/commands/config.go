@@ -1,0 +1,185 @@
+package commands
+
+import (
+	"fmt"
+	"sort"
+	"strings"
+
+	"github.com/siegg/chauffeur/internal/installers"
+	"github.com/siegg/chauffeur/internal/lib"
+	"github.com/siegg/chauffeur/internal/workspace"
+)
+
+func RunConfig(args []string) error {
+	if len(args) == 0 {
+		configHelp()
+		return nil
+	}
+
+	switch strings.ToLower(args[0]) {
+	case "php":
+		return configPHP(args[1:])
+	case "--help", "-h", "help":
+		configHelp()
+		return nil
+	default:
+		return fmt.Errorf("unknown config type %q — run: chauf config --help", args[0])
+	}
+}
+
+func configHelp() {
+	fmt.Println()
+	fmt.Printf("  %s\n", lib.Bold("chauf config"))
+	fmt.Println()
+	fmt.Println("  Read and write chauffeur configuration.")
+	fmt.Println()
+	fmt.Printf("  %s\n", lib.Bold("Usage:"))
+	fmt.Println("    chauf config php [version] [key] [value]")
+	fmt.Println()
+	fmt.Printf("  %s\n", lib.Bold("Examples:"))
+	fmt.Println("    chauf config php              # List all PHP version configs")
+	fmt.Println("    chauf config php 8.3         # Show PHP 8.3 config")
+	fmt.Println("    chauf config php 8.3 upload_max_filesize 128M")
+	fmt.Println()
+}
+
+func configPHP(args []string) error {
+	cfg := workspace.Load()
+
+	if len(args) == 0 {
+		// List all PHP versions with configs
+		return configPHPList(cfg)
+	}
+
+	version := args[0]
+	if _, ok := cfg.PHP.Versions[version]; !ok {
+		// Check if PHP version is installed
+		root := workspace.Root()
+		installed := installers.ListInstalledPHP(root)
+		found := false
+		for _, v := range installed {
+			if v == version {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("PHP %s is not installed", version)
+		}
+		// Initialize with defaults
+		cfg.PHP.Versions[version] = workspace.DefaultPHPVersionConfig()
+	}
+
+	if len(args) == 1 {
+		// Show specific version config
+		return configPHPShow(version, cfg.PHP.Versions[version])
+	}
+
+	if len(args) < 3 {
+		return fmt.Errorf("Usage: chauf config php <version> <key> <value>")
+	}
+
+	key := args[1]
+	value := args[2]
+
+	// Validate key
+	validKeys := []string{"upload_max_filesize", "post_max_size", "memory_limit", "max_execution_time", "max_input_vars"}
+	valid := false
+	for _, k := range validKeys {
+		if k == key {
+			valid = true
+			break
+		}
+	}
+	if !valid {
+		return fmt.Errorf("invalid key %q — valid keys: %s", key, strings.Join(validKeys, ", "))
+	}
+
+	// Update config in memory
+	phpCfg := cfg.PHP.Versions[version]
+	switch key {
+	case "upload_max_filesize":
+		phpCfg.UploadMaxFilesize = value
+	case "post_max_size":
+		phpCfg.PostMaxSize = value
+	case "memory_limit":
+		phpCfg.MemoryLimit = value
+	case "max_execution_time", "max_input_vars":
+		// These should be integers - validate
+		var intVal int
+		if _, err := fmt.Sscanf(value, "%d", &intVal); err != nil {
+			return fmt.Errorf("value for %s must be an integer", key)
+		}
+		if key == "max_execution_time" {
+			phpCfg.MaxExecutionTime = intVal
+		} else {
+			phpCfg.MaxInputVars = intVal
+		}
+	}
+
+	// Store updated config back to cfg
+	cfg.PHP.Versions[version] = phpCfg
+
+	// Save to chauffeur.yaml
+	if err := workspace.SavePHPVersionSetting(version, key, value); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	// Regenerate limits.ini
+	inst, err := installers.NewPHPInstaller(version, installers.BuildOpts{})
+	if err == nil {
+		inst.WritePHPConfig(phpCfg)
+	}
+
+	fmt.Printf("  %s %s.%s = %s\n", lib.Green("✓"), version, key, value)
+	fmt.Println()
+
+	return nil
+}
+
+func configPHPList(cfg workspace.Config) error {
+	fmt.Println()
+	fmt.Printf("  %s\n", lib.Bold("PHP Version Configurations"))
+	fmt.Println()
+
+	versions := make([]string, 0, len(cfg.PHP.Versions))
+	for v := range cfg.PHP.Versions {
+		versions = append(versions, v)
+	}
+	sort.Strings(versions)
+
+	if len(versions) == 0 {
+		fmt.Println("  No PHP version configs found.")
+		fmt.Println("  Run 'chauf config php <version> <key> <value>' to add one.")
+		fmt.Println()
+		return nil
+	}
+
+	for _, ver := range versions {
+		c := cfg.PHP.Versions[ver]
+		fmt.Printf("  %s\n", lib.Bold(ver))
+		lib.Pair("upload_max_filesize", c.UploadMaxFilesize)
+		lib.Pair("post_max_size", c.PostMaxSize)
+		lib.Pair("memory_limit", c.MemoryLimit)
+		fmt.Printf("  %-20s %d\n", "max_execution_time:", c.MaxExecutionTime)
+		fmt.Printf("  %-20s %d\n", "max_input_vars:", c.MaxInputVars)
+		fmt.Println()
+	}
+
+	return nil
+}
+
+func configPHPShow(version string, cfg workspace.PHPVersionConfig) error {
+	fmt.Println()
+	fmt.Printf("  %s %s\n", lib.Bold("PHP"), version)
+	fmt.Println()
+	lib.Pair("upload_max_filesize", cfg.UploadMaxFilesize)
+	lib.Pair("post_max_size", cfg.PostMaxSize)
+	lib.Pair("memory_limit", cfg.MemoryLimit)
+	fmt.Printf("  %-20s %d\n", "max_execution_time:", cfg.MaxExecutionTime)
+	fmt.Printf("  %-20s %d\n", "max_input_vars:", cfg.MaxInputVars)
+	fmt.Println()
+	fmt.Printf("  %s\n", lib.Gray("Update: chauf config php "+version+" <key> <value>"))
+	fmt.Println()
+	return nil
+}

@@ -18,6 +18,7 @@ type Config struct {
 	}
 	PHP struct {
 		DefaultVersion string
+		Versions       map[string]PHPVersionConfig
 	}
 	DNS struct {
 		TLD     string
@@ -31,6 +32,15 @@ type Config struct {
 	CreatedAt string
 }
 
+// PHPVersionConfig holds runtime settings for a specific PHP version.
+type PHPVersionConfig struct {
+	UploadMaxFilesize string
+	PostMaxSize       string
+	MemoryLimit       string
+	MaxExecutionTime  int
+	MaxInputVars      int
+}
+
 // DefaultConfig returns a Config populated with defaults for the given workspace root.
 func DefaultConfig(root string) Config {
 	var c Config
@@ -42,9 +52,21 @@ func DefaultConfig(root string) Config {
 	c.DNS.Enabled = true
 	c.Logging.Level = "info"
 	c.Logging.MaxSizeMB = 10
+	c.PHP.Versions = make(map[string]PHPVersionConfig)
 	c.Version = "2"
 	c.CreatedAt = time.Now().UTC().Format(time.RFC3339)
 	return c
+}
+
+// DefaultPHPVersionConfig returns the default PHP runtime settings.
+func DefaultPHPVersionConfig() PHPVersionConfig {
+	return PHPVersionConfig{
+		UploadMaxFilesize: "64M",
+		PostMaxSize:       "64M",
+		MemoryLimit:       "256M",
+		MaxExecutionTime:  300,
+		MaxInputVars:      5000,
+	}
 }
 
 // Load reads chauffeur.yaml from the workspace root.
@@ -106,6 +128,43 @@ func Load() Config {
 		case ".created_at":
 			c.CreatedAt = val
 		}
+
+		// Handle php version-specific keys like "8.3.upload_max_filesize"
+		if strings.Contains(key, ".") {
+			// Format: "8.3.upload_max_filesize" -> version="8.3", setting="upload_max_filesize"
+			// Need SplitN with limit 3 to get version.settings correctly
+			parts := strings.SplitN(key, ".", 3)
+			if len(parts) == 3 {
+				version := parts[0] + "." + parts[1]
+				setting := parts[2]
+
+				// Initialize version config if not exists
+				if _, ok := c.PHP.Versions[version]; !ok {
+					c.PHP.Versions[version] = DefaultPHPVersionConfig()
+				}
+
+				// Set the appropriate field
+				cfg := c.PHP.Versions[version]
+				switch setting {
+				case "upload_max_filesize":
+					cfg.UploadMaxFilesize = val
+				case "post_max_size":
+					cfg.PostMaxSize = val
+				case "memory_limit":
+					cfg.MemoryLimit = val
+				case "max_execution_time":
+					if v, err := strconv.Atoi(val); err == nil {
+						cfg.MaxExecutionTime = v
+					}
+				case "max_input_vars":
+					if v, err := strconv.Atoi(val); err == nil {
+						cfg.MaxInputVars = v
+					}
+				}
+				c.PHP.Versions[version] = cfg
+			}
+			continue
+		}
 	}
 
 	return c
@@ -137,6 +196,52 @@ func SetDefaultPHP(version string) error {
 		for i, line := range lines {
 			if strings.TrimSpace(line) == "php:" {
 				lines = append(lines[:i+1], append([]string{"  default_version: \"" + version + "\""}, lines[i+1:]...)...)
+				found = true
+				break
+			}
+		}
+	}
+
+	if !found {
+		return fmt.Errorf("could not find php section in %s", configPath)
+	}
+
+	return os.WriteFile(configPath, []byte(strings.Join(lines, "\n")), 0644)
+}
+
+// SavePHPVersionSetting updates a single PHP version setting in chauffeur.yaml.
+// version: PHP version like "8.3"
+// key: setting name like "upload_max_filesize"
+// value: the value to set
+func SavePHPVersionSetting(version, key, value string) error {
+	root := Root()
+	configPath := filepath.Join(root, "config", "chauffeur.yaml")
+
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return fmt.Errorf("read config: %w", err)
+	}
+
+	lines := strings.Split(string(data), "\n")
+	keyLine := fmt.Sprintf("  %s.%s:", version, key)
+	valueLine := fmt.Sprintf("  %s.%s: \"%s\"", version, key, value)
+
+	found := false
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, keyLine) {
+			lines[i] = valueLine
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		// Insert after "php:" section
+		for i, line := range lines {
+			if strings.TrimSpace(line) == "php:" {
+				// Insert all lines after php: (they will be in order of insertion)
+				lines = append(lines[:i+1], append([]string{valueLine}, lines[i+1:]...)...)
 				found = true
 				break
 			}
