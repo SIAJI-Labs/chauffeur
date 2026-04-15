@@ -287,7 +287,7 @@ func doctorSSL(root string) []checkResult {
 					name:   "mkcert CA",
 					ok:     false,
 					status: "CA files exist but NOT in system trust store",
-					fix: "sudo mkcert -install",
+					fix:    "sudo mkcert -install",
 				})
 			} else {
 				results = append(results, checkResult{
@@ -300,21 +300,9 @@ func doctorSSL(root string) []checkResult {
 		}
 	}
 
-	// PHP CA bundle (curl.cainfo / openssl.cafile)
-	if phpini := doctorPHPCertBundle(); phpini.ok {
-		results = append(results, checkResult{
-			name:   "PHP CA bundle",
-			ok:     true,
-			status: lib.Gray(phpini.status),
-		})
-	} else {
-		results = append(results, checkResult{
-			name:   "PHP CA bundle",
-			ok:     false,
-			warn:   phpini.warn,
-			status: phpini.status,
-			fix:    phpini.fix,
-		})
+	// PHP CA bundle (curl.cainfo / openssl.cafile) — iterates all installed versions
+	for _, res := range doctorPHPCertBundle(root) {
+		results = append(results, res)
 	}
 
 	// cert directory
@@ -338,52 +326,54 @@ func doctorSSL(root string) []checkResult {
 	return results
 }
 
-// doctorPHPCertBundle checks if PHP's curl.cainfo and openssl.cafile are
-// configured to use the system CA bundle, and whether that bundle includes
-// the mkcert CA. Returns a checkResult-style struct (name excluded since caller uses it).
-func doctorPHPCertBundle() struct {
-	ok    bool
-	warn  bool
-	status string
-	fix   string
+// checkSinglePHPVersionCerts checks curl.cainfo and openssl.cafile for a specific PHP binary.
+func checkSinglePHPVersionCerts(phpBin string) struct {
+	ok         bool
+	warn       bool
+	status     string
+	fix        string
+	needsFix   bool
+	phpIniFile string
+	version    string // PHP version string like "8.3"
 } {
 	ret := struct {
-		ok    bool
-		warn  bool
-		status string
-		fix   string
-	}{warn: true}
+		ok         bool
+		warn       bool
+		status     string
+		fix        string
+		needsFix   bool
+		phpIniFile string
+		version    string
+	}{warn: true, needsFix: true}
 
-	// Find php binary
-	phpPath, err := exec.LookPath("php")
-	if err != nil {
-		ret.status = "php not found"
-		ret.fix = "php is required for this check"
-		return ret
-	}
+	// Get php -i output for version and settings
+	infoOut := cmdOutput(phpBin, "-i")
 
-	// Get loaded php.ini via: php --ini | grep "Loaded Configuration"
-	iniOut := cmdOutput(phpPath, "--ini")
-	var phpIniFile string
-	for _, line := range strings.Split(iniOut, "\n") {
-		if strings.Contains(line, "Loaded Configuration") {
-			parts := strings.Split(line, ":")
+	// Parse PHP version from "PHP Version => 8.3.30"
+	for _, line := range strings.Split(infoOut, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "PHP Version =>") {
+			parts := strings.Split(trimmed, "=>")
 			if len(parts) >= 2 {
-				phpIniFile = strings.TrimSpace(parts[len(parts)-1])
+				ret.version = strings.TrimSpace(parts[1])
 			}
 			break
 		}
 	}
 
-	// Get php -i output for parsing curl.cainfo / openssl.cafile
-	// We run it once and reuse the output.
-	infoOut := cmdOutput(phpPath, "-i")
+	// Get loaded php.ini
+	iniOut := cmdOutput(phpBin, "--ini")
+	for _, line := range strings.Split(iniOut, "\n") {
+		if strings.Contains(line, "Loaded Configuration") {
+			parts := strings.Split(line, ":")
+			if len(parts) >= 2 {
+				ret.phpIniFile = strings.TrimSpace(parts[len(parts)-1])
+			}
+			break
+		}
+	}
 
-	// Parse curl.cainfo and openssl.cafile from php -i output.
-	// Format is typically:
-	//   curl.cainfo => /path/to/bundle => /path/to/bundle
-	//   curl.cainfo => no value        (when not configured)
-	//   openssl.cafile => /path/to/bundle => /path/to/bundle
+	// Parse curl.cainfo and openssl.cafile
 	parsePHPValue := func(raw string) string {
 		val := strings.TrimSpace(raw)
 		if val == "" || strings.EqualFold(val, "no value") {
@@ -409,13 +399,13 @@ func doctorPHPCertBundle() struct {
 		}
 	}
 
-	// Determine the effective CA bundle path (prefer curl.cainfo, fall back to openssl.cafile)
+	// Determine effective CA bundle
 	caBundle := curlCA
 	if caBundle == "" {
 		caBundle = opensslCA
 	}
 
-	// Build status line components
+	// Build status
 	var details []string
 	if curlCA != "" {
 		details = append(details, "curl.cainfo="+shortenHome(curlCA))
@@ -426,49 +416,54 @@ func doctorPHPCertBundle() struct {
 
 	if caBundle == "" {
 		ret.status = "not configured"
-		if phpIniFile != "" && phpIniFile != "none" {
-			ret.fix = fmt.Sprintf("printf 'curl.cainfo=/etc/ssl/certs/ca-certificates.crt\\nopenssl.cafile=/etc/ssl/certs/ca-certificates.crt\\n' >> %s", phpIniFile)
+		if ret.phpIniFile != "" && ret.phpIniFile != "none" {
+			dist := detectDistroType()
+			var caPath string
+			switch dist {
+			case distroArch, distroDebian:
+				caPath = "/etc/ssl/certs/ca-certificates.crt"
+			case distroFedora:
+				caPath = "/etc/pki/tls/certs/ca-bundle.crt"
+			default:
+				caPath = "/etc/ssl/certs/ca-certificates.crt"
+			}
+			ret.fix = fmt.Sprintf("printf 'curl.cainfo=%s\\nopenssl.cafile=%s\\n' >> %s", caPath, caPath, ret.phpIniFile)
 		} else {
 			ret.fix = "Configure curl.cainfo and openssl.cafile in php.ini"
 		}
 		return ret
 	}
 
-	// Check if bundle file exists
+	// Check if bundle exists
 	info, err := os.Stat(caBundle)
 	if err != nil {
 		ret.status = fmt.Sprintf("%s (file missing)", shortenHome(caBundle))
-		ret.fix = fmt.Sprintf("sudo tee %s </dev/null # create empty file, then add curl.cainfo/openssl.cafile to php.ini", shortenHome(caBundle))
 		return ret
 	}
 	if info.IsDir() {
-		ret.status = fmt.Sprintf("%s (is a directory, not a file)", shortenHome(caBundle))
-		ret.fix = "Set curl.cainfo to a file path, not a directory, in php.ini"
+		ret.status = fmt.Sprintf("%s (is a directory)", shortenHome(caBundle))
 		return ret
 	}
 
-	// Check if mkcert CA is in the bundle (only relevant when mkcert is installed)
+	// Check mkcert CA
 	mkcertInstalled := projects.MkcertCAInstalled()
 	if !mkcertInstalled {
-		// mkcert not trusted, but PHP might still work for public SSL
-		ret.status = strings.Join(details, "  ") + fmt.Sprintf("  %s", shortenHome(caBundle))
 		ret.ok = true
 		ret.warn = true
+		ret.needsFix = false
+		ret.status = strings.Join(details, "  ") + fmt.Sprintf("  %s", shortenHome(caBundle))
 		return ret
 	}
 
-	// mkcert is trusted — check if bundle contains mkcert cert
 	data, _ := os.ReadFile(caBundle)
 	if strings.Contains(string(data), "mkcert") {
 		ret.ok = true
+		ret.needsFix = false
 		ret.status = strings.Join(details, "  ") + fmt.Sprintf("  %s (mkcert OK)", shortenHome(caBundle))
 		return ret
 	}
 
-	// mkcert CA is in system trust but NOT in PHP's configured bundle
-	ret.ok = false
 	ret.status = fmt.Sprintf("mkcert CA not in bundle (%s)", shortenHome(caBundle))
-	// Suggest mkcert bundle path on Arch/Debian
 	dist := detectDistroType()
 	var suggested string
 	switch dist {
@@ -477,14 +472,100 @@ func doctorPHPCertBundle() struct {
 	case distroFedora:
 		suggested = "/etc/pki/tls/certs/ca-bundle.crt"
 	default:
-		suggested = caBundle // already set
+		suggested = caBundle
 	}
-	if suggested != caBundle && phpIniFile != "" {
-		ret.fix = fmt.Sprintf("printf 'curl.cainfo=%s\\nopenssl.cafile=%s\\n' | tee -a %s", suggested, suggested, phpIniFile)
-	} else {
-		ret.fix = "sudo mkcert -install"
+	if suggested != caBundle && ret.phpIniFile != "" {
+		ret.fix = fmt.Sprintf("printf 'curl.cainfo=%s\\nopenssl.cafile=%s\\n' | tee -a %s", suggested, suggested, ret.phpIniFile)
 	}
 	return ret
+}
+
+// doctorPHPCertBundle checks ALL installed PHP versions for curl.cainfo and
+// openssl.cafile configuration. Returns one checkResult per PHP version.
+func doctorPHPCertBundle(root string) []checkResult {
+	var results []checkResult
+
+	versions := installedPHPVersions(root)
+	if len(versions) == 0 {
+		return []checkResult{{
+			name:   "PHP CA bundle",
+			ok:     false,
+			warn:   true,
+			status: "no PHP versions installed",
+			fix:    "Install PHP: chauf install php 8.3",
+		}}
+	}
+
+	var configured, total int
+	var allFixes []string
+
+	for _, ver := range versions {
+		phpBin := filepath.Join(root, "php", ver, "bin", "php")
+
+		// Check if binary exists
+		if _, err := os.Stat(phpBin); err != nil {
+			results = append(results, checkResult{
+				name:   fmt.Sprintf("PHP %s CA bundle", ver),
+				ok:     false,
+				warn:   true,
+				status: "not installed",
+			})
+			continue
+		}
+
+		total++
+		check := checkSinglePHPVersionCerts(phpBin)
+
+		if check.ok && !check.needsFix {
+			configured++
+		}
+
+		// Build fix command with full path
+		if check.needsFix && check.fix != "" {
+			// The fix references phpIniFile which checkSinglePHPVersionCerts already computed
+			// We need to pass the full phpIniFile path
+			allFixes = append(allFixes, fmt.Sprintf("printf 'curl.cainfo=/etc/ssl/certs/ca-certificates.crt\\nopenssl.cafile=/etc/ssl/certs/ca-certificates.crt\\n' >> %s", filepath.Join(root, "php", ver, "etc", "php.ini")))
+		}
+
+		results = append(results, checkResult{
+			name: fmt.Sprintf("PHP %s CA bundle", ver),
+			ok:   check.ok,
+			warn: check.warn,
+			status: func() string {
+				if check.phpIniFile != "" {
+					return check.status + " (" + shortenHome(check.phpIniFile) + ")"
+				}
+				return check.status
+			}(),
+			fix:         check.fix,
+			skipAutoFix: check.needsFix, // skip individual fix - let aggregated fix handle it
+		})
+	}
+
+	// Add summary result
+	summaryStatus := fmt.Sprintf("%d of %d configured", configured, total)
+	if configured == total && total > 0 {
+		summaryStatus += " — all OK"
+	} else if configured < total && configured > 0 {
+		summaryStatus += fmt.Sprintf(" — %d need fixing", total-configured)
+	}
+
+	// Build aggregated fix command
+	var aggregatedFix string
+	if len(allFixes) > 0 {
+		aggregatedFix = "# Fix all PHP versions:\n" + strings.Join(allFixes, "\n")
+	}
+
+	results = append([]checkResult{{
+		name:        "PHP CA bundle",
+		ok:          configured == total && total > 0,
+		warn:        configured < total,
+		status:      summaryStatus,
+		fix:         aggregatedFix,
+		skipAutoFix: len(allFixes) == 0,
+	}}, results...)
+
+	return results
 }
 
 func doctorNetwork(root string, cfg workspace.Config) []checkResult {

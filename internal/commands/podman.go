@@ -1174,7 +1174,8 @@ func runPodmanImport(args []string) error {
 // ── helpers ──────────────────────────────────────────────────────────────────
 
 // resolveContainers returns configs for containers matching the target.
-// Target can be "all", an engine name (mysql8, postgres, etc), or a container name.
+// Target can be "all", an engine name (mysql8, postgres, etc), a container name,
+// or a comma-separated list of engine names or container names.
 func resolveContainers(target string) ([]*podman.DatabaseConfig, error) {
 	if target == "all" {
 		// Return all configs
@@ -1193,21 +1194,36 @@ func resolveContainers(target string) ([]*podman.DatabaseConfig, error) {
 		return configs, nil
 	}
 
-	// Try as engine name first
-	if podman.IsValidEngine(target) {
-		cfg, err := podman.Load(target)
+	// Handle comma-separated targets (from multi-select)
+	parts := strings.Split(target, ",")
+	var configs []*podman.DatabaseConfig
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+
+		// Try as engine name first
+		if podman.IsValidEngine(part) {
+			cfg, err := podman.Load(part)
+			if err == nil && cfg != nil {
+				configs = append(configs, cfg)
+				continue
+			}
+		}
+
+		// Try as container name
+		cfg, err := podman.Load(part)
 		if err == nil && cfg != nil {
-			return []*podman.DatabaseConfig{cfg}, nil
+			configs = append(configs, cfg)
+			continue
 		}
 	}
 
-	// Try as container name
-	cfg, err := podman.Load(target)
-	if err == nil && cfg != nil {
-		return []*podman.DatabaseConfig{cfg}, nil
+	if len(configs) == 0 {
+		return nil, nil
 	}
-
-	return nil, nil
+	return configs, nil
 }
 
 // isDirWritable checks if a directory is writable by attempting to create a temp file.
@@ -1468,6 +1484,123 @@ func (m multiSelectModel) View() string {
 	}
 
 	return strings.Join(lines, "\n")
+}
+
+// interactiveSelectSingle shows an interactive single-item selector with arrow keys.
+// Uses bubbletea for proper TUI rendering.
+func interactiveSelectSingle(items []string, title string) string {
+	if len(items) == 0 {
+		return ""
+	}
+	model := singleSelectModel{
+		items:  items,
+		cursor: 0,
+		title:  title,
+	}
+
+	p := tea.NewProgram(model)
+	result, err := p.Run()
+	if err != nil {
+		return interactiveSelectSingleSimple(items, title)
+	}
+
+	if finalModel, ok := result.(singleSelectModel); ok {
+		if finalModel.aborted {
+			return ""
+		}
+		return finalModel.items[finalModel.cursor]
+	}
+
+	return ""
+}
+
+// singleSelectModel is the bubbletea model for single item selection
+type singleSelectModel struct {
+	items   []string
+	cursor  int
+	done    bool
+	aborted bool
+	title   string
+}
+
+func (m singleSelectModel) Init() tea.Cmd {
+	return nil
+}
+
+func (m singleSelectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.Type {
+		case tea.KeyUp:
+			if m.cursor > 0 {
+				m.cursor--
+			}
+		case tea.KeyDown:
+			if m.cursor < len(m.items)-1 {
+				m.cursor++
+			}
+		case tea.KeySpace, tea.KeyEnter:
+			m.done = true
+			return m, tea.Quit
+		case tea.KeyCtrlC:
+			m.aborted = true
+			return m, tea.Quit
+		}
+	}
+	return m, nil
+}
+
+func (m singleSelectModel) View() string {
+	var lines []string
+
+	lines = append(lines, fmt.Sprintf("  %s", lib.Bold(m.title)))
+	lines = append(lines, "")
+	lines = append(lines, fmt.Sprintf("  %s", lib.Gray("[↑/↓] Move  [space/enter] Select")))
+	lines = append(lines, "")
+
+	for i, item := range m.items {
+		cursor := "  "
+		if m.cursor == i {
+			cursor = lib.Green(">")
+		}
+
+		lines = append(lines, fmt.Sprintf("  %s %s", cursor, item))
+	}
+
+	return strings.Join(lines, "\n")
+}
+
+// interactiveSelectSingleSimple is the fallback text-based single selector when TTY is not available.
+func interactiveSelectSingleSimple(items []string, title string) string {
+	reader := bufio.NewReader(os.Stdin)
+
+	fmt.Println()
+	fmt.Printf("  %s\n", lib.Bold(title))
+	fmt.Println()
+
+	for i, item := range items {
+		fmt.Printf("    %d) %s\n", i+1, item)
+	}
+	fmt.Println()
+
+	fmt.Print("  " + lib.Bold("Choice") + " " + lib.Gray("[1-"+fmt.Sprintf("%d", len(items))+" or name]: "))
+	input, _ := reader.ReadString('\n')
+	input = strings.TrimSpace(input)
+	input = strings.ReplaceAll(input, "\r", "")
+
+	var idx int
+	if _, err := fmt.Sscanf(input, "%d", &idx); err == nil && idx >= 1 && idx <= len(items) {
+		return items[idx-1]
+	}
+
+	inputLower := strings.ToLower(input)
+	for _, item := range items {
+		if strings.ToLower(item) == inputLower {
+			return item
+		}
+	}
+
+	return inputLower
 }
 
 // interactiveSelectDatabasesSimple is the fallback text-based selector when TTY is not available.
@@ -1959,8 +2092,40 @@ func filterRunningContainers(client *podman.PodmanClient, engines []string, ctx 
 	return running
 }
 
-// interactiveSelectContainer shows running containers and returns selected container name
+// interactiveSelectContainer shows running containers and returns selected container name.
+// Uses bubbletea TUI for arrow key selection.
 func interactiveSelectContainer(containers []runningContainer, ctx context.Context, client *podman.PodmanClient, title string) string {
+	if len(containers) == 0 {
+		return ""
+	}
+
+	items := make([]string, len(containers))
+	for i, c := range containers {
+		items[i] = fmt.Sprintf("%-20s  %s (%s)", c.Config.ContainerName, string(c.Config.Engine), lib.Green("running"))
+	}
+
+	p := tea.NewProgram(singleSelectModel{
+		items:  items,
+		cursor: 0,
+		title:  title,
+	})
+	result, err := p.Run()
+	if err != nil {
+		return interactiveSelectContainerSimple(containers, title)
+	}
+
+	if finalModel, ok := result.(singleSelectModel); ok {
+		if finalModel.aborted {
+			return ""
+		}
+		return containers[finalModel.cursor].Key
+	}
+
+	return ""
+}
+
+// interactiveSelectContainerSimple is the fallback text-based container selector when TTY is not available.
+func interactiveSelectContainerSimple(containers []runningContainer, title string) string {
 	fmt.Println()
 	fmt.Printf("  %s\n", lib.Bold(title))
 	fmt.Println()
@@ -1977,13 +2142,11 @@ func interactiveSelectContainer(containers []runningContainer, ctx context.Conte
 	input = strings.TrimSpace(input)
 	input = strings.ReplaceAll(input, "\r", "")
 
-	// Try parsing as number first
 	var idx int
 	if _, err := fmt.Sscanf(input, "%d", &idx); err == nil && idx >= 1 && idx <= len(containers) {
 		return containers[idx-1].Key
 	}
 
-	// Try as container name or engine name
 	inputLower := strings.ToLower(input)
 	for _, c := range containers {
 		if strings.ToLower(c.Config.ContainerName) == inputLower || strings.ToLower(string(c.Config.Engine)) == inputLower {
@@ -1991,7 +2154,6 @@ func interactiveSelectContainer(containers []runningContainer, ctx context.Conte
 		}
 	}
 
-	// No match found, return the input as-is for resolveContainers to handle
 	return inputLower
 }
 
@@ -2181,80 +2343,59 @@ func runPodmanRestore(args []string) error {
 	}
 	fmt.Println()
 
-	// 6. Select database to restore
+	// 6. Select databases to restore (multi-select)
 	dbNames := make([]string, 0, len(backupsByDB))
 	for db := range backupsByDB {
 		dbNames = append(dbNames, db)
 	}
 	sort.Strings(dbNames)
 
-	if len(dbNames) == 1 {
-		fmt.Printf("  %s %s\n", lib.Gray("Only one database, selecting:"), lib.Green(dbNames[0]))
-	} else {
-		fmt.Printf("  %s\n", lib.Bold("Select database to restore:"))
-		for i, db := range dbNames {
-			fmt.Printf("    %d) %s\n", i+1, db)
-		}
-		fmt.Println()
-		fmt.Print("  " + lib.Bold("Choice") + " " + lib.Gray("[1-"+fmt.Sprintf("%d", len(dbNames))+"]: "))
-		input, _ := reader.ReadString('\n')
-		input = strings.ReplaceAll(strings.TrimSpace(input), "\r", "")
-
-		var idx int
-		if _, err := fmt.Sscanf(input, "%d", &idx); err != nil || idx < 1 || idx > len(dbNames) {
-			if input != "" {
-				lib.Warn("Invalid selection, using first option.")
-			}
-			idx = 1
-		}
-		dbNames = []string{dbNames[idx-1]}
+	selectedDBs := interactiveSelectDatabases(dbNames)
+	if len(selectedDBs) == 0 {
+		lib.Info("No databases selected.")
+		return nil
 	}
 
-	selectedDB := dbNames[0]
-	availableBackups := backupsByDB[selectedDB]
-
-	// 7. Select which backup to restore
-	var selected BackupFile
-	if len(availableBackups) == 1 {
-		selected = availableBackups[0]
-		fmt.Printf("  %s %s\n", lib.Gray("Only one backup, using:"), lib.Green(selected.Filename()))
-	} else {
-		fmt.Println()
-		fmt.Printf("  %s %s\n", lib.Bold("Select backup to restore for"), lib.Green(selectedDB)+":")
-		fmt.Println()
-		fmt.Printf("  %s  %s  %s\n", lib.Gray(""), lib.Gray("Timestamp"), lib.Gray("Description"))
-		fmt.Printf("  %s  %s  %s\n", lib.Gray("---"), lib.Gray("---------"), lib.Gray("-----------"))
+	// 7. For each selected database, select which backup to restore
+	type restoreSelection struct {
+		database string
+		backup   BackupFile
+	}
+	var selections []restoreSelection
+	for _, db := range selectedDBs {
+		availableBackups := backupsByDB[db]
+		backupItems := make([]string, len(availableBackups))
+		backupIndex := make(map[int]BackupFile, len(availableBackups))
 		for i, b := range availableBackups {
-			desc := lib.Gray("-")
-			if b.Description != "" {
-				desc = b.Description
+			desc := b.Description
+			if desc == "" {
+				desc = "-"
 			}
-			fmt.Printf("  %d) %s  %s\n", i+1, b.FormattedTime(), desc)
+			backupItems[i] = fmt.Sprintf("%s  %s", b.FormattedTime(), desc)
+			backupIndex[i] = b
 		}
-		fmt.Println()
-		fmt.Print("  " + lib.Bold("Choice") + " " + lib.Gray("[1-"+fmt.Sprintf("%d", len(availableBackups))+"]: "))
-		input, _ := reader.ReadString('\n')
-		input = strings.ReplaceAll(strings.TrimSpace(input), "\r", "")
 
-		var idx int
-		if _, err := fmt.Sscanf(input, "%d", &idx); err != nil || idx < 1 || idx > len(availableBackups) {
-			if input != "" {
-				lib.Warn("Invalid selection, using first option.")
+		selectedIdxStr := interactiveSelectSingle(backupItems, "Select backup for "+lib.Green(db)+":")
+		selectedIdx := 0
+		for i, item := range backupItems {
+			if item == selectedIdxStr {
+				selectedIdx = i
+				break
 			}
-			idx = 1
 		}
-		selected = availableBackups[idx-1]
+		selections = append(selections, restoreSelection{
+			database: db,
+			backup:   backupIndex[selectedIdx],
+		})
 	}
 
-	// 8. Confirm restore
+	// 8. Summary
 	fmt.Println()
 	fmt.Printf("  %s\n", lib.Bold("Restore summary:"))
 	fmt.Printf("    Container:  %s\n", cfg.ContainerName)
-	fmt.Printf("    Database:  %s\n", selectedDB)
-	fmt.Printf("    Backup:    %s (%s)\n", selected.Filename(), selected.FormattedSize())
-	fmt.Printf("    Created:   %s\n", selected.FormattedTime())
-	if selected.Description != "" {
-		fmt.Printf("    Description: %s\n", selected.Description)
+	fmt.Printf("    Databases:  %d\n", len(selections))
+	for _, sel := range selections {
+		fmt.Printf("      - %s: %s (%s)\n", sel.database, sel.backup.Filename(), sel.backup.FormattedSize())
 	}
 	fmt.Println()
 
@@ -2266,19 +2407,71 @@ func runPodmanRestore(args []string) error {
 		return nil
 	}
 
-	// 9. Read and restore backup
-	backupData, err := os.ReadFile(selected.Path)
-	if err != nil {
-		return fmt.Errorf("read backup file: %w", err)
-	}
+	// 9. Execute restores with temp backup safety
+	fmt.Println()
+	for _, sel := range selections {
+		fmt.Printf("  %s Restoring %s...\n", lib.Bold("→"), sel.database)
 
-	if err := container.Restore(ctx, backupData); err != nil {
-		lib.Error("Restore failed: " + err.Error())
-		return err
+		// Step 1: Create temp backup of current database
+		fmt.Printf("    %s Creating temp backup...\n", lib.Gray("○"))
+		tempBackup, err := container.BackupDatabase(ctx, sel.database)
+		if err != nil {
+			fmt.Printf("    %s Could not create temp backup: %v (proceeding anyway)\n", lib.Gray("⚠"), err)
+			tempBackup = nil
+		}
+
+		// Save temp backup to a file in case we need it
+		var tempBackupPath string
+		if tempBackup != nil {
+			tempBackupPath = filepath.Join(workspace.Path("podman", "backups"), fmt.Sprintf("%s-%s-temp-%d.tar.gz",
+				cfg.ContainerName, sel.database, time.Now().Unix()))
+			if err := os.WriteFile(tempBackupPath, tempBackup, 0644); err != nil {
+				fmt.Printf("    %s Could not save temp backup: %v\n", lib.Gray("⚠"), err)
+				tempBackup = nil
+				tempBackupPath = ""
+			} else {
+				fmt.Printf("    %s Temp backup saved\n", lib.Gray("○"))
+			}
+		}
+
+		// Step 2: Drop the database
+		if err := container.DropDatabase(ctx, sel.database); err != nil {
+			fmt.Printf("    %s Could not drop database: %v\n", lib.Gray("⚠"), err)
+		}
+
+		// Step 3: Create the database fresh
+		if err := container.CreateDatabase(ctx, sel.database); err != nil {
+			fmt.Printf("    %s Could not create database: %v\n", lib.Gray("⚠"), err)
+		}
+
+		// Step 4: Restore from selected backup
+		backupData, err := os.ReadFile(sel.backup.Path)
+		if err != nil {
+			fmt.Printf("  %s Failed to read backup: %v\n", lib.Red("✗"), err)
+			if tempBackup != nil && tempBackupPath != "" {
+				restoreFromTemp(ctx, container, cfg, sel.database, tempBackup, tempBackupPath)
+			}
+			continue
+		}
+
+		if err := container.Restore(ctx, backupData); err != nil {
+			fmt.Printf("  %s Restore failed: %v\n", lib.Red("✗"), err)
+			if tempBackup != nil && tempBackupPath != "" {
+				restoreFromTemp(ctx, container, cfg, sel.database, tempBackup, tempBackupPath)
+			}
+			continue
+		}
+
+		// Step 5: Success - clean up temp backup
+		if tempBackupPath != "" {
+			os.Remove(tempBackupPath)
+		}
+
+		fmt.Printf("  %s %s restored successfully\n", lib.Green("✓"), sel.database)
 	}
 
 	fmt.Println()
-	lib.Success(fmt.Sprintf("Database %s restored successfully", lib.Bold(selectedDB)))
+	lib.Success(fmt.Sprintf("Restored %d database(s)", len(selections)))
 
 	// Show DSN
 	fmt.Println()
@@ -2378,4 +2571,31 @@ func groupBackupsByDatabase(backups []BackupFile) map[string][]BackupFile {
 	}
 
 	return result
+}
+
+// restoreFromTemp restores a database from a temp backup file and cleans up.
+func restoreFromTemp(ctx context.Context, container *podman.Container, cfg *podman.DatabaseConfig, database string, tempBackup []byte, tempBackupPath string) {
+	fmt.Printf("    %s Restoring from temp backup...\n", lib.Gray("○"))
+
+	// Drop the database again
+	if err := container.DropDatabase(ctx, database); err != nil {
+		fmt.Printf("    %s Could not drop database: %v\n", lib.Red("✗"), err)
+		return
+	}
+
+	// Create fresh
+	if err := container.CreateDatabase(ctx, database); err != nil {
+		fmt.Printf("    %s Could not create database: %v\n", lib.Red("✗"), err)
+		return
+	}
+
+	// Restore from temp backup
+	if err := container.Restore(ctx, tempBackup); err != nil {
+		fmt.Printf("    %s Temp restore failed: %v (temp backup preserved at %s)\n", lib.Red("✗"), err, tempBackupPath)
+		return
+	}
+
+	// Success - remove temp backup
+	os.Remove(tempBackupPath)
+	fmt.Printf("    %s Database restored from temp backup and temp backup removed\n", lib.Green("✓"))
 }

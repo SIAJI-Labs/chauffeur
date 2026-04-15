@@ -960,8 +960,8 @@ func (c *Container) mysqldump(ctx context.Context) ([]byte, error) {
 // pgdumpall runs pg_dumpall inside the container.
 func (c *Container) pgdumpall(ctx context.Context) ([]byte, error) {
 	output, err := c.ExecOutput(ctx,
-		"pg_dumpall",
-		"--username="+c.config.Username,
+		"bash", "-c",
+		"PGPASSWORD="+c.config.Password+" pg_dumpall --username="+c.config.Username,
 	)
 	if err != nil {
 		return []byte(output), err
@@ -1004,9 +1004,8 @@ func (c *Container) mysqldumpDatabase(ctx context.Context, database string) ([]b
 // pgdumpDatabase runs pg_dump for a specific database.
 func (c *Container) pgdumpDatabase(ctx context.Context, database string) ([]byte, error) {
 	output, err := c.ExecOutput(ctx,
-		"pg_dump",
-		"--username="+c.config.Username,
-		"--dbname="+database,
+		"bash", "-c",
+		"PGPASSWORD="+c.config.Password+" pg_dump --username="+c.config.Username+" --dbname="+database,
 	)
 	if err != nil {
 		return []byte(output), err
@@ -1040,7 +1039,8 @@ func (c *Container) mysqlrestore(ctx context.Context, database string, dump []by
 
 // pgrestore restores a postgres dump.
 func (c *Container) pgrestore(ctx context.Context, database string, dump []byte) error {
-	args := []string{"exec", "-i", c.containerName(), "psql", "--username=" + c.config.Username, "--dbname=" + database}
+	args := []string{"exec", "-i", c.containerName(), "bash", "-c",
+		"PGPASSWORD=" + c.config.Password + " psql --username=" + c.config.Username + " --dbname=" + database}
 	_, err := c.client.RunWithStdin(ctx, args, dump)
 	return err
 }
@@ -1149,11 +1149,8 @@ func (c *Container) listMySQLDatabases(ctx context.Context) ([]string, error) {
 
 func (c *Container) listPostgresDatabases(ctx context.Context) ([]string, error) {
 	output, err := c.ExecOutput(ctx,
-		"psql",
-		"--username="+c.config.Username,
-		"--tuples-only",
-		"--no-align",
-		"-c", "SELECT datname FROM pg_database WHERE datistemplate = false;",
+		"bash", "-c",
+		"PGPASSWORD="+c.config.Password+" psql --username="+c.config.Username+" --dbname=postgres --tuples-only --no-align -c \"SELECT datname FROM pg_database WHERE datistemplate = false;\"",
 	)
 	if err != nil {
 		return nil, fmt.Errorf("list databases: %w", err)
@@ -1213,6 +1210,111 @@ func (c *Container) listRedisKeys(ctx context.Context) ([]string, error) {
 		dbs = append(dbs, "db0")
 	}
 	return dbs, nil
+}
+
+// DropDatabase drops a database.
+func (c *Container) DropDatabase(ctx context.Context, database string) error {
+	c.log(fmt.Sprintf("  → Dropping database %s...", database))
+	switch c.config.Engine {
+	case EngineMySQL8, EngineMySQL57:
+		_, err := c.ExecOutput(ctx,
+			"mysql",
+			"--user="+c.config.Username,
+			"--password="+c.config.Password,
+			"-e", fmt.Sprintf("DROP DATABASE IF EXISTS `%s`;", database),
+		)
+		if err != nil {
+			return fmt.Errorf("drop mysql database: %w", err)
+		}
+		c.log(fmt.Sprintf("  ✓ Database %s dropped", database))
+		return nil
+	case EnginePostgres:
+		_, err := c.ExecOutput(ctx,
+			"bash", "-c",
+			fmt.Sprintf("PGPASSWORD=%s psql --username=%s --dbname=postgres -c 'DROP DATABASE IF EXISTS \"%s\";'", c.config.Password, c.config.Username, database),
+		)
+		if err != nil {
+			return fmt.Errorf("drop postgres database: %w", err)
+		}
+		c.log(fmt.Sprintf("  ✓ Database %s dropped", database))
+		return nil
+	case EngineMaria:
+		_, err := c.ExecOutput(ctx,
+			"mariadb",
+			"--user="+c.config.Username,
+			"--password="+c.config.Password,
+			"-e", fmt.Sprintf("DROP DATABASE IF EXISTS `%s`;", database),
+		)
+		if err != nil {
+			return fmt.Errorf("drop maria database: %w", err)
+		}
+		c.log(fmt.Sprintf("  ✓ Database %s dropped", database))
+		return nil
+	case EngineMongo:
+		_, err := c.ExecOutput(ctx,
+			"mongosh",
+			"--username="+c.config.Username,
+			"--password="+c.config.Password,
+			"--authenticationDatabase=admin",
+			"--quiet",
+			"--eval", fmt.Sprintf("db.getSiblingDB('%s').dropDatabase()", database),
+		)
+		if err != nil {
+			return fmt.Errorf("drop mongo database: %w", err)
+		}
+		c.log(fmt.Sprintf("  ✓ Database %s dropped", database))
+		return nil
+	default:
+		return fmt.Errorf("unsupported engine: %s", c.config.Engine)
+	}
+}
+
+// CreateDatabase creates a database if it doesn't exist.
+func (c *Container) CreateDatabase(ctx context.Context, database string) error {
+	c.log(fmt.Sprintf("  → Creating database %s...", database))
+	switch c.config.Engine {
+	case EngineMySQL8, EngineMySQL57:
+		_, err := c.ExecOutput(ctx,
+			"mysql",
+			"--user="+c.config.Username,
+			"--password="+c.config.Password,
+			"-e", fmt.Sprintf("CREATE DATABASE IF NOT EXISTS `%s` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;", database),
+		)
+		if err != nil {
+			return fmt.Errorf("create mysql database: %w", err)
+		}
+		c.log(fmt.Sprintf("  ✓ Database %s created", database))
+		return nil
+	case EnginePostgres:
+		_, err := c.ExecOutput(ctx,
+			"bash", "-c",
+			fmt.Sprintf("PGPASSWORD=%s psql --username=%s --dbname=postgres -c 'CREATE DATABASE \"%s\";'", c.config.Password, c.config.Username, database),
+		)
+		if err != nil {
+			return fmt.Errorf("create postgres database: %w", err)
+		}
+		c.log(fmt.Sprintf("  ✓ Database %s created", database))
+		return nil
+	case EngineMaria:
+		_, err := c.ExecOutput(ctx,
+			"mariadb",
+			"--user="+c.config.Username,
+			"--password="+c.config.Password,
+			"-e", fmt.Sprintf("CREATE DATABASE IF NOT EXISTS `%s` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;", database),
+		)
+		if err != nil {
+			return fmt.Errorf("create maria database: %w", err)
+		}
+		c.log(fmt.Sprintf("  ✓ Database %s created", database))
+		return nil
+	case EngineMongo:
+		// MongoDB creates databases implicitly when data is inserted
+		// No explicit create needed
+		c.log(fmt.Sprintf("  ✓ Database %s ready (MongoDB)", database))
+		return nil
+	default:
+		return fmt.Errorf("unsupported engine: %s", c.config.Engine)
+	}
 }
 
 // ReadBackupMeta reads and parses the meta.json from a backup tar.gz file.
