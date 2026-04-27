@@ -19,6 +19,8 @@ func RunConfig(args []string) error {
 	switch strings.ToLower(args[0]) {
 	case "php":
 		return configPHP(args[1:])
+	case "nginx":
+		return configNginx(args[1:])
 	case "--help", "-h", "help":
 		configHelp()
 		return nil
@@ -35,11 +37,15 @@ func configHelp() {
 	fmt.Println()
 	fmt.Printf("  %s\n", lib.Bold("Usage:"))
 	fmt.Println("    chauf config php [version] [key] [value]")
+	fmt.Println("    chauf config nginx [key] [value]")
 	fmt.Println()
 	fmt.Printf("  %s\n", lib.Bold("Examples:"))
 	fmt.Println("    chauf config php              # List all PHP version configs")
 	fmt.Println("    chauf config php 8.3         # Show PHP 8.3 config")
 	fmt.Println("    chauf config php 8.3 upload_max_filesize 128M")
+	fmt.Println("    chauf config nginx           # Show nginx config")
+	fmt.Println("    chauf config nginx upload_max_size 256M")
+	fmt.Println("    chauf config nginx upload_max_size \"\"  # reset: follow PHP post_max_size")
 	fmt.Println()
 }
 
@@ -180,6 +186,66 @@ func configPHPShow(version string, cfg workspace.PHPVersionConfig) error {
 	fmt.Printf("  %-20s %d\n", "max_input_vars:", cfg.MaxInputVars)
 	fmt.Println()
 	fmt.Printf("  %s\n", lib.Gray("Update: chauf config php "+version+" <key> <value>"))
+	fmt.Println()
+	return nil
+}
+
+// ── nginx config ───────────────────────────────────────────────────────────────
+
+func configNginx(args []string) error {
+	cfg := workspace.Load()
+
+	if len(args) == 0 {
+		return configNginxShow(cfg)
+	}
+
+	if len(args) < 2 {
+		return fmt.Errorf("Usage: chauf config nginx <key> <value>")
+	}
+
+	key := args[0]
+	value := args[1]
+
+	// Validate key
+	validKeys := []string{"upload_max_size"}
+	valid := false
+	for _, k := range validKeys {
+		if k == key {
+			valid = true
+			break
+		}
+	}
+	if !valid {
+		return fmt.Errorf("invalid key %q — valid keys: %s", key, strings.Join(validKeys, ", "))
+	}
+
+	// Save to chauffeur.yaml
+	if err := workspace.SaveNginxSetting(key, value); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	if value == "" {
+		fmt.Printf("  %s nginx.%s reset (will follow PHP post_max_size)\n", lib.Green("✓"), key)
+	} else {
+		fmt.Printf("  %s nginx.%s = %s\n", lib.Green("✓"), key, value)
+	}
+	fmt.Println()
+
+	return nil
+}
+
+func configNginxShow(cfg workspace.Config) error {
+	fmt.Println()
+	fmt.Printf("  %s\n", lib.Bold("nginx"))
+	fmt.Println()
+	if cfg.Nginx.UploadMaxSize != "" {
+		lib.Pair("upload_max_size", cfg.Nginx.UploadMaxSize)
+		fmt.Printf("  %s\n", lib.Gray("(override — empty value to reset and follow PHP)"))
+	} else {
+		lib.Pair("upload_max_size", "(follows PHP post_max_size)")
+	}
+	fmt.Println()
+	fmt.Printf("  %s\n", lib.Gray("Update: chauf config nginx <key> <value>"))
 	fmt.Println()
 	return nil
 }

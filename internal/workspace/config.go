@@ -13,8 +13,9 @@ import (
 type Config struct {
 	Workspace string
 	Nginx     struct {
-		HTTPPort  int
-		HTTPSPort int
+		HTTPPort      int
+		HTTPSPort     int
+		UploadMaxSize string // override: if empty, nginx follows PHP post_max_size
 	}
 	PHP struct {
 		DefaultVersion string
@@ -111,6 +112,8 @@ func Load() Config {
 			if v, err := strconv.Atoi(val); err == nil {
 				c.Nginx.HTTPSPort = v
 			}
+		case "nginx.upload_max_size":
+			c.Nginx.UploadMaxSize = val
 		case "php.default_version":
 			c.PHP.DefaultVersion = val
 		case "dns.tld":
@@ -223,13 +226,14 @@ func SavePHPVersionSetting(version, key, value string) error {
 	}
 
 	lines := strings.Split(string(data), "\n")
-	keyLine := fmt.Sprintf("  %s.%s:", version, key)
+	// keyLine without leading spaces since we compare against trimmed line
+	keyPattern := fmt.Sprintf("%s.%s:", version, key)
 	valueLine := fmt.Sprintf("  %s.%s: \"%s\"", version, key, value)
 
 	found := false
 	for i, line := range lines {
 		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, keyLine) {
+		if strings.HasPrefix(trimmed, keyPattern) {
 			lines[i] = valueLine
 			found = true
 			break
@@ -250,6 +254,48 @@ func SavePHPVersionSetting(version, key, value string) error {
 
 	if !found {
 		return fmt.Errorf("could not find php section in %s", configPath)
+	}
+
+	return os.WriteFile(configPath, []byte(strings.Join(lines, "\n")), 0644)
+}
+
+// SaveNginxSetting updates a single nginx setting in chauffeur.yaml.
+func SaveNginxSetting(key, value string) error {
+	root := Root()
+	configPath := filepath.Join(root, "config", "chauffeur.yaml")
+
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return fmt.Errorf("read config: %w", err)
+	}
+
+	lines := strings.Split(string(data), "\n")
+	keyPattern := fmt.Sprintf("nginx.%s:", key)
+	valueLine := fmt.Sprintf("  nginx.%s: \"%s\"", key, value)
+
+	found := false
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, keyPattern) {
+			lines[i] = valueLine
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		// Insert after "nginx:" section
+		for i, line := range lines {
+			if strings.TrimSpace(line) == "nginx:" {
+				lines = append(lines[:i+1], append([]string{valueLine}, lines[i+1:]...)...)
+				found = true
+				break
+			}
+		}
+	}
+
+	if !found {
+		return fmt.Errorf("could not find nginx section in %s", configPath)
 	}
 
 	return os.WriteFile(configPath, []byte(strings.Join(lines, "\n")), 0644)
