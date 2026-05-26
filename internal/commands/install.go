@@ -1,13 +1,16 @@
 package commands
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
 	"os"
 	"strings"
 
+	"github.com/charmbracelet/bubbletea"
 	"github.com/siegg/chauffeur/internal/installers"
 	"github.com/siegg/chauffeur/internal/lib"
+	"github.com/siegg/chauffeur/internal/workspace"
 )
 
 func RunInstall(args []string) error {
@@ -50,7 +53,10 @@ func RunInstall(args []string) error {
 			version = positionals[1]
 		}
 		if version == "" {
-			return fmt.Errorf("usage: chauf install php <version>  (e.g. 8.3, 8.3.20)")
+			version = interactiveSelectPHPVersion(installers.SupportedPHPVersions, "Select PHP version to install")
+			if version == "" {
+				return nil // user cancelled or all installed
+			}
 		}
 		return installPHP(version, opts)
 	case "composer":
@@ -267,4 +273,200 @@ func installComposer(opts installers.BuildOpts) error {
 	lib.Info(lib.Gray("Usage:  composer --version"))
 	fmt.Println()
 	return nil
+}
+
+// ── PHP version interactive selector ──────────────────────────────────────────
+
+// phpSelectModel is a bubbletea model for selecting a PHP version with installed versions marked/disabled.
+type phpSelectModel struct {
+	items     []string // display items (may include " (installed)" suffix)
+	cursor    int      // cursor index into selectable (non-installed) items
+	done      bool
+	aborted   bool
+	title     string
+	installed map[string]bool // set of installed version strings
+}
+
+func (m phpSelectModel) Init() tea.Cmd {
+	return nil
+}
+
+func (m phpSelectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.Type {
+		case tea.KeyUp:
+			if m.cursor > 0 {
+				m.cursor--
+			}
+		case tea.KeyDown:
+			if m.cursor < len(m.selectableItems())-1 {
+				m.cursor++
+			}
+		case tea.KeySpace, tea.KeyEnter:
+			m.done = true
+			return m, tea.Quit
+		case tea.KeyCtrlC:
+			m.aborted = true
+			return m, tea.Quit
+		}
+	}
+	return m, nil
+}
+
+// selectableItems returns items that are not installed (in display form).
+func (m phpSelectModel) selectableItems() []string {
+	var selectable []string
+	for _, item := range m.items {
+		if !m.installed[item] {
+			selectable = append(selectable, item)
+		}
+	}
+	return selectable
+}
+
+func (m phpSelectModel) View() string {
+	var lines []string
+
+	lines = append(lines, fmt.Sprintf("  %s", lib.Bold(m.title)))
+	lines = append(lines, "")
+	lines = append(lines, fmt.Sprintf("  %s", lib.Gray("[↑/↓] Move  [space/enter] Select")))
+	lines = append(lines, "")
+
+	// Build display lines and track which selectable index maps to which item
+	selectable := m.selectableItems()
+	selectableIdx := 0
+
+	for _, item := range m.items {
+		cursor := "  "
+		installed := m.installed[item]
+
+		if installed {
+			lines = append(lines, fmt.Sprintf("  %s %s", lib.Gray("  "), lib.Gray(item+" (installed)")))
+		} else {
+			if selectableIdx == m.cursor {
+				cursor = lib.Green(">")
+			}
+			lines = append(lines, fmt.Sprintf("  %s %s", cursor, item))
+			selectableIdx++
+		}
+	}
+
+	lines = append(lines, "")
+
+	// Hint
+	if len(selectable) == 0 {
+		lines = append(lines, fmt.Sprintf("  %s", lib.Gray("All PHP versions are already installed")))
+	} else {
+		lines = append(lines, fmt.Sprintf("  %s %d available", lib.Gray("✓"), len(selectable)))
+	}
+
+	return strings.Join(lines, "\n")
+}
+
+// interactiveSelectPHPVersion shows an interactive selector for PHP versions,
+// marking installed ones as already-installed and only allowing selection of non-installed versions.
+func interactiveSelectPHPVersion(versions []string, title string) string {
+	if len(versions) == 0 {
+		return ""
+	}
+
+	installedSet := make(map[string]bool)
+	for _, v := range installers.ListInstalledPHP(workspace.Root()) {
+		installedSet[v] = true
+	}
+
+	// If all are installed, fall back to simple list
+	selectableCount := 0
+	for _, v := range versions {
+		if !installedSet[v] {
+			selectableCount++
+		}
+	}
+	if selectableCount == 0 {
+		fmt.Println()
+		fmt.Printf("  %s\n", lib.Bold(title))
+		fmt.Println()
+		for _, v := range versions {
+			fmt.Printf("  %s %s\n", lib.Gray("  "), lib.Gray(v+" (installed)"))
+		}
+		fmt.Println()
+		lib.Warn("All PHP versions are already installed")
+		return ""
+	}
+
+	model := phpSelectModel{
+		items:     versions,
+		cursor:    0,
+		title:     title,
+		installed: installedSet,
+	}
+
+	p := tea.NewProgram(model)
+	result, err := p.Run()
+	if err != nil {
+		return interactiveSelectPHPSimple(versions, installedSet, title)
+	}
+
+	if finalModel, ok := result.(phpSelectModel); ok {
+		if finalModel.aborted {
+			return ""
+		}
+		// Return the selectable item at cursor position
+		selectable := finalModel.selectableItems()
+		if finalModel.cursor < len(selectable) {
+			return selectable[finalModel.cursor]
+		}
+	}
+
+	return ""
+}
+
+// interactiveSelectPHPSimple is the fallback text-based PHP version selector.
+func interactiveSelectPHPSimple(versions []string, installed map[string]bool, title string) string {
+	reader := bufio.NewReader(os.Stdin)
+
+	fmt.Println()
+	fmt.Printf("  %s\n", lib.Bold(title))
+	fmt.Println()
+
+	selectable := []string{}
+	for _, v := range versions {
+		suffix := ""
+		if installed[v] {
+			suffix = " (installed)"
+		} else {
+			selectable = append(selectable, v)
+		}
+		if installed[v] {
+			fmt.Printf("  %s %s%s\n", lib.Gray("  "), v, lib.Gray(suffix))
+		}
+	}
+	fmt.Println()
+
+	if len(selectable) == 0 {
+		lib.Warn("All PHP versions are already installed")
+		return ""
+	}
+
+	fmt.Printf("  %s %d available\n", lib.Gray("✓"), len(selectable))
+	fmt.Println()
+	fmt.Print("  " + lib.Bold("Choice") + " " + lib.Gray("[1-"+fmt.Sprintf("%d", len(selectable))+" or name]: "))
+	input, _ := reader.ReadString('\n')
+	input = strings.TrimSpace(input)
+	input = strings.ReplaceAll(input, "\r", "")
+
+	var idx int
+	if _, err := fmt.Sscanf(input, "%d", &idx); err == nil && idx >= 1 && idx <= len(selectable) {
+		return selectable[idx-1]
+	}
+
+	inputLower := strings.ToLower(input)
+	for _, item := range selectable {
+		if strings.ToLower(item) == inputLower {
+			return item
+		}
+	}
+
+	return ""
 }

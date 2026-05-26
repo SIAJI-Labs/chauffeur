@@ -13,10 +13,11 @@ import (
 )
 
 // SupportedPHPVersions lists all supported major.minor versions, newest first.
-var SupportedPHPVersions = []string{"8.4", "8.3", "8.2", "8.1", "8.0", "7.4"}
+var SupportedPHPVersions = []string{"8.5", "8.4", "8.3", "8.2", "8.1", "8.0", "7.4"}
 
 // phpFallbackVersions maps major.minor → known stable patch version.
 var phpFallbackVersions = map[string]string{
+	"8.5": "8.5.0",
 	"8.4": "8.4.5",
 	"8.3": "8.3.20",
 	"8.2": "8.2.28",
@@ -247,7 +248,7 @@ func (p *PHPInstaller) configureArgs() []string {
 		"--with-readline",
 		"--with-mysqli=mysqlnd",
 		"--with-pdo-mysql=mysqlnd",
-		"--enable-gmp",
+		"--with-gmp",
 		"--enable-bcmath",
 	}
 
@@ -258,8 +259,9 @@ func (p *PHPInstaller) configureArgs() []string {
 		args = append(args, "--enable-gd", "--with-jpeg=/usr", "--with-freetype=/usr")
 	}
 
-	// sodium: 7.4 and 8.0 need the explicit flag; 8.1+ includes it by default.
-	if major == "7" || mm == "8.0" {
+	// sodium: Always include --with-sodium for PHP 7+ to ensure libsodium is compiled
+	// in, even if libsodium-dev headers weren't detected at configure time.
+	if major == "7" || major == "8" {
 		args = append(args, "--with-sodium")
 	}
 
