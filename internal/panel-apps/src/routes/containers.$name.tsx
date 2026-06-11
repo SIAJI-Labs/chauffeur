@@ -30,6 +30,8 @@ import {
   Terminal,
 } from "lucide-react"
 
+const LOG_FOLLOW_RESUME_THRESHOLD_PX = 16
+
 export const Route = createFileRoute("/containers/$name")({
   component: ContainerDetailPage,
 })
@@ -67,7 +69,24 @@ function ContainerDetailPage() {
   const { name } = useParams({ from: "/containers/$name" })
   const queryClient = useQueryClient()
   const [logs, setLogs] = useState<string>("")
-  const logsRef = useRef<HTMLPreElement>(null)
+  const [isFollowingLogs, setIsFollowingLogs] = useState(true)
+  const logsContainerRef = useRef<HTMLPreElement>(null)
+
+  const scrollLogsToBottom = () => {
+    if (logsContainerRef.current) {
+      logsContainerRef.current.scrollTop = logsContainerRef.current.scrollHeight
+    }
+  }
+
+  const handleLogsScroll = () => {
+    if (!logsContainerRef.current) return
+
+    const { scrollTop, scrollHeight, clientHeight } = logsContainerRef.current
+    const isNearBottom =
+      scrollHeight - scrollTop - clientHeight <= LOG_FOLLOW_RESUME_THRESHOLD_PX
+
+    setIsFollowingLogs((prev) => (prev === isNearBottom ? prev : isNearBottom))
+  }
 
   const { data: container, isLoading, error } = useQuery({
     queryKey: ["container", name],
@@ -84,6 +103,11 @@ function ContainerDetailPage() {
     mutationFn: () => stopContainer(name),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["container", name] }),
   })
+
+  useEffect(() => {
+    setLogs("")
+    setIsFollowingLogs(true)
+  }, [name])
 
   useEffect(() => {
     if (container?.status !== "running") return
@@ -106,10 +130,10 @@ function ContainerDetailPage() {
   }, [container?.status, name])
 
   useEffect(() => {
-    if (logsRef.current) {
-      logsRef.current.scrollTop = logsRef.current.scrollHeight
+    if (isFollowingLogs) {
+      scrollLogsToBottom()
     }
-  }, [logs])
+  }, [isFollowingLogs, logs])
 
   const [copiedField, setCopiedField] = useState<string | null>(null)
 
@@ -456,8 +480,23 @@ function ContainerDetailPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
+              {!isFollowingLogs && (
+                <div className="mb-2 flex justify-end">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      scrollLogsToBottom()
+                      setIsFollowingLogs(true)
+                    }}
+                  >
+                    Jump to latest
+                  </Button>
+                </div>
+              )}
               <pre
-                ref={logsRef}
+                ref={logsContainerRef}
+                onScroll={handleLogsScroll}
                 className="h-64 overflow-auto rounded-md bg-muted p-2 text-xs font-mono leading-relaxed"
               >
                 {logs || (container.status !== "running" ? "Logs will appear here when the container is running..." : "Waiting for logs...")}

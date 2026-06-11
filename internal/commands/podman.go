@@ -1397,6 +1397,8 @@ type multiSelectModel struct {
 	choices  []string
 	selected map[int]bool
 	cursor   int
+	width    int
+	height   int
 	done     bool
 	aborted  bool
 	title    string
@@ -1410,6 +1412,9 @@ func (m multiSelectModel) Init() tea.Cmd {
 // Update handles messages
 func (m multiSelectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
 	case tea.KeyMsg:
 		switch msg.Type {
 		case tea.KeyUp:
@@ -1435,6 +1440,30 @@ func (m multiSelectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // View renders the UI
 func (m multiSelectModel) View() string {
+	const reservedLines = 8
+	visibleChoices := len(m.choices)
+	if m.height > reservedLines {
+		visibleChoices = m.height - reservedLines
+	}
+	if visibleChoices < 1 {
+		visibleChoices = 1
+	}
+
+	start := 0
+	if len(m.choices) > visibleChoices {
+		if m.cursor >= visibleChoices {
+			start = m.cursor - visibleChoices + 1
+		}
+		maxStart := len(m.choices) - visibleChoices
+		if start > maxStart {
+			start = maxStart
+		}
+	}
+	end := start + visibleChoices
+	if end > len(m.choices) {
+		end = len(m.choices)
+	}
+
 	// Count selections
 	selectedCount := 0
 	for _, sel := range m.selected {
@@ -1450,9 +1479,13 @@ func (m multiSelectModel) View() string {
 	lines = append(lines, "")
 	lines = append(lines, fmt.Sprintf("  %s", lib.Gray("[↑/↓] Move  [space] Select  [enter] Confirm")))
 	lines = append(lines, "")
+	if start > 0 {
+		lines = append(lines, fmt.Sprintf("  %s", lib.Gray("↑ more")))
+	}
 
 	// Choices
-	for i, choice := range m.choices {
+	for i := start; i < end; i++ {
+		choice := m.choices[i]
 		cursor := "  "
 		if m.cursor == i {
 			cursor = lib.Green(">")
@@ -1471,6 +1504,9 @@ func (m multiSelectModel) View() string {
 
 		lines = append(lines, fmt.Sprintf("  %s %s %s", cursor, selected, displayName))
 	}
+	if end < len(m.choices) {
+		lines = append(lines, fmt.Sprintf("  %s", lib.Gray("↓ more")))
+	}
 
 	lines = append(lines, "")
 
@@ -1488,6 +1524,11 @@ func (m multiSelectModel) View() string {
 
 // interactiveSelectSingle shows an interactive single-item selector with arrow keys.
 // Uses bubbletea for proper TUI rendering.
+const (
+	singleSelectReservedLines    = 4
+	containerSelectReservedLines = 6
+)
+
 func interactiveSelectSingle(items []string, title string) string {
 	if len(items) == 0 {
 		return ""
@@ -1521,6 +1562,7 @@ type singleSelectModel struct {
 	done    bool
 	aborted bool
 	title   string
+	height  int
 }
 
 func (m singleSelectModel) Init() tea.Cmd {
@@ -1529,6 +1571,8 @@ func (m singleSelectModel) Init() tea.Cmd {
 
 func (m singleSelectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.height = msg.Height
 	case tea.KeyMsg:
 		switch msg.Type {
 		case tea.KeyUp:
@@ -1558,13 +1602,23 @@ func (m singleSelectModel) View() string {
 	lines = append(lines, fmt.Sprintf("  %s", lib.Gray("[↑/↓] Move  [space/enter] Select")))
 	lines = append(lines, "")
 
-	for i, item := range m.items {
+	start, end, showAbove, showBelow := selectorViewportWithIndicators(len(m.items), m.cursor, m.height, singleSelectReservedLines)
+	if showAbove {
+		lines = append(lines, fmt.Sprintf("  %s", lib.Gray("↑ more")))
+	}
+
+	for i := start; i < end; i++ {
+		item := m.items[i]
 		cursor := "  "
 		if m.cursor == i {
 			cursor = lib.Green(">")
 		}
 
 		lines = append(lines, fmt.Sprintf("  %s %s", cursor, item))
+	}
+
+	if showBelow {
+		lines = append(lines, fmt.Sprintf("  %s", lib.Gray("↓ more")))
 	}
 
 	return strings.Join(lines, "\n")
@@ -1696,6 +1750,7 @@ type containerSelectModel struct {
 	done       bool
 	aborted    bool
 	title      string
+	height     int
 }
 
 // containerInfo holds container display information
@@ -1713,6 +1768,8 @@ func (m containerSelectModel) Init() tea.Cmd {
 
 func (m containerSelectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.height = msg.Height
 	case tea.KeyMsg:
 		switch msg.Type {
 		case tea.KeyUp:
@@ -1772,7 +1829,13 @@ func (m containerSelectModel) View() string {
 
 	lines = append(lines, "")
 
-	for i, c := range m.containers {
+	start, end, showAbove, showBelow := selectorViewportWithIndicators(len(m.containers), m.cursor, m.height, containerSelectReservedLines)
+	if showAbove {
+		lines = append(lines, fmt.Sprintf("  %s", lib.Gray("↑ more")))
+	}
+
+	for i := start; i < end; i++ {
+		c := m.containers[i]
 		cursor := "  "
 		if m.cursor == i {
 			cursor = lib.Green(">")
@@ -1793,6 +1856,10 @@ func (m containerSelectModel) View() string {
 		}
 	}
 
+	if showBelow {
+		lines = append(lines, fmt.Sprintf("  %s", lib.Gray("↓ more")))
+	}
+
 	lines = append(lines, "")
 
 	if selectedCount == 0 {
@@ -1804,6 +1871,24 @@ func (m containerSelectModel) View() string {
 	}
 
 	return strings.Join(lines, "\n")
+}
+
+func selectorViewportWithIndicators(totalRows, activeRow, terminalHeight, baseReservedLines int) (start, end int, showAbove, showBelow bool) {
+	start, end, showAbove, showBelow = computeSelectorViewport(totalRows, activeRow, terminalHeight, baseReservedLines)
+
+	indicatorLines := 0
+	if showAbove {
+		indicatorLines++
+	}
+	if showBelow {
+		indicatorLines++
+	}
+
+	if indicatorLines == 0 {
+		return start, end, showAbove, showBelow
+	}
+
+	return computeSelectorViewport(totalRows, activeRow, terminalHeight, baseReservedLines+indicatorLines)
 }
 
 // interactiveSelectContainers shows an interactive list of containers with selection.

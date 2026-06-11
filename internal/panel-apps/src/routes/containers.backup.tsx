@@ -329,7 +329,10 @@ function BackupPage() {
                   <div className="space-y-4 py-4">
                     <div className="space-y-2">
                       <label className="text-sm font-medium">Container</label>
-                      <Select value={selectedContainer} onValueChange={handleContainerChange}>
+                      <Select
+                        value={selectedContainer}
+                        onValueChange={(value) => handleContainerChange(value || "")}
+                      >
                         <SelectTrigger className="w-full">
                           <SelectValue placeholder="Select a container..." />
                         </SelectTrigger>

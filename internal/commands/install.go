@@ -285,6 +285,8 @@ type phpSelectModel struct {
 	aborted   bool
 	title     string
 	installed map[string]bool // set of installed version strings
+	width     int
+	height    int
 }
 
 func (m phpSelectModel) Init() tea.Cmd {
@@ -293,6 +295,9 @@ func (m phpSelectModel) Init() tea.Cmd {
 
 func (m phpSelectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
 	case tea.KeyMsg:
 		switch msg.Type {
 		case tea.KeyUp:
@@ -325,19 +330,88 @@ func (m phpSelectModel) selectableItems() []string {
 	return selectable
 }
 
+func (m phpSelectModel) activeRenderedRow() int {
+	if m.cursor < 0 {
+		return -1
+	}
+
+	selectableIdx := 0
+
+	for rowIdx, item := range m.items {
+		if m.installed[item] {
+			continue
+		}
+
+		if selectableIdx == m.cursor {
+			return rowIdx
+		}
+
+		selectableIdx++
+	}
+
+	return -1
+}
+
+func (m phpSelectModel) nearestInstalledRowBefore(activeRow int) int {
+	if activeRow <= 0 {
+		return -1
+	}
+
+	for rowIdx := activeRow - 1; rowIdx >= 0; rowIdx-- {
+		if m.installed[m.items[rowIdx]] {
+			return rowIdx
+		}
+	}
+
+	return -1
+}
+
 func (m phpSelectModel) View() string {
 	var lines []string
 
 	lines = append(lines, fmt.Sprintf("  %s", lib.Bold(m.title)))
 	lines = append(lines, "")
 	lines = append(lines, fmt.Sprintf("  %s", lib.Gray("[↑/↓] Move  [space/enter] Select")))
-	lines = append(lines, "")
 
-	// Build display lines and track which selectable index maps to which item
+	// Build display rows and track which selectable index maps to which item.
 	selectable := m.selectableItems()
+	activeRow := m.activeRenderedRow()
+	if activeRow < 0 {
+		activeRow = 0
+	}
+	start, end, showAbove, showBelow := selectorViewportWithIndicators(len(m.items), activeRow, m.height, 4)
+	visibleRows := end - start
+	if installedRow := m.nearestInstalledRowBefore(activeRow); installedRow >= 0 && installedRow < start {
+		candidateStart := max(0, start-1)
+		if candidateStart > installedRow {
+			candidateStart = installedRow
+		}
+		candidateEnd := candidateStart + visibleRows
+		if candidateEnd > len(m.items) {
+			candidateEnd = len(m.items)
+			candidateStart = max(0, candidateEnd-visibleRows)
+		}
+		if candidateStart <= activeRow && activeRow < candidateEnd {
+			start = candidateStart
+			end = candidateEnd
+			showAbove = start > 0
+			showBelow = end < len(m.items)
+		}
+	}
 	selectableIdx := 0
 
-	for _, item := range m.items {
+	if showAbove {
+		lines = append(lines, fmt.Sprintf("  %s", lib.Gray("↑ more")))
+	}
+
+	for rowIdx, item := range m.items {
+		if rowIdx < start || rowIdx >= end {
+			if !m.installed[item] {
+				selectableIdx++
+			}
+			continue
+		}
+
 		cursor := "  "
 		installed := m.installed[item]
 
@@ -352,7 +426,9 @@ func (m phpSelectModel) View() string {
 		}
 	}
 
-	lines = append(lines, "")
+	if showBelow {
+		lines = append(lines, fmt.Sprintf("  %s", lib.Gray("↓ more")))
+	}
 
 	// Hint
 	if len(selectable) == 0 {
