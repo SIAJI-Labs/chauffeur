@@ -1126,6 +1126,13 @@ func (c *Container) ListDatabases(ctx context.Context) ([]string, error) {
 }
 
 func (c *Container) listMySQLDatabases(ctx context.Context) ([]string, error) {
+	mysqlSystemDatabases := map[string]struct{}{
+		"information_schema": {},
+		"performance_schema": {},
+		"mysql":              {},
+		"sys":                {},
+	}
+
 	output, err := c.ExecOutput(ctx,
 		"mysql",
 		"--user="+c.config.Username,
@@ -1137,13 +1144,31 @@ func (c *Container) listMySQLDatabases(ctx context.Context) ([]string, error) {
 		return nil, fmt.Errorf("list databases: %w", err)
 	}
 
+	c.log(fmt.Sprintf("  → Enumerating MySQL databases for container=%q user=%q", c.containerName(), c.config.Username))
+
+	var parsed []string
+	var filteredSystem []string
 	var dbs []string
 	for _, line := range strings.Split(output, "\n") {
 		line = strings.TrimSpace(line)
-		if line != "" && line != "Database" && line != "information_schema" && line != "performance_schema" && line != "mysql" && line != "sys" {
-			dbs = append(dbs, line)
+		if line == "" || line == "Database" {
+			continue
 		}
+
+		parsed = append(parsed, line)
+
+		if _, isSystem := mysqlSystemDatabases[line]; isSystem {
+			filteredSystem = append(filteredSystem, line)
+			continue
+		}
+
+		dbs = append(dbs, line)
 	}
+
+	c.log(fmt.Sprintf("  → MySQL SHOW DATABASES parsed output for container=%q: %v", c.containerName(), parsed))
+	c.log(fmt.Sprintf("  → MySQL system databases filtered for container=%q: %v", c.containerName(), filteredSystem))
+	c.log(fmt.Sprintf("  → MySQL databases returned for container=%q: %v", c.containerName(), dbs))
+
 	return dbs, nil
 }
 

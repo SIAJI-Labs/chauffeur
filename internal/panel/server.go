@@ -22,6 +22,48 @@ type Server struct {
 	client     *podman.PodmanClient
 }
 
+func logErrorValue(err error) string {
+	if err == nil {
+		return "<nil>"
+	}
+
+	return err.Error()
+}
+
+func logListDatabasesResult(containerName, engine string, databases []string, err error) {
+	if err != nil {
+		log.Printf("panel: list databases container=%q engine=%q count=%d error=%q", containerName, engine, len(databases), logErrorValue(err))
+		return
+	}
+
+	log.Printf("panel: list databases container=%q engine=%q count=%d", containerName, engine, len(databases))
+}
+
+func logCreateBackupRequest(containerName string, databases []DatabaseBackup) {
+	names := make([]string, 0, len(databases))
+	for _, db := range databases {
+		names = append(names, db.Name)
+	}
+
+	log.Printf("panel: create backup container=%q requested_databases=%v", containerName, names)
+}
+
+func logCreateBackupStart(containerName, database string) {
+	log.Printf("panel: backup start container=%q database=%q", containerName, database)
+}
+
+func logCreateBackupSuccess(containerName, database, filename string) {
+	log.Printf("panel: backup success container=%q database=%q filename=%q", containerName, database, filename)
+}
+
+func logCreateBackupFailure(containerName, database string, err error) {
+	log.Printf("panel: backup failure container=%q database=%q error=%q", containerName, database, logErrorValue(err))
+}
+
+func logCreateBackupSummary(containerName string, succeeded, failed int) {
+	log.Printf("panel: create backup summary container=%q succeeded=%d failed=%d", containerName, succeeded, failed)
+}
+
 func NewServer(port int) *Server {
 	return NewServerWithAddr(fmt.Sprintf("127.0.0.1:%d", port))
 }
@@ -260,6 +302,7 @@ func (s *Server) handleListDatabases(w http.ResponseWriter, r *http.Request) {
 	}
 
 	databases, err := container.ListDatabases(ctx)
+	logListDatabasesResult(cfg.ContainerName, string(cfg.Engine), databases, err)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -305,6 +348,8 @@ func (s *Server) handleCreateBackup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	logCreateBackupRequest(cfg.ContainerName, req.Databases)
+
 	timestamp := time.Now().Format("20060102-150405")
 	backupDir := backupPath(cfg.ContainerName, "")
 	if err := os.MkdirAll(backupDir, 0755); err != nil {
@@ -313,19 +358,28 @@ func (s *Server) handleCreateBackup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var createdBackups []string
+	failedBackups := 0
 	for _, db := range req.Databases {
+		logCreateBackupStart(cfg.ContainerName, db.Name)
 		backupData, err := container.BackupDatabaseWithDescription(ctx, db.Name, db.Description)
 		if err != nil {
+			failedBackups++
+			logCreateBackupFailure(cfg.ContainerName, db.Name, err)
 			continue
 		}
 
 		filename := fmt.Sprintf("%s-%s-%s.tar.gz", cfg.ContainerName, db.Name, timestamp)
 		outputPath := filepath.Join(backupDir, filename)
 		if err := os.WriteFile(outputPath, backupData, 0644); err != nil {
+			failedBackups++
+			logCreateBackupFailure(cfg.ContainerName, db.Name, err)
 			continue
 		}
+		logCreateBackupSuccess(cfg.ContainerName, db.Name, filename)
 		createdBackups = append(createdBackups, filename)
 	}
+
+	logCreateBackupSummary(cfg.ContainerName, len(createdBackups), failedBackups)
 
 	if len(createdBackups) == 0 {
 		jsonError(w, http.StatusInternalServerError, "All backups failed")
