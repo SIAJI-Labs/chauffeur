@@ -30,6 +30,8 @@ Chauffeur compiles PHP from source for each supported version. Each version gets
   --enable-mysqlnd \
   --with-mysqli=mysqlnd \
   --with-pdo-mysql=mysqlnd \
+  --with-pgsql \
+  --with-pdo-pgsql \
   --with-openssl \
   --with-zlib \
   --with-bz2 \
@@ -55,6 +57,8 @@ Then:
 make -j$(nproc)
 make install
 ```
+
+Native PostgreSQL prerequisite: the host system must provide PostgreSQL client development headers so `pg_config` and `libpq-fe.h` are available during configure. On Debian/Ubuntu install `libpq-dev`; on Fedora install `postgresql-devel`; on Arch install `postgresql-libs` (or the equivalent development package for your distro).
 
 ---
 

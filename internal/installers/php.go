@@ -248,6 +248,8 @@ func (p *PHPInstaller) configureArgs() []string {
 		"--with-readline",
 		"--with-mysqli=mysqlnd",
 		"--with-pdo-mysql=mysqlnd",
+		"--with-pgsql",
+		"--with-pdo-pgsql",
 		"--with-gmp",
 		"--enable-bcmath",
 	}

@@ -27,7 +27,7 @@ chauf doctor [flags]
 |------|------|---------|-------------|
 | `--check-all` | bool | false | Run all check categories (default when no `--check-*` is specified) |
 | `--check-system` | bool | false | Check required system tools (git, curl, tar, gcc, make, etc.) |
-| `--check-php` | bool | false | Check PHP build dependencies (libzip, libxml2, imagick, etc.) |
+| `--check-php` | bool | false | Check PHP build dependencies (libzip, libxml2, libpq, imagick, etc.) |
 | `--check-ssl` | bool | false | Check SSL tools (openssl, mkcert) and existing project certs |
 | `--check-network` | bool | false | Check port availability (8080, 8443) and iptables |
 | `--check-dns` | bool | false | Check dnsmasq configuration, .test domain resolution, and offline resilience |
@@ -65,7 +65,7 @@ Doctor
   System Tools       ✓ git  curl  tar  gcc  make  pkg-config
                      ✗ re2c  bison
 
-  PHP Dependencies   ✓ libzip  libjpeg  libpng  freetype2
+  PHP Dependencies   ✓ libzip  libjpeg  libpng  freetype2  libpq
                      ⚠ libxml2 2.12.3  (incompatible with PHP 7.4/8.0)
                      ✓ libcurl  zlib  readline  MagickWand  libgmp  libsodium
 
@@ -112,6 +112,7 @@ chauf doctor ──────────────────────�
     ✓ libcurl      8.5.0
     ✓ zlib         1.3.1
     ✓ readline     8.2
+    ✓ libpq        16.2
     ✓ MagickWand   7.1.1
     ✓ libgmp       6.3.0
     ✓ libsodium    1.0.19
