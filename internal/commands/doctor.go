@@ -209,6 +209,7 @@ func doctorPHPDeps() []checkResult {
 		{"zlib", "zlib", pkgNames{"zlib", "zlib1g-dev", "zlib-devel"}, false},
 		{"readline", "readline", pkgNames{"readline", "libreadline-dev", "readline-devel"}, false},
 		{"libxslt", "libxslt", pkgNames{"libxslt", "libxslt1-dev", "libxslt-devel"}, false},
+		{"libpq", "libpq", pkgNames{"postgresql-libs", "libpq-dev", "postgresql-devel"}, false},
 		{"gmp", "gmp", pkgNames{"gmp", "libgmp-dev", "gmp-devel"}, false},
 		{"openssl", "openssl", pkgNames{"openssl", "libssl-dev", "openssl-devel"}, false},
 		{"MagickWand", "ImageMagick", pkgNames{"imagemagick", "libmagickwand-dev", "ImageMagick-devel"}, true},
@@ -967,8 +968,9 @@ func doctorAutoFix(fixes []checkResult) {
 		cmds := doctorFixCmds(r.fix)
 		anyFailed := false
 		for _, cmd := range cmds {
-			fmt.Printf("       %s %s\n", lib.Gray("$"), lib.Cyan(cmd))
-			out, err := exec.Command("sh", "-c", cmd).CombinedOutput()
+			autoCmd := doctorAutoFixCmd(cmd)
+			fmt.Printf("       %s %s\n", lib.Gray("$"), lib.Cyan(autoCmd))
+			out, err := exec.Command("sh", "-c", autoCmd).CombinedOutput()
 			output := strings.TrimSpace(string(out))
 			if err != nil {
 				fmt.Printf("       %s %s\n", lib.Red("✗"), lib.Red(err.Error()))
@@ -991,6 +993,14 @@ func doctorAutoFix(fixes []checkResult) {
 		}
 		fmt.Println()
 	}
+}
+
+func doctorAutoFixCmd(cmd string) string {
+	cmd = strings.TrimSpace(cmd)
+	if strings.HasPrefix(cmd, "sudo pacman -S ") && !strings.Contains(cmd, "--noconfirm") {
+		return strings.Replace(cmd, "sudo pacman -S ", "sudo pacman -S --noconfirm ", 1)
+	}
+	return cmd
 }
 
 // doctorFixCmds splits a fix string into runnable commands, skipping comments and blanks.

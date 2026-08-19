@@ -63,7 +63,7 @@ Chauffeur compiles or downloads these services into the workspace — they are n
 **Compile target**: `~/.chauffeur/php/<version>/`
 
 **Extensions compiled in**:
-- Database: `mysqli`, `pdo_mysql`, `mysqlnd`
+- Database: `mysqli`, `pdo_mysql`, `pdo_pgsql`, `pgsql`, `mysqlnd`
 - Images: `gd`, `freetype`, `jpeg`, `png`
 - Archives: `zip`, `bz2`, `zlib`
 - Web: `curl`, `openssl`, `libxml`, `libxslt`

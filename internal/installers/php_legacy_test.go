@@ -49,6 +49,27 @@ func TestVendoredOpenSSLEnv_ContainsRequiredFlags(t *testing.T) {
 	}
 }
 
+func TestPHPConfigureArgs_IncludesPostgresExtensions(t *testing.T) {
+	t.Setenv("USER", "chauf")
+
+	p := &PHPInstaller{majorMinor: "8.3", root: t.TempDir()}
+	args := p.configureArgs()
+
+	mustContain := []string{"--with-pgsql", "--with-pdo-pgsql"}
+	for _, flag := range mustContain {
+		found := false
+		for _, arg := range args {
+			if arg == flag {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("configureArgs missing %q: %#v", flag, args)
+		}
+	}
+}
+
 // ── patchLibXML ───────────────────────────────────────────────────────────────
 
 const libxmlSrc = `#ifdef HAVE_CONFIG_H
