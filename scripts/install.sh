@@ -15,16 +15,42 @@ INSTALL_DIR="${CHAUF_HOME}/bin"
 
 # ── output helpers ─────────────────────────────────────────────────────────────
 
-bold=$'\033[1m'
-green=$'\033[32m'
-red=$'\033[31m'
-gray=$'\033[90m'
-reset=$'\033[0m'
+if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
+    bold=$'\033[1m'
+    green=$'\033[32m'
+    red=$'\033[31m'
+    cyan=$'\033[36m'
+    gray=$'\033[90m'
+    reset=$'\033[0m'
+else
+    bold=""
+    green=""
+    red=""
+    cyan=""
+    gray=""
+    reset=""
+fi
 
 info()    { printf "  %s\n" "$*"; }
+detail()  { printf "  ${gray}→${reset}  ${gray}%s${reset}\n" "$*"; }
 success() { printf "  ${green}✓${reset}  %s\n" "$*"; }
 fail()    { printf "  ${red}✗${reset}  %s\n" "$*" >&2; }
 die()     { fail "$*"; exit 1; }
+
+section() {
+    printf "\n${bold}%s${reset}\n" "$*"
+}
+
+banner() {
+    printf "\n${cyan}██╗     ███████╗██████╗ ██████╗ ${reset}\n"
+    printf "${cyan}  ██║     ██╔════╝██╔══██╗██╔══██╗${reset}\n"
+    printf "${cyan}  ██║     █████╗  ██████╔╝██║  ██║${reset}\n"
+    printf "${cyan}  ██║     ██╔══╝  ██╔══██╗██║  ██║${reset}\n"
+    printf "${cyan}  ███████╗███████╗██║  ██║██████╔╝${reset}\n"
+    printf "${cyan}  ╚══════╝╚══════╝╚═╝  ╚═╝╚═════╝${reset}\n"
+    printf "\n  ${bold}Chauffeur${reset} — local PHP development environment for Linux\n"
+    printf "  ${gray}https://chauffeur.siaji.com${reset}\n"
+}
 
 # ── platform detection ─────────────────────────────────────────────────────────
 
@@ -63,10 +89,10 @@ build_from_source() {
 
     local goversion
     goversion=$(go version | awk '{print $3}' | sed 's/go//')
-    info "Go ${goversion} found"
+    success "Go ${goversion} found"
 
     mkdir -p "$INSTALL_DIR"
-    info "Building chauf..."
+    detail "Building chauf from source..."
     (cd "$srcdir" && go build -o "${INSTALL_DIR}/${BIN}" ./cmd/chauf) \
         || die "Build failed"
 }
@@ -81,7 +107,7 @@ clone_and_build() {
     tmpdir=$(mktemp -d)
     trap 'rm -rf "$tmpdir"' EXIT
 
-    info "Cloning  https://github.com/${REPO}"
+    detail "Cloning https://github.com/${REPO}"
     git clone --depth=1 "https://github.com/${REPO}" "${tmpdir}/chauffeur" 2>/dev/null \
         || die "Clone failed. Check your connection or try again."
     success "Repository cloned"
@@ -109,7 +135,7 @@ install_release() {
     tmpdir=$(mktemp -d)
     trap 'rm -rf "$tmpdir"' EXIT
 
-    info "Downloading  ${BIN} ${version} (${platform})"
+    detail "Downloading ${BIN} ${version} (${platform}) via curl..."
     curl -fsSL "$url" -o "${tmpdir}/${filename}" \
         || die "Download failed: ${url}"
 
@@ -118,7 +144,7 @@ install_release() {
         local expected
         expected=$(grep " ${filename}$\| \*${filename}$" "${tmpdir}/checksums.txt" | awk '{print $1}')
         if [[ -n "$expected" ]]; then
-            info "Verifying checksum"
+            detail "Verifying checksum..."
             echo "${expected}  ${tmpdir}/${filename}" | sha256sum -c --quiet \
                 || die "Checksum verification failed"
             success "Checksum verified"
@@ -181,22 +207,26 @@ inject_shell_path() {
 # ── main ───────────────────────────────────────────────────────────────────────
 
 main() {
-    echo
-    printf "  ${bold}Chauffeur Installer${reset}\n"
-    echo
+    banner
+
+    section "Installing Chauffeur"
 
     if in_chauffeur_repo; then
         # ── Running from inside the source repo ──
-        info "Source repo detected  ($(pwd))"
+        detail "Source repository detected: $(pwd)"
         build_from_source "."
 
     else
         # ── Running externally (curl | bash or standalone) ──
-        command -v curl &>/dev/null || die "curl is required"
+        section "Checking prerequisites"
+        command -v curl &>/dev/null || die "curl is required. Install curl and run the installer again."
+        success "curl found ($(command -v curl))"
 
         local platform version
         platform=$(detect_platform)
         local requested_version="${CHAUFFEUR_VERSION:-latest}"
+
+        success "${platform} platform detected"
 
         if [[ "$requested_version" != "latest" ]]; then
             install_release "$requested_version" "$platform"
@@ -206,18 +236,18 @@ main() {
             if [[ -n "$version" ]]; then
                 install_release "$version" "$platform"
             else
-                info "No releases found. Building from source..."
-                echo
+                detail "No release found; building from source..."
                 clone_and_build
             fi
         fi
     fi
 
-    success "${BIN} installed  →  ${INSTALL_DIR}/${BIN}"
+    success "${BIN} installed → ${INSTALL_DIR}/${BIN}"
     inject_shell_path
 
     # Run init directly via full path — no need for PATH to be active yet.
-    echo
+    section "Setting up the workspace"
+    detail "Initializing ${CHAUF_HOME}"
     "${INSTALL_DIR}/${BIN}" init
 
     # Tell the user how to activate the PATH in the current session.
@@ -225,9 +255,10 @@ main() {
     cfg=$(detect_shell_config)
     if [[ -n "$cfg" ]]; then
         local display="${cfg/$HOME/\~}"
-        printf "  ${bold}Activate in this terminal:${reset}\n"
-        printf "    source %s\n" "$display"
-        echo
+        section "Next step"
+        printf "  Activate Chauffeur in this terminal:\n"
+        printf "    ${cyan}source %s${reset}\n" "$display"
+        printf "\n  Then run ${bold}chauf --help${reset} to get started.\n"
     fi
 }
 
