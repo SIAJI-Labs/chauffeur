@@ -41,7 +41,7 @@ func NewProgressReader(r io.Reader, total int64, label string) *ProgressReader {
 		started: time.Now(),
 	}
 	if !IsTTY {
-		fmt.Printf("  ·  %s...\n", label)
+		fmt.Printf("  %s  %s\n", Gray("→"), label)
 	}
 	return pr
 }

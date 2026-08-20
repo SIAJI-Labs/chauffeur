@@ -1,7 +1,6 @@
 package commands
 
 import (
-	"bufio"
 	"flag"
 	"fmt"
 	"os"
@@ -11,6 +10,7 @@ import (
 	"github.com/siegg/chauffeur/internal/installers"
 	"github.com/siegg/chauffeur/internal/lib"
 	"github.com/siegg/chauffeur/internal/projects"
+	"github.com/siegg/chauffeur/internal/tui"
 	"github.com/siegg/chauffeur/internal/workspace"
 )
 
@@ -19,9 +19,11 @@ import (
 func RunLink(args []string) error {
 	flags := flag.NewFlagSet("link", flag.ContinueOnError)
 	flags.SetOutput(os.Stdout)
-	lib.SetFlagUsage(flags, "chauf link — register a project directory", "chauf link [path] [--php <version>] [--site <domain>] [--secure] [--dedicated-fpm] [--name <slug>] [--alias <domain>]")
+	lib.SetFlagUsage(flags, "chauf link — configure and register a project directory", "chauf link [path] [--interactive|--no-interactive] [--php <version>] [--site <domain>] [--secure] [--dedicated-fpm] [--name <slug>] [--alias <domain>]")
 
 	phpFlag := flags.String("php", "", "PHP version for this project")
+	interactiveFlag := flags.Bool("interactive", false, "Configure project options interactively")
+	noInteractiveFlag := flags.Bool("no-interactive", false, "Never prompt for project options")
 	secureFlag := flags.Bool("secure", false, "Enable SSL from the start")
 	dedicatedFPM := flags.Bool("dedicated-fpm", false, "Use a dedicated PHP-FPM pool")
 	nameFlag := flags.String("name", "", "Custom slug (required when two directories share the same name)")
@@ -56,6 +58,22 @@ func RunLink(args []string) error {
 	}
 	if !info.IsDir() {
 		return fmt.Errorf("%s is not a directory", dirPath)
+	}
+
+	// An unqualified interactive link is the project setup wizard. Explicit
+	// flags remain the scriptable path and are never overridden by prompts.
+	if (*interactiveFlag || (!*noInteractiveFlag && tui.Interactive() && flags.NFlag() == 0)) && tui.Interactive() {
+		setup, err := runLinkWizard(dirPath, cfg)
+		if err != nil {
+			return err
+		}
+		if setup.cancelled {
+			return nil
+		}
+		if setup.php != "" {
+			*phpFlag = setup.php
+		}
+		*secureFlag, *dedicatedFPM = setup.secure, setup.dedicated
 	}
 
 	// Resolve PHP version
@@ -444,11 +462,7 @@ func RunUnlink(args []string) error {
 		}
 		lib.Pair("  SSL", fmt.Sprintf("%v", p.SSL))
 		fmt.Println()
-		fmt.Print("  Confirm [y/N]: ")
-		scanner := bufio.NewScanner(os.Stdin)
-		scanner.Scan()
-		resp := strings.ToLower(strings.TrimSpace(scanner.Text()))
-		if resp != "y" && resp != "yes" {
+		if !tui.Confirm("Confirm") {
 			lib.Info("Cancelled.")
 			return nil
 		}

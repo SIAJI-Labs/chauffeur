@@ -24,7 +24,7 @@ func NewSpinner(message string) *Spinner {
 	if IsTTY {
 		go s.spin()
 	} else {
-		fmt.Printf("  ·  %s\n", message)
+		fmt.Printf("  %s  %s\n", Gray("→"), message)
 	}
 	return s
 }

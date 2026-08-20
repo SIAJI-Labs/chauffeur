@@ -1,7 +1,6 @@
 package commands
 
 import (
-	"bufio"
 	"flag"
 	"fmt"
 	"os"
@@ -11,6 +10,7 @@ import (
 
 	"github.com/siegg/chauffeur/internal/installers"
 	"github.com/siegg/chauffeur/internal/lib"
+	"github.com/siegg/chauffeur/internal/tui"
 	"github.com/siegg/chauffeur/internal/workspace"
 )
 
@@ -149,9 +149,5 @@ func removeComposer(root string, force bool) error {
 }
 
 func confirm(prompt string) bool {
-	fmt.Printf("\n  %s [y/N]: ", prompt)
-	scanner := bufio.NewScanner(os.Stdin)
-	scanner.Scan()
-	answer := strings.ToLower(strings.TrimSpace(scanner.Text()))
-	return answer == "y" || answer == "yes"
+	return tui.Confirm(prompt)
 }
