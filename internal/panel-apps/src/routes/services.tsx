@@ -1,5 +1,10 @@
 import * as React from "react";
-import { Link, createFileRoute } from "@tanstack/react-router";
+import {
+  Link,
+  Outlet,
+  createFileRoute,
+  useRouterState,
+} from "@tanstack/react-router";
 import {
   AlertTriangle,
   ArrowUpRight,
@@ -44,6 +49,11 @@ export const Route = createFileRoute("/services")({
 });
 
 function ServicesPage() {
+  const pathname = useRouterState({
+    select: (state) => state.location.pathname,
+  });
+  if (pathname !== "/services") return <Outlet />;
+
   const [search, setSearch] = React.useState("");
   const [category, setCategory] = React.useState("All services");
   const [isInstallDialogOpen, setIsInstallDialogOpen] = React.useState(false);

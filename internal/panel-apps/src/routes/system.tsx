@@ -1,4 +1,9 @@
-import { Link, createFileRoute } from "@tanstack/react-router";
+import {
+  Link,
+  Outlet,
+  createFileRoute,
+  useRouterState,
+} from "@tanstack/react-router";
 import {
   Activity,
   ArrowUpRight,
@@ -32,6 +37,11 @@ export const Route = createFileRoute("/system")({
 });
 
 function SystemPage() {
+  const pathname = useRouterState({
+    select: (state) => state.location.pathname,
+  });
+  if (pathname !== "/system") return <Outlet />;
+
   return (
     <SidebarProvider className="dashboard-frame">
       <a className="skip-link" href="#system-content">
