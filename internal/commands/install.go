@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/bubbletea"
 	"github.com/siegg/chauffeur/internal/installers"
 	"github.com/siegg/chauffeur/internal/lib"
+	"github.com/siegg/chauffeur/internal/tui"
 	"github.com/siegg/chauffeur/internal/workspace"
 )
 
@@ -301,17 +302,17 @@ func (m phpSelectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.Type {
 		case tea.KeyUp:
-			if m.cursor > 0 {
-				m.cursor--
-			}
+			m.cursor = tui.Move(m.cursor, len(m.selectableItems()), -1)
 		case tea.KeyDown:
-			if m.cursor < len(m.selectableItems())-1 {
-				m.cursor++
-			}
+			m.cursor = tui.Move(m.cursor, len(m.selectableItems()), 1)
+		case tea.KeyHome:
+			m.cursor = 0
+		case tea.KeyEnd:
+			m.cursor = tui.Move(len(m.selectableItems())-1, len(m.selectableItems()), 0)
 		case tea.KeySpace, tea.KeyEnter:
 			m.done = true
 			return m, tea.Quit
-		case tea.KeyCtrlC:
+		case tea.KeyCtrlC, tea.KeyEsc:
 			m.aborted = true
 			return m, tea.Quit
 		}
@@ -371,7 +372,7 @@ func (m phpSelectModel) View() string {
 
 	lines = append(lines, fmt.Sprintf("  %s", lib.Bold(m.title)))
 	lines = append(lines, "")
-	lines = append(lines, fmt.Sprintf("  %s", lib.Gray("[↑/↓] Move  [space/enter] Select")))
+	lines = append(lines, fmt.Sprintf("  %s", tui.Footer("↑/↓ move · enter select · esc cancel · ? help")))
 
 	// Build display rows and track which selectable index maps to which item.
 	selectable := m.selectableItems()
@@ -419,7 +420,7 @@ func (m phpSelectModel) View() string {
 			lines = append(lines, fmt.Sprintf("  %s %s", lib.Gray("  "), lib.Gray(item+" (installed)")))
 		} else {
 			if selectableIdx == m.cursor {
-				cursor = lib.Green(">")
+				cursor = tui.Cursor(true)
 			}
 			lines = append(lines, fmt.Sprintf("  %s %s", cursor, item))
 			selectableIdx++
@@ -444,6 +445,9 @@ func (m phpSelectModel) View() string {
 // marking installed ones as already-installed and only allowing selection of non-installed versions.
 func interactiveSelectPHPVersion(versions []string, title string) string {
 	if len(versions) == 0 {
+		return ""
+	}
+	if !tui.Interactive() {
 		return ""
 	}
 
@@ -500,6 +504,9 @@ func interactiveSelectPHPVersion(versions []string, title string) string {
 
 // interactiveSelectPHPSimple is the fallback text-based PHP version selector.
 func interactiveSelectPHPSimple(versions []string, installed map[string]bool, title string) string {
+	if !tui.Interactive() {
+		return ""
+	}
 	reader := bufio.NewReader(os.Stdin)
 
 	fmt.Println()

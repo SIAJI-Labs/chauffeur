@@ -1,24 +1,35 @@
-import * as React from "react"
-
+import * as React from "react";
+import { Link } from "@tanstack/react-router";
 import {
+  Activity,
   BookOpen,
+  Boxes,
+  Braces,
+  Bug,
+  CircleAlert,
   Container,
-  FileCode,
-  Globe,
+  Cpu,
+  Database,
+  DatabaseBackup,
+  FileCode2,
+  FileText,
+  FolderGit2,
+  Gauge,
+  GitBranch,
+  Globe2,
   HardDrive,
-  Home,
   LayoutDashboard,
-  List,
+  ListChecks,
   Network,
-  ScrollText,
+  Search,
   Server,
-  Settings,
   Settings2,
-  Shield,
-} from "lucide-react"
-import { NavMain } from "@/components/nav-main"
-import { NavSecondary } from "@/components/nav-secondary"
-import { NavUser } from "@/components/nav-user"
+  ShieldCheck,
+  TerminalSquare,
+  Wrench,
+} from "lucide-react";
+import { NavMain } from "@/components/nav-main";
+import { NavSecondary } from "@/components/nav-secondary";
 import {
   Sidebar,
   SidebarContent,
@@ -27,118 +38,287 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-} from "@/components/ui/sidebar"
+} from "@/components/ui/sidebar";
 
 const data = {
-  user: {
-    name: "Chauffeur",
-    email: "admin@chauffeur.dev",
-    avatar: "",
-  },
   navMain: [
     {
-      title: "Podman Service",
-      url: "#",
-      icon: (
-        <Server className="size-4" />
-      ),
-      isActive: true,
+      title: "Workspace",
+      url: "/",
+      icon: <LayoutDashboard />,
       items: [
         {
-          title: "Container List",
-          url: "/containers",
-          icon: <Container className="size-4" />,
+          title: "Overview",
+          url: "/",
+          icon: <LayoutDashboard />,
+          status: "Available",
         },
         {
-          title: "Backup & Restore",
-          url: "/containers/backup",
-          icon: <HardDrive className="size-4" />,
+          title: "Recent activity",
+          url: "#activity",
+          icon: <Activity />,
+          status: "Planned",
+          disabled: true,
+        },
+        {
+          title: "Command palette",
+          url: "#command-palette",
+          icon: <Search />,
+          status: "Planned",
+          disabled: true,
+        },
+      ],
+    },
+    {
+      title: "Projects",
+      url: "/projects",
+      icon: <FolderGit2 />,
+      items: [
+        {
+          title: "Project list",
+          url: "/projects",
+          icon: <FolderGit2 />,
+          status: "Available",
+        },
+        {
+          title: "Link a project",
+          url: "#project-linking",
+          icon: <GitBranch />,
+          status: "Next",
+          disabled: true,
+        },
+        {
+          title: "Project overview",
+          url: "#project-overview",
+          icon: <FileCode2 />,
+          status: "Planned",
+          disabled: true,
         },
         {
           title: "Logs",
-          url: "#",
-          icon: <ScrollText className="size-4" />,
+          url: "#project-logs",
+          icon: <FileText />,
+          status: "Planned",
+          disabled: true,
+        },
+        {
+          title: "Environment",
+          url: "#project-environment",
+          icon: <Braces />,
+          status: "Planned",
+          disabled: true,
+        },
+        {
+          title: "Diagnostics",
+          url: "#project-diagnostics",
+          icon: <Wrench />,
+          status: "Planned",
+          disabled: true,
+        },
+        {
+          title: "Worktrees",
+          url: "#project-worktrees",
+          icon: <GitBranch />,
+          status: "Planned",
+          disabled: true,
         },
       ],
     },
     {
-      title: "Chauf Service",
-      url: "#",
-      icon: (
-        <Globe className="size-4" />
-      ),
+      title: "Services",
+      url: "/services",
+      icon: <Server />,
       items: [
         {
-          title: "Site List",
-          url: "#",
-          icon: <List className="size-4" />,
+          title: "Installed services",
+          url: "/services",
+          icon: <Server />,
+          status: "Available",
         },
         {
-          title: "Config",
-          url: "#",
-          icon: <FileCode className="size-4" />,
+          title: "Service details",
+          url: "#service-details",
+          icon: <FileCode2 />,
+          status: "Next",
+          disabled: true,
         },
         {
-          title: "DNS",
-          url: "#",
-          icon: <Network className="size-4" />,
+          title: "Service catalog",
+          url: "#service-catalog",
+          icon: <Boxes />,
+          status: "Planned",
+          disabled: true,
         },
         {
-          title: "SSL",
-          url: "#",
-          icon: <Shield className="size-4" />,
+          title: "Databases and entities",
+          url: "#databases",
+          icon: <Database />,
+          status: "Planned",
+          disabled: true,
+        },
+        {
+          title: "Import, export, snapshots",
+          url: "#database-lifecycle",
+          icon: <DatabaseBackup />,
+          status: "Planned",
+          disabled: true,
+        },
+        {
+          title: "Entity actions",
+          url: "#entity-actions",
+          icon: <FileCode2 />,
+          status: "Planned",
+          disabled: true,
+        },
+        {
+          title: "Service logs",
+          url: "#service-logs",
+          icon: <FileText />,
+          status: "Planned",
+          disabled: true,
+        },
+        {
+          title: "Configuration",
+          url: "#service-configuration",
+          icon: <Settings2 />,
+          status: "Planned",
+          disabled: true,
+        },
+        {
+          title: "Ports and dependencies",
+          url: "#service-dependencies",
+          icon: <Network />,
+          status: "Planned",
+          disabled: true,
         },
       ],
     },
     {
-      title: "Settings",
-      url: "#",
-      icon: (
-        <Settings className="size-4" />
-      ),
+      title: "System",
+      url: "/system",
+      icon: <Settings2 />,
       items: [
         {
-          title: "General",
-          url: "#",
-          icon: <Settings2 className="size-4" />,
+          title: "System health",
+          url: "/system",
+          icon: <ShieldCheck />,
+          status: "Available",
         },
         {
-          title: "Appearance",
-          url: "#",
-          icon: <LayoutDashboard className="size-4" />,
+          title: "Chauffeur runtime",
+          url: "#chauffeur-runtime",
+          icon: <Activity />,
+          status: "Planned",
+          disabled: true,
         },
         {
-          title: "About",
-          url: "#",
-          icon: <BookOpen className="size-4" />,
+          title: "DNS and Nginx",
+          url: "#dns-nginx",
+          icon: <Globe2 />,
+          status: "Planned",
+          disabled: true,
+        },
+        {
+          title: "PHP runtimes",
+          url: "/system/php",
+          icon: <Server />,
+          status: "Available",
+        },
+        {
+          title: "Node.js and Bun",
+          url: "#node-runtimes",
+          icon: <TerminalSquare />,
+          status: "Planned",
+          disabled: true,
+        },
+        {
+          title: "Tools and watchers",
+          url: "#system-tools",
+          icon: <Wrench />,
+          status: "Planned",
+          disabled: true,
+        },
+        {
+          title: "Debug bridge",
+          url: "#debug-bridge",
+          icon: <Bug />,
+          status: "Planned",
+          disabled: true,
+        },
+        {
+          title: "Settings and updates",
+          url: "#system-settings",
+          icon: <Settings2 />,
+          status: "Planned",
+          disabled: true,
+        },
+      ],
+    },
+    {
+      title: "Resources",
+      url: "/containers",
+      icon: <HardDrive />,
+      items: [
+        {
+          title: "Database containers",
+          url: "/containers",
+          icon: <Container />,
+          status: "Available",
+        },
+        {
+          title: "Backups",
+          url: "/containers/backup",
+          icon: <DatabaseBackup />,
+          status: "Available",
+        },
+        {
+          title: "Workers",
+          url: "#workers",
+          icon: <ListChecks />,
+          status: "Planned",
+          disabled: true,
+        },
+        {
+          title: "Resource usage",
+          url: "#resources",
+          icon: <Gauge />,
+          status: "Planned",
+          disabled: true,
+        },
+        {
+          title: "CPU and memory",
+          url: "#resource-telemetry",
+          icon: <Cpu />,
+          status: "Planned",
+          disabled: true,
+        },
+        {
+          title: "Issues and diagnostics",
+          url: "#issues",
+          icon: <CircleAlert />,
+          status: "Planned",
+          disabled: true,
         },
       ],
     },
   ],
-  navSecondary: [
-    {
-      title: "Documentation",
-      url: "/docs",
-      icon: (
-        <BookOpen className="size-4" />
-      ),
-    },
-  ],
-}
+  navSecondary: [{ title: "Documentation", url: "/docs", icon: <BookOpen /> }],
+};
+
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   return (
     <Sidebar variant="inset" {...props}>
-      <SidebarHeader>
+      <SidebarHeader className="app-sidebar-header">
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton size="lg" render={<a href="/" />}>
-              <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-                <Home className="size-4" />
-              </div>
-              <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-medium">Dashboard</span>
-                <span className="truncate text-xs">Overview</span>
-              </div>
+            <SidebarMenuButton size="lg" render={<Link to="/" />}>
+              <span className="brand-glyph" aria-hidden="true">
+                C
+              </span>
+              <span className="brand-copy">
+                <strong>Chauffeur</strong>
+                <small>Local PHP workspace</small>
+              </span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
@@ -148,8 +328,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <NavSecondary items={data.navSecondary} className="mt-auto" />
       </SidebarContent>
       <SidebarFooter>
-        <NavUser user={data.user} />
+        <div className="sidebar-footer-note">
+          <span className="live-dot" aria-hidden="true" /> Workspace online
+        </div>
       </SidebarFooter>
     </Sidebar>
-  )
+  );
 }

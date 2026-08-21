@@ -1,7 +1,6 @@
 package commands
 
 import (
-	"bufio"
 	"flag"
 	"fmt"
 	"os"
@@ -11,6 +10,7 @@ import (
 	"syscall"
 
 	"github.com/siegg/chauffeur/internal/lib"
+	"github.com/siegg/chauffeur/internal/tui"
 	"github.com/siegg/chauffeur/internal/workspace"
 )
 
@@ -61,10 +61,7 @@ func RunUninstall(args []string) error {
 	// ── Confirm ────────────────────────────────────────────────────────────────
 
 	if !*force {
-		fmt.Printf("\n  Type 'yes' to confirm: ")
-		scanner := bufio.NewScanner(os.Stdin)
-		scanner.Scan()
-		if strings.TrimSpace(scanner.Text()) != "yes" {
+		if !tui.ConfirmText("Type 'yes' to confirm", "yes") {
 			fmt.Println("\n  Aborted.")
 			return nil
 		}
@@ -327,4 +324,3 @@ func sendSignal(pid int, sig syscall.Signal) {
 		proc.Signal(sig)
 	}
 }
-

@@ -16,6 +16,7 @@ import (
 	"github.com/siegg/chauffeur/internal/lib"
 	"github.com/siegg/chauffeur/internal/podman"
 	"github.com/siegg/chauffeur/internal/services"
+	"github.com/siegg/chauffeur/internal/tui"
 	"github.com/siegg/chauffeur/internal/workspace"
 )
 
@@ -254,14 +255,8 @@ func runPodmanCreate(args []string) error {
 		if !*yesFlag && !isInteractive {
 			fmt.Println()
 			lib.Info(fmt.Sprintf("Container %s already exists.", lib.Bold(engineStr)))
-			fmt.Print("  Recreate it [y/N]? ")
-			scanner := bufio.NewScanner(os.Stdin)
-			scanner.Scan()
-			resp := strings.ToLower(strings.TrimSpace(scanner.Text()))
-			if resp != "y" && resp != "yes" {
-				lib.Info("Cancelled.")
-				return nil
-			}
+			lib.Info("Use --yes to recreate it in non-interactive mode.")
+			return nil
 		} else if *yesFlag {
 			// Just remove and recreate
 		} else {
@@ -765,7 +760,6 @@ func runPodmanRemove(args []string) error {
 	ctx := context.Background()
 	client := podman.NewPodmanClient()
 	reader := bufio.NewReader(os.Stdin)
-
 	if err := client.Available(ctx); err != nil {
 		if err == podman.ErrPodmanNotFound {
 			lib.Error("Podman is not installed or not in PATH.")
@@ -863,10 +857,7 @@ func runPodmanRemove(args []string) error {
 			lib.Pair("  Container", c.ContainerName)
 			lib.Pair("  Volume", c.VolumePath)
 			fmt.Println()
-			fmt.Print("  Confirm [y/N]: ")
-			resp, _ := reader.ReadString('\n')
-			resp = strings.ReplaceAll(strings.ToLower(strings.TrimSpace(resp)), "\r", "")
-			if resp != "y" && resp != "yes" {
+			if !tui.Confirm("Confirm") {
 				lib.Info("Cancelled.")
 				return nil
 			}
@@ -876,10 +867,7 @@ func runPodmanRemove(args []string) error {
 		if running && !*forceFlag {
 			fmt.Println()
 			lib.Info(fmt.Sprintf("Container %s is running.", lib.Bold(c.ContainerName)))
-			fmt.Print("  Stop it first? [y/N]: ")
-			resp, _ := reader.ReadString('\n')
-			resp = strings.ReplaceAll(strings.ToLower(strings.TrimSpace(resp)), "\r", "")
-			if resp != "y" && resp != "yes" {
+			if !tui.Confirm("Stop it first?") {
 				lib.Info("Cancelled.")
 				return nil
 			}
@@ -1238,6 +1226,9 @@ func isDirWritable(dir string) bool {
 
 // interactiveSelectEngine prompts the user to select a database engine.
 func interactiveSelectEngine() string {
+	if !tui.Interactive() {
+		return ""
+	}
 	engines := []struct {
 		key  string
 		name string
@@ -1288,6 +1279,10 @@ func interactiveSelectEngine() string {
 
 // promptField shows a prompt with a default value and lets user override.
 func promptField(label string, value *string, defaultVal string, required bool) {
+	if !tui.Interactive() {
+		*value = defaultVal
+		return
+	}
 	*value = defaultVal
 	fmt.Println()
 	for {
@@ -1315,6 +1310,10 @@ func promptField(label string, value *string, defaultVal string, required bool) 
 
 // promptFieldInt shows a prompt with an integer default and lets user override.
 func promptFieldInt(label string, value *int, defaultVal int, required bool) {
+	if !tui.Interactive() {
+		*value = defaultVal
+		return
+	}
 	*value = defaultVal
 	fmt.Println()
 	for {
@@ -1349,6 +1348,9 @@ func requiredText(required bool) string {
 // interactiveConfirm asks the user a yes/no question. Returns true on y/yes.
 // If reader is nil, creates its own reader.
 func interactiveConfirm(prompt string, reader *bufio.Reader) bool {
+	if !tui.Interactive() && reader == nil {
+		return false
+	}
 	fmt.Print("  " + prompt + " " + lib.Gray("[y/N]") + ": ")
 	if reader == nil {
 		reader = bufio.NewReader(os.Stdin)
@@ -1361,6 +1363,9 @@ func interactiveConfirm(prompt string, reader *bufio.Reader) bool {
 // interactiveSelectDatabases shows an interactive list with tick marks for selection.
 // Uses bubbletea for proper TUI rendering.
 func interactiveSelectDatabases(databases []string) []string {
+	if !tui.Interactive() {
+		return []string{}
+	}
 	model := multiSelectModel{
 		choices:  databases,
 		selected: make(map[int]bool),
@@ -1417,20 +1422,22 @@ func (m multiSelectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 	case tea.KeyMsg:
 		switch msg.Type {
-		case tea.KeyUp:
-			if m.cursor > 0 {
-				m.cursor--
-			}
-		case tea.KeyDown:
-			if m.cursor < len(m.choices)-1 {
-				m.cursor++
-			}
 		case tea.KeySpace:
-			m.selected[m.cursor] = !m.selected[m.cursor]
+			if len(m.choices) > 0 {
+				m.selected[m.cursor] = !m.selected[m.cursor]
+			}
+		case tea.KeyUp:
+			m.cursor = tui.Move(m.cursor, len(m.choices), -1)
+		case tea.KeyDown:
+			m.cursor = tui.Move(m.cursor, len(m.choices), 1)
+		case tea.KeyHome:
+			m.cursor = 0
+		case tea.KeyEnd:
+			m.cursor = tui.Move(len(m.choices)-1, len(m.choices), 0)
 		case tea.KeyEnter:
 			m.done = true
 			return m, tea.Quit
-		case tea.KeyCtrlC:
+		case tea.KeyCtrlC, tea.KeyEsc:
 			m.aborted = true
 			return m, tea.Quit
 		}
@@ -1477,7 +1484,7 @@ func (m multiSelectModel) View() string {
 	// Title
 	lines = append(lines, fmt.Sprintf("  %s", lib.Bold(m.title)))
 	lines = append(lines, "")
-	lines = append(lines, fmt.Sprintf("  %s", lib.Gray("[↑/↓] Move  [space] Select  [enter] Confirm")))
+	lines = append(lines, fmt.Sprintf("  %s", tui.Footer("↑/↓ move · space toggle · enter next · esc cancel · ? help")))
 	lines = append(lines, "")
 	if start > 0 {
 		lines = append(lines, fmt.Sprintf("  %s", lib.Gray("↑ more")))
@@ -1488,12 +1495,14 @@ func (m multiSelectModel) View() string {
 		choice := m.choices[i]
 		cursor := "  "
 		if m.cursor == i {
-			cursor = lib.Green(">")
+			cursor = tui.Cursor(true)
 		}
 
 		selected := "[ ]"
 		if m.selected[i] {
-			selected = lib.Green("[x]")
+			selected = tui.Checkbox(true, m.cursor == i)
+		} else {
+			selected = tui.Checkbox(false, m.cursor == i)
 		}
 
 		// Truncate long names
@@ -1531,6 +1540,9 @@ const (
 
 func interactiveSelectSingle(items []string, title string) string {
 	if len(items) == 0 {
+		return ""
+	}
+	if !tui.Interactive() {
 		return ""
 	}
 	model := singleSelectModel{
@@ -1576,17 +1588,17 @@ func (m singleSelectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.Type {
 		case tea.KeyUp:
-			if m.cursor > 0 {
-				m.cursor--
-			}
+			m.cursor = tui.Move(m.cursor, len(m.items), -1)
 		case tea.KeyDown:
-			if m.cursor < len(m.items)-1 {
-				m.cursor++
-			}
+			m.cursor = tui.Move(m.cursor, len(m.items), 1)
+		case tea.KeyHome:
+			m.cursor = 0
+		case tea.KeyEnd:
+			m.cursor = tui.Move(len(m.items)-1, len(m.items), 0)
 		case tea.KeySpace, tea.KeyEnter:
 			m.done = true
 			return m, tea.Quit
-		case tea.KeyCtrlC:
+		case tea.KeyCtrlC, tea.KeyEsc:
 			m.aborted = true
 			return m, tea.Quit
 		}
@@ -1599,7 +1611,7 @@ func (m singleSelectModel) View() string {
 
 	lines = append(lines, fmt.Sprintf("  %s", lib.Bold(m.title)))
 	lines = append(lines, "")
-	lines = append(lines, fmt.Sprintf("  %s", lib.Gray("[↑/↓] Move  [space/enter] Select")))
+	lines = append(lines, fmt.Sprintf("  %s", tui.Footer("↑/↓ move · enter select · esc cancel · ? help")))
 	lines = append(lines, "")
 
 	start, end, showAbove, showBelow := selectorViewportWithIndicators(len(m.items), m.cursor, m.height, singleSelectReservedLines)
@@ -1611,7 +1623,7 @@ func (m singleSelectModel) View() string {
 		item := m.items[i]
 		cursor := "  "
 		if m.cursor == i {
-			cursor = lib.Green(">")
+			cursor = tui.Cursor(true)
 		}
 
 		lines = append(lines, fmt.Sprintf("  %s %s", cursor, item))
@@ -1626,6 +1638,9 @@ func (m singleSelectModel) View() string {
 
 // interactiveSelectSingleSimple is the fallback text-based single selector when TTY is not available.
 func interactiveSelectSingleSimple(items []string, title string) string {
+	if !tui.Interactive() {
+		return ""
+	}
 	reader := bufio.NewReader(os.Stdin)
 
 	fmt.Println()
@@ -1659,6 +1674,9 @@ func interactiveSelectSingleSimple(items []string, title string) string {
 
 // interactiveSelectDatabasesSimple is the fallback text-based selector when TTY is not available.
 func interactiveSelectDatabasesSimple(databases []string) []string {
+	if !tui.Interactive() {
+		return []string{}
+	}
 	reader := bufio.NewReader(os.Stdin)
 
 	selected := make(map[int]bool)
@@ -1772,17 +1790,23 @@ func (m containerSelectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 	case tea.KeyMsg:
 		switch msg.Type {
-		case tea.KeyUp:
-			if m.cursor > 0 {
+		case tea.KeyHome:
+			m.cursor = 0
+			for len(m.containers) > 0 && m.containers[m.cursor].Disabled && m.cursor < len(m.containers)-1 {
+				m.cursor++
+			}
+		case tea.KeyEnd:
+			m.cursor = tui.Move(len(m.containers)-1, len(m.containers), 0)
+			for len(m.containers) > 0 && m.containers[m.cursor].Disabled && m.cursor > 0 {
 				m.cursor--
 			}
+		case tea.KeyUp:
+			m.cursor = tui.Move(m.cursor, len(m.containers), -1)
 			for m.cursor > 0 && m.containers[m.cursor].Disabled {
 				m.cursor--
 			}
 		case tea.KeyDown:
-			if m.cursor < len(m.containers)-1 {
-				m.cursor++
-			}
+			m.cursor = tui.Move(m.cursor, len(m.containers), 1)
 			for m.cursor < len(m.containers)-1 && m.containers[m.cursor].Disabled {
 				m.cursor++
 			}
@@ -1796,7 +1820,7 @@ func (m containerSelectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.done = true
 			return m, tea.Quit
-		case tea.KeyCtrlC:
+		case tea.KeyCtrlC, tea.KeyEsc:
 			m.aborted = true
 			return m, tea.Quit
 		}
@@ -1817,13 +1841,13 @@ func (m containerSelectModel) View() string {
 
 	lines = append(lines, fmt.Sprintf("  %s", lib.Bold(m.title)))
 	lines = append(lines, "")
-	lines = append(lines, fmt.Sprintf("  %s", lib.Gray("[↑/↓] Move  [space] Select  [enter] Confirm")))
+	lines = append(lines, fmt.Sprintf("  %s", tui.Footer("↑/↓ move · space toggle · enter next · esc cancel · ? help")))
 
 	if len(m.containers) == 0 {
 		lines = append(lines, "")
 		lines = append(lines, fmt.Sprintf("  %s", lib.Gray("No containers available")))
 		lines = append(lines, "")
-		lines = append(lines, "  Press Ctrl+C to cancel")
+		lines = append(lines, fmt.Sprintf("  %s", tui.Footer("esc cancel · ? help")))
 		return strings.Join(lines, "\n")
 	}
 
@@ -1838,13 +1862,10 @@ func (m containerSelectModel) View() string {
 		c := m.containers[i]
 		cursor := "  "
 		if m.cursor == i {
-			cursor = lib.Green(">")
+			cursor = tui.Cursor(true)
 		}
 
-		sel := "[ ]"
-		if m.selected[i] {
-			sel = lib.Green("[x]")
-		}
+		sel := tui.Checkbox(m.selected[i], m.cursor == i)
 
 		prefix := "  "
 		if c.Disabled {
@@ -1897,6 +1918,9 @@ func interactiveSelectContainers(containers []containerInfo, title string) []str
 	if len(containers) == 0 {
 		return []string{}
 	}
+	if !tui.Interactive() {
+		return []string{}
+	}
 
 	model := containerSelectModel{
 		containers: containers,
@@ -1930,6 +1954,9 @@ func interactiveSelectContainers(containers []containerInfo, title string) []str
 
 // interactiveSelectContainersSimple is the fallback text-based selector when TTY is not available.
 func interactiveSelectContainersSimple(containers []containerInfo, title string) []string {
+	if !tui.Interactive() {
+		return []string{}
+	}
 	reader := bufio.NewReader(os.Stdin)
 
 	selected := make(map[int]bool)
@@ -2044,7 +2071,6 @@ func runPodmanBackup(args []string) error {
 	// 1. Setup (client, ctx, verbose)
 	ctx := context.Background()
 	client := podman.NewPodmanClient()
-	reader := bufio.NewReader(os.Stdin)
 
 	if err := client.Available(ctx); err != nil {
 		if err == podman.ErrPodmanNotFound {
@@ -2100,10 +2126,7 @@ func runPodmanBackup(args []string) error {
 	// 6. Ask if user wants to add descriptions
 	descriptions := make(map[string]string)
 	fmt.Println()
-	fmt.Print("  " + lib.Bold("Add descriptions?") + " " + lib.Gray("[y/N]: "))
-	input, _ := reader.ReadString('\n')
-	input = strings.ReplaceAll(strings.TrimSpace(input), "\r", "")
-	addDescriptions := strings.ToLower(input) == "y" || strings.ToLower(input) == "yes"
+	addDescriptions := tui.Confirm("Add descriptions?")
 
 	if addDescriptions {
 		for _, db := range selected {
@@ -2180,6 +2203,9 @@ func filterRunningContainers(client *podman.PodmanClient, engines []string, ctx 
 // interactiveSelectContainer shows running containers and returns selected container name.
 // Uses bubbletea TUI for arrow key selection.
 func interactiveSelectContainer(containers []runningContainer, ctx context.Context, client *podman.PodmanClient, title string) string {
+	if !tui.Interactive() {
+		return ""
+	}
 	if len(containers) == 0 {
 		return ""
 	}
@@ -2211,6 +2237,9 @@ func interactiveSelectContainer(containers []runningContainer, ctx context.Conte
 
 // interactiveSelectContainerSimple is the fallback text-based container selector when TTY is not available.
 func interactiveSelectContainerSimple(containers []runningContainer, title string) string {
+	if !tui.Interactive() {
+		return ""
+	}
 	fmt.Println()
 	fmt.Printf("  %s\n", lib.Bold(title))
 	fmt.Println()
@@ -2308,8 +2337,6 @@ func promptDescription(database string) string {
 
 // confirmBackup shows summary and asks for confirmation
 func confirmBackup(containerName string, databases []string, descriptions map[string]string) bool {
-	reader := bufio.NewReader(os.Stdin)
-
 	fmt.Println()
 	fmt.Printf("  %s\n", lib.Bold("Backup summary:"))
 	fmt.Printf("    Container: %s\n", containerName)
@@ -2334,13 +2361,7 @@ func confirmBackup(containerName string, databases []string, descriptions map[st
 	}
 	fmt.Println()
 
-	fmt.Print("  " + lib.Bold("Proceed? [Y/n]: "))
-	input, _ := reader.ReadString('\n')
-	input = strings.ReplaceAll(strings.TrimSpace(input), "\r", "")
-	if input == "n" || input == "N" {
-		return false
-	}
-	return true
+	return tui.Confirm("Proceed?")
 }
 
 // ── chauf podman restore ──────────────────────────────────────────────────────
@@ -2360,10 +2381,9 @@ func runPodmanRestore(args []string) error {
 		}
 	}
 
-	// 1. Setup (client, ctx, reader)
+	// 1. Setup (client, ctx)
 	ctx := context.Background()
 	client := podman.NewPodmanClient()
-	reader := bufio.NewReader(os.Stdin)
 
 	if err := client.Available(ctx); err != nil {
 		if err == podman.ErrPodmanNotFound {
@@ -2484,10 +2504,7 @@ func runPodmanRestore(args []string) error {
 	}
 	fmt.Println()
 
-	fmt.Print("  " + lib.Bold("Proceed? [y/N]: "))
-	input, _ := reader.ReadString('\n')
-	input = strings.ReplaceAll(strings.TrimSpace(input), "\r", "")
-	if input != "y" && input != "Y" && input != "yes" {
+	if !tui.Confirm("Proceed?") {
 		lib.Info("Cancelled.")
 		return nil
 	}

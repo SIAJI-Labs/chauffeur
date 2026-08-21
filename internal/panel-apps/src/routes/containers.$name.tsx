@@ -1,340 +1,307 @@
-import { createFileRoute, useParams } from "@tanstack/react-router"
-import { useEffect, useRef, useState } from "react"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import {
-  SidebarInset,
-  SidebarProvider,
-  SidebarTrigger,
-} from "@/components/ui/sidebar"
-import { AppSidebar } from "@/components/app-sidebar"
-import { Separator } from "@/components/ui/separator"
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip"
+import { createFileRoute, useParams } from "@tanstack/react-router";
+import { useEffect, useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Circle,
   Copy,
+  Eye,
+  EyeOff,
   HardDrive,
   Pause,
   Play,
   Server,
   Terminal,
-} from "lucide-react"
+} from "lucide-react";
+import { AppShell } from "@/components/app-shell";
+import { OperationFeedback } from "@/components/operation-feedback";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
-const LOG_FOLLOW_RESUME_THRESHOLD_PX = 16
+const LOG_FOLLOW_RESUME_THRESHOLD_PX = 16;
 
 export const Route = createFileRoute("/containers/$name")({
   component: ContainerDetailPage,
-})
+});
 
 interface ContainerDetail {
-  name: string
-  engine: string
-  status: "running" | "stopped"
-  hostPort: number
-  createdAt: string
+  name: string;
+  engine: string;
+  status: "running" | "stopped";
+  hostPort: number;
+  createdAt: string;
   config: {
-    databaseUser: string
-    databaseName: string
-    databasePassword: string
-  }
+    databaseUser: string;
+    databaseName: string;
+    databasePassword: string;
+  };
 }
 
 async function fetchContainer(name: string): Promise<ContainerDetail> {
-  const res = await fetch(`/api/containers/${name}`)
-  if (!res.ok) throw new Error("Failed to fetch container")
-  return res.json()
+  const res = await fetch(`/api/containers/${name}`);
+  if (!res.ok) throw new Error("Failed to fetch container");
+  return res.json();
 }
 
 async function startContainer(name: string): Promise<void> {
-  const res = await fetch(`/api/containers/${name}/start`, { method: "POST" })
-  if (!res.ok) throw new Error("Failed to start container")
+  const res = await fetch(`/api/containers/${name}/start`, { method: "POST" });
+  if (!res.ok) throw new Error("Failed to start container");
 }
 
 async function stopContainer(name: string): Promise<void> {
-  const res = await fetch(`/api/containers/${name}/stop`, { method: "POST" })
-  if (!res.ok) throw new Error("Failed to stop container")
+  const res = await fetch(`/api/containers/${name}/stop`, { method: "POST" });
+  if (!res.ok) throw new Error("Failed to stop container");
 }
 
 function ContainerDetailPage() {
-  const { name } = useParams({ from: "/containers/$name" })
-  const queryClient = useQueryClient()
-  const [logs, setLogs] = useState<string>("")
-  const [isFollowingLogs, setIsFollowingLogs] = useState(true)
-  const logsContainerRef = useRef<HTMLPreElement>(null)
+  const { name } = useParams({ from: "/containers/$name" });
+  const queryClient = useQueryClient();
+  const [logs, setLogs] = useState<string>("");
+  const [isFollowingLogs, setIsFollowingLogs] = useState(true);
+  const [logsDisconnected, setLogsDisconnected] = useState(false);
+  const [logConnectionNonce, setLogConnectionNonce] = useState(0);
+  const [operationFeedback, setOperationFeedback] = useState<{
+    status: "loading" | "success" | "error";
+    message: string;
+  } | null>(null);
+  const [retryOperation, setRetryOperation] = useState<"start" | "stop" | null>(
+    null,
+  );
+  const logsContainerRef = useRef<HTMLPreElement>(null);
 
   const scrollLogsToBottom = () => {
     if (logsContainerRef.current) {
-      logsContainerRef.current.scrollTop = logsContainerRef.current.scrollHeight
+      logsContainerRef.current.scrollTop =
+        logsContainerRef.current.scrollHeight;
     }
-  }
+  };
 
   const handleLogsScroll = () => {
-    if (!logsContainerRef.current) return
+    if (!logsContainerRef.current) return;
 
-    const { scrollTop, scrollHeight, clientHeight } = logsContainerRef.current
+    const { scrollTop, scrollHeight, clientHeight } = logsContainerRef.current;
     const isNearBottom =
-      scrollHeight - scrollTop - clientHeight <= LOG_FOLLOW_RESUME_THRESHOLD_PX
+      scrollHeight - scrollTop - clientHeight <= LOG_FOLLOW_RESUME_THRESHOLD_PX;
 
-    setIsFollowingLogs((prev) => (prev === isNearBottom ? prev : isNearBottom))
-  }
+    setIsFollowingLogs((prev) => (prev === isNearBottom ? prev : isNearBottom));
+  };
 
-  const { data: container, isLoading, error } = useQuery({
+  const {
+    data: container,
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: ["container", name],
     queryFn: () => fetchContainer(name),
     refetchInterval: 5000,
-  })
+  });
 
   const startMutation = useMutation({
     mutationFn: () => startContainer(name),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["container", name] }),
-  })
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["container", name] }),
+  });
 
   const stopMutation = useMutation({
     mutationFn: () => stopContainer(name),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["container", name] }),
-  })
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["container", name] }),
+  });
 
   useEffect(() => {
-    setLogs("")
-    setIsFollowingLogs(true)
-  }, [name])
+    setLogs("");
+    setIsFollowingLogs(true);
+    setLogsDisconnected(false);
+  }, [name]);
 
   useEffect(() => {
-    if (container?.status !== "running") return
+    if (container?.status !== "running") return;
 
-    const eventSource = new EventSource(`/api/containers/${name}/logs`)
+    const eventSource = new EventSource(`/api/containers/${name}/logs`);
 
     eventSource.onmessage = (event) => {
+      setLogsDisconnected(false);
       setLogs((prev) => {
-        const newLogs = event.data.replace(/\\n/g, "\n").replace(/\\r/g, "\r")
-        const lines = (prev + newLogs).split("\n").slice(-100)
-        return lines.join("\n")
-      })
-    }
+        const newLogs = event.data.replace(/\\n/g, "\n").replace(/\\r/g, "\r");
+        const lines = (prev + newLogs).split("\n").slice(-100);
+        return lines.join("\n");
+      });
+    };
 
     eventSource.onerror = () => {
-      eventSource.close()
-    }
+      setLogsDisconnected(true);
+      eventSource.close();
+    };
 
-    return () => eventSource.close()
-  }, [container?.status, name])
+    return () => eventSource.close();
+  }, [container?.status, logConnectionNonce, name]);
 
   useEffect(() => {
     if (isFollowingLogs) {
-      scrollLogsToBottom()
+      scrollLogsToBottom();
     }
-  }, [isFollowingLogs, logs])
+  }, [isFollowingLogs, logs]);
 
-  const [copiedField, setCopiedField] = useState<string | null>(null)
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+  const [copyStatus, setCopyStatus] = useState("");
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
 
   const copyToClipboard = (text: string, field: string) => {
-    navigator.clipboard.writeText(text)
-    setCopiedField(field)
-    setTimeout(() => setCopiedField(null), 2000)
-  }
+    void navigator.clipboard
+      .writeText(text)
+      .then(() => {
+        setCopiedField(field);
+        setCopyStatus(`${field} copied to clipboard.`);
+        setTimeout(() => {
+          setCopiedField(null);
+          setCopyStatus("");
+        }, 2000);
+      })
+      .catch(() => {
+        setCopiedField(null);
+        setCopyStatus(`Unable to copy ${field}.`);
+      });
+  };
+
+  const runOperation = (type: "start" | "stop") => {
+    const mutation = type === "start" ? startMutation : stopMutation;
+    setRetryOperation(type);
+    setOperationFeedback({
+      status: "loading",
+      message: `${type === "start" ? "Starting" : "Stopping"} ${name}...`,
+    });
+    mutation.mutate(undefined, {
+      onSuccess: () => {
+        setOperationFeedback({
+          status: "success",
+          message: `${name} ${type === "start" ? "started" : "stopped"}.`,
+        });
+        setRetryOperation(null);
+      },
+      onError: (operationError) => {
+        setOperationFeedback({
+          status: "error",
+          message: `Unable to ${type} ${name}: ${operationError.message}`,
+        });
+      },
+    });
+  };
 
   if (isLoading) {
     return (
-      <SidebarProvider>
-        <AppSidebar />
-        <SidebarInset>
-          <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
-            <SidebarTrigger className="-ml-1" />
-            <Separator orientation="vertical" className="mr-2 h-4" />
-            <Breadcrumb>
-              <BreadcrumbList>
-                <BreadcrumbItem className="hidden md:block">
-                  <BreadcrumbLink href="#">Podman Service</BreadcrumbLink>
-                </BreadcrumbItem>
-                <BreadcrumbSeparator className="hidden md:block">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="24"
-                    height="24"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    className="lucide lucide-chevron-right"
-                  >
-                    <path d="m9 18 6-6-6-6" />
-                  </svg>
-                </BreadcrumbSeparator>
-                <BreadcrumbItem>
-                  <BreadcrumbLink href="/containers">Container List</BreadcrumbLink>
-                </BreadcrumbItem>
-                <BreadcrumbSeparator className="hidden md:block">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="24"
-                    height="24"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    className="lucide lucide-chevron-right"
-                  >
-                    <path d="m9 18 6-6-6-6" />
-                  </svg>
-                </BreadcrumbSeparator>
-                <BreadcrumbItem>
-                  <BreadcrumbPage className="font-normal text-foreground">{name}</BreadcrumbPage>
-                </BreadcrumbItem>
-              </BreadcrumbList>
-            </Breadcrumb>
-          </header>
-          <div className="flex flex-1 flex-col items-center justify-center rounded-xl border border-dashed p-8 text-center">
-            <Server className="size-8 text-muted-foreground mb-2" />
-            <p className="text-sm text-muted-foreground">Loading container...</p>
-          </div>
-        </SidebarInset>
-      </SidebarProvider>
-    )
+      <AppShell
+        title="Loading container"
+        breadcrumbs={[
+          { label: "Services" },
+          { label: "Containers", to: "/containers" },
+          { label: name },
+        ]}
+        contentId="container-detail-content"
+        skipLabel="Skip to container detail"
+      >
+        <div className="flex flex-1 flex-col items-center justify-center rounded-xl border border-dashed p-8 text-center">
+          <Server className="size-8 text-muted-foreground mb-2" />
+          <p className="text-sm text-muted-foreground">Loading container...</p>
+        </div>
+      </AppShell>
+    );
   }
 
   if (error || !container) {
     return (
-      <SidebarProvider>
-        <AppSidebar />
-        <SidebarInset>
-          <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
-            <SidebarTrigger className="-ml-1" />
-            <Separator orientation="vertical" className="mr-2 h-4" />
-            <Breadcrumb>
-              <BreadcrumbList>
-                <BreadcrumbItem className="hidden md:block">
-                  <BreadcrumbLink href="#">Podman Service</BreadcrumbLink>
-                </BreadcrumbItem>
-                <BreadcrumbSeparator className="hidden md:block">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="24"
-                    height="24"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    className="lucide lucide-chevron-right"
-                  >
-                    <path d="m9 18 6-6-6-6" />
-                  </svg>
-                </BreadcrumbSeparator>
-                <BreadcrumbItem>
-                  <BreadcrumbLink href="/containers">Container List</BreadcrumbLink>
-                </BreadcrumbItem>
-              </BreadcrumbList>
-            </Breadcrumb>
-          </header>
-          <div className="flex flex-1 flex-col items-center justify-center rounded-xl border border-dashed p-8 text-center">
-            <p className="text-sm text-destructive">Error: {error?.message || "Container not found"}</p>
-          </div>
-        </SidebarInset>
-      </SidebarProvider>
-    )
+      <AppShell
+        title={name}
+        breadcrumbs={[
+          { label: "Services" },
+          { label: "Containers", to: "/containers" },
+          { label: name },
+        ]}
+        contentId="container-detail-content"
+        skipLabel="Skip to container detail"
+      >
+        <OperationFeedback
+          status="error"
+          message={`Unable to load ${name}: ${error?.message || "Container not found"}`}
+          onRetry={() =>
+            queryClient.refetchQueries({ queryKey: ["container", name] })
+          }
+        />
+      </AppShell>
+    );
   }
 
   return (
     <TooltipProvider>
-    <SidebarProvider>
-      <AppSidebar />
-      <SidebarInset>
-        <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
-          <SidebarTrigger className="-ml-1" />
-          <Separator orientation="vertical" className="mr-2 h-4" />
-          <Breadcrumb>
-            <BreadcrumbList>
-              <BreadcrumbItem className="hidden md:block">
-                <BreadcrumbLink href="#">Podman Service</BreadcrumbLink>
-              </BreadcrumbItem>
-              <BreadcrumbSeparator className="hidden md:block">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="24"
-                  height="24"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="lucide lucide-chevron-right"
-                >
-                  <path d="m9 18 6-6-6-6" />
-                </svg>
-              </BreadcrumbSeparator>
-              <BreadcrumbItem>
-                <BreadcrumbLink href="/containers">Container List</BreadcrumbLink>
-              </BreadcrumbItem>
-              <BreadcrumbSeparator className="hidden md:block">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="24"
-                  height="24"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="lucide lucide-chevron-right"
-                >
-                  <path d="m9 18 6-6-6-6" />
-                </svg>
-              </BreadcrumbSeparator>
-              <BreadcrumbItem>
-                <BreadcrumbPage className="font-normal text-foreground">{name}</BreadcrumbPage>
-              </BreadcrumbItem>
-            </BreadcrumbList>
-          </Breadcrumb>
-        </header>
-        <div className="flex flex-1 flex-col gap-4 p-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <h1 className="text-lg font-semibold">{container.name}</h1>
-              <Badge variant={container.status === "running" ? "default" : "secondary"}>
-                <Circle className={`size-2 mr-1 ${container.status === "running" ? "fill-green-500 text-green-500" : "fill-gray-400 text-gray-400"}`} />
-                {container.status}
-              </Badge>
-            </div>
-            <div className="flex items-center gap-2">
-              {container.status === "running" ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => stopMutation.mutate()}
-                  disabled={stopMutation.isPending}
-                >
-                  <Pause className="size-4 mr-1" />
-                  Stop
-                </Button>
-              ) : (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => startMutation.mutate()}
-                  disabled={startMutation.isPending}
-                >
-                  <Play className="size-4 mr-1" />
-                  Start
-                </Button>
-              )}
-            </div>
+      <AppShell
+        title={container.name}
+        breadcrumbs={[
+          { label: "Services" },
+          { label: "Containers", to: "/containers" },
+          { label: container.name },
+        ]}
+        contentId="container-detail-content"
+        skipLabel="Skip to container detail"
+        shortcuts={
+          container.status === "running" ? (
+            <Button
+              variant="outline"
+              size="sm"
+              className="header-button"
+              onClick={() => runOperation("stop")}
+              disabled={stopMutation.isPending}
+              aria-busy={stopMutation.isPending}
+            >
+              <Pause aria-hidden="true" /> <span>Stop</span>
+            </Button>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              className="header-button"
+              onClick={() => runOperation("start")}
+              disabled={startMutation.isPending}
+              aria-busy={startMutation.isPending}
+            >
+              <Play aria-hidden="true" /> <span>Start</span>
+            </Button>
+          )
+        }
+      >
+        <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-4">
+          {operationFeedback ? (
+            <OperationFeedback
+              {...operationFeedback}
+              onDismiss={() => setOperationFeedback(null)}
+              onRetry={
+                retryOperation ? () => runOperation(retryOperation) : undefined
+              }
+            />
+          ) : null}
+          {logsDisconnected ? (
+            <OperationFeedback
+              status="disconnected"
+              message="Log stream disconnected. Retry to reconnect."
+              onRetry={() => {
+                setLogsDisconnected(false);
+                setLogConnectionNonce((value) => value + 1);
+              }}
+            />
+          ) : null}
+          <div className="flex items-center">
+            <Badge
+              variant={container.status === "running" ? "default" : "secondary"}
+            >
+              <Circle
+                className={`size-2 mr-1 ${container.status === "running" ? "fill-green-500 text-green-500" : "fill-gray-400 text-gray-400"}`}
+              />
+              {container.status}
+            </Badge>
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
@@ -352,7 +319,9 @@ function ContainerDetailPage() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Host Port</span>
-                  <span className="font-medium">{container.hostPort || "-"}</span>
+                  <span className="font-medium">
+                    {container.hostPort || "-"}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Created</span>
@@ -371,10 +340,15 @@ function ContainerDetailPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-2 text-sm">
+                <span className="sr-only" role="status" aria-live="polite">
+                  {copyStatus}
+                </span>
                 <div className="flex justify-between items-center">
                   <span className="text-muted-foreground">Host</span>
                   <div className="flex items-center gap-1">
-                    <span className="font-medium">localhost:{container.hostPort}</span>
+                    <span className="font-medium">
+                      localhost:{container.hostPort}
+                    </span>
                     <Tooltip>
                       <TooltipTrigger
                         render={
@@ -382,11 +356,19 @@ function ContainerDetailPage() {
                             variant="ghost"
                             size="icon"
                             className="size-6"
+                            aria-label="Copy database host"
                           />
                         }
-                        onClick={() => copyToClipboard(`localhost:${container.hostPort}`, "host")}
+                        onClick={() =>
+                          copyToClipboard(
+                            `localhost:${container.hostPort}`,
+                            "host",
+                          )
+                        }
                       >
-                        <Copy className={`size-3 ${copiedField === "host" ? "text-green-500" : ""}`} />
+                        <Copy
+                          className={`size-3 ${copiedField === "host" ? "text-green-500" : ""}`}
+                        />
                       </TooltipTrigger>
                       <TooltipContent>
                         {copiedField === "host" ? "Copied!" : "Copy"}
@@ -397,7 +379,9 @@ function ContainerDetailPage() {
                 <div className="flex justify-between items-center">
                   <span className="text-muted-foreground">Database</span>
                   <div className="flex items-center gap-1">
-                    <span className="font-medium">{container.config?.databaseName || "app"}</span>
+                    <span className="font-medium">
+                      {container.config.databaseName || "app"}
+                    </span>
                     <Tooltip>
                       <TooltipTrigger
                         render={
@@ -405,11 +389,19 @@ function ContainerDetailPage() {
                             variant="ghost"
                             size="icon"
                             className="size-6"
+                            aria-label="Copy database name"
                           />
                         }
-                        onClick={() => copyToClipboard(container.config?.databaseName || "app", "database")}
+                        onClick={() =>
+                          copyToClipboard(
+                            container.config.databaseName || "app",
+                            "database",
+                          )
+                        }
                       >
-                        <Copy className={`size-3 ${copiedField === "database" ? "text-green-500" : ""}`} />
+                        <Copy
+                          className={`size-3 ${copiedField === "database" ? "text-green-500" : ""}`}
+                        />
                       </TooltipTrigger>
                       <TooltipContent>
                         {copiedField === "database" ? "Copied!" : "Copy"}
@@ -420,7 +412,9 @@ function ContainerDetailPage() {
                 <div className="flex justify-between items-center">
                   <span className="text-muted-foreground">User</span>
                   <div className="flex items-center gap-1">
-                    <span className="font-medium">{container.config?.databaseUser || "-"}</span>
+                    <span className="font-medium">
+                      {container.config.databaseUser || "-"}
+                    </span>
                     <Tooltip>
                       <TooltipTrigger
                         render={
@@ -428,11 +422,19 @@ function ContainerDetailPage() {
                             variant="ghost"
                             size="icon"
                             className="size-6"
+                            aria-label="Copy database user"
                           />
                         }
-                        onClick={() => copyToClipboard(container.config?.databaseUser || "", "user")}
+                        onClick={() =>
+                          copyToClipboard(
+                            container.config.databaseUser || "",
+                            "user",
+                          )
+                        }
                       >
-                        <Copy className={`size-3 ${copiedField === "user" ? "text-green-500" : ""}`} />
+                        <Copy
+                          className={`size-3 ${copiedField === "user" ? "text-green-500" : ""}`}
+                        />
                       </TooltipTrigger>
                       <TooltipContent>
                         {copiedField === "user" ? "Copied!" : "Copy"}
@@ -443,7 +445,32 @@ function ContainerDetailPage() {
                 <div className="flex justify-between items-center">
                   <span className="text-muted-foreground">Password</span>
                   <div className="flex items-center gap-1">
-                    <span className="font-medium">{container.config?.databasePassword || "-"}</span>
+                    <span className="font-medium">
+                      {container.config.databasePassword
+                        ? isPasswordVisible
+                          ? container.config.databasePassword
+                          : "********"
+                        : "-"}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-6"
+                      aria-label={
+                        isPasswordVisible
+                          ? "Hide database password"
+                          : "Reveal database password"
+                      }
+                      onClick={() =>
+                        setIsPasswordVisible((visible) => !visible)
+                      }
+                    >
+                      {isPasswordVisible ? (
+                        <EyeOff className="size-3" />
+                      ) : (
+                        <Eye className="size-3" />
+                      )}
+                    </Button>
                     <Tooltip>
                       <TooltipTrigger
                         render={
@@ -451,11 +478,19 @@ function ContainerDetailPage() {
                             variant="ghost"
                             size="icon"
                             className="size-6"
+                            aria-label="Copy database password"
                           />
                         }
-                        onClick={() => copyToClipboard(container.config?.databasePassword || "", "password")}
+                        onClick={() =>
+                          copyToClipboard(
+                            container.config.databasePassword || "",
+                            "password",
+                          )
+                        }
                       >
-                        <Copy className={`size-3 ${copiedField === "password" ? "text-green-500" : ""}`} />
+                        <Copy
+                          className={`size-3 ${copiedField === "password" ? "text-green-500" : ""}`}
+                        />
                       </TooltipTrigger>
                       <TooltipContent>
                         {copiedField === "password" ? "Copied!" : "Copy"}
@@ -486,8 +521,8 @@ function ContainerDetailPage() {
                     variant="secondary"
                     size="sm"
                     onClick={() => {
-                      scrollLogsToBottom()
-                      setIsFollowingLogs(true)
+                      scrollLogsToBottom();
+                      setIsFollowingLogs(true);
                     }}
                   >
                     Jump to latest
@@ -499,13 +534,15 @@ function ContainerDetailPage() {
                 onScroll={handleLogsScroll}
                 className="h-64 overflow-auto rounded-md bg-muted p-2 text-xs font-mono leading-relaxed"
               >
-                {logs || (container.status !== "running" ? "Logs will appear here when the container is running..." : "Waiting for logs...")}
+                {logs ||
+                  (container.status !== "running"
+                    ? "Logs will appear here when the container is running..."
+                    : "Waiting for logs...")}
               </pre>
             </CardContent>
           </Card>
         </div>
-      </SidebarInset>
-    </SidebarProvider>
+      </AppShell>
     </TooltipProvider>
-  )
+  );
 }

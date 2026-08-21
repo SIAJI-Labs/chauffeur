@@ -2,11 +2,11 @@
 
 ## Overview
 
-Web-based admin panel served via `chauf serve`, providing a GUI alternative to CLI for managing podman database containers.
+Web-based admin panel served via `chauf webui`, providing a GUI alternative to CLI for managing Chauffeur projects and Podman services.
 
 ## Architecture
 
-### Server (`chauf serve`)
+### Server (`chauf webui`)
 
 Single Go process serving:
 - REST API at `/api/*`
@@ -14,14 +14,15 @@ Single Go process serving:
 - Static files (frontend build)
 
 ```
-chauf serve              # Start in background (default)
-chauf serve -f          # Run in foreground
-chauf serve --stop      # Stop running server
-chauf serve --port 3000 # Custom port (default: 3000)
-chauf serve --host panel.test # Custom hostname (default: panel.test)
+chauf webui start              # Start in background (default)
+chauf webui start -f           # Run in foreground
+chauf webui start --dev        # Run API + Vite development server with HMR
+chauf webui stop               # Stop running server
+chauf webui start --port 3083  # Custom port (default: 3083)
+chauf webui start --host panel.test # Custom hostname (default: panel.test)
 ```
 
-Default: `http://panel.test:3000`
+Default: `http://panel.test:3083`
 
 ### Daemon Mode
 

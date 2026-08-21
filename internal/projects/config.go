@@ -25,16 +25,21 @@ type FPMConfig struct {
 
 // Project represents a registered Chauffeur project.
 type Project struct {
-	Slug        string
-	Path        string
-	Domain      string
-	Aliases     []string
-	PHPVersion  string
-	SSL         bool
-	FPM         FPMConfig
-	ProjectType ProjectType
-	CreatedAt   string
-	UpdatedAt   string
+	Slug              string
+	Path              string
+	Domain            string
+	Aliases           []string
+	PHPVersion        string
+	SSL               bool
+	FPM               FPMConfig
+	ProjectType       ProjectType
+	NodeMode          string
+	NodeVersion       string
+	Database          string
+	DatabaseContainer string
+	Services          []string
+	CreatedAt         string
+	UpdatedAt         string
 }
 
 // AllDomains returns the primary domain followed by all aliases.
@@ -193,6 +198,23 @@ func marshalProject(p *Project) string {
 	}
 	line(`  socket: "` + p.FPM.Socket + `"`)
 	line("project_type: " + string(p.ProjectType))
+	if p.NodeMode != "" {
+		line("node:")
+		line("  mode: " + p.NodeMode)
+		line("  version: \"" + p.NodeVersion + "\"")
+	}
+	if p.Database != "" {
+		line("database: " + p.Database)
+	}
+	if p.DatabaseContainer != "" {
+		line("database_container: " + p.DatabaseContainer)
+	}
+	if len(p.Services) > 0 {
+		line("services:")
+		for _, service := range p.Services {
+			line("  - " + service)
+		}
+	}
 	line(`created_at: "` + p.CreatedAt + `"`)
 	line(`updated_at: "` + p.UpdatedAt + `"`)
 	return sb.String()
@@ -202,6 +224,8 @@ func unmarshalProject(data string) (*Project, error) {
 	p := &Project{}
 	inFPM := false
 	inAliases := false
+	inNode := false
+	inServices := false
 
 	for _, raw := range strings.Split(data, "\n") {
 		trimmed := strings.TrimSpace(raw)
@@ -214,6 +238,10 @@ func unmarshalProject(data string) (*Project, error) {
 		// Alias list items
 		if inAliases && isIndented && strings.HasPrefix(trimmed, "- ") {
 			p.Aliases = append(p.Aliases, strings.TrimPrefix(trimmed, "- "))
+			continue
+		}
+		if inServices && isIndented && strings.HasPrefix(trimmed, "- ") {
+			p.Services = append(p.Services, strings.TrimPrefix(trimmed, "- "))
 			continue
 		}
 
@@ -232,11 +260,27 @@ func unmarshalProject(data string) (*Project, error) {
 			}
 			continue
 		}
+		if inNode && isIndented {
+			parts := strings.SplitN(trimmed, ":", 2)
+			if len(parts) == 2 {
+				key := strings.TrimSpace(parts[0])
+				val := strings.Trim(strings.TrimSpace(parts[1]), `"`)
+				switch key {
+				case "mode":
+					p.NodeMode = val
+				case "version":
+					p.NodeVersion = val
+				}
+			}
+			continue
+		}
 
 		// A non-indented line resets section tracking
 		if !isIndented {
 			inFPM = false
 			inAliases = false
+			inNode = false
+			inServices = false
 		}
 
 		// Key-value
@@ -266,6 +310,16 @@ func unmarshalProject(data string) (*Project, error) {
 			p.SSL = val == "true"
 		case "fpm":
 			inFPM = true
+		case "node":
+			inNode = true
+		case "database":
+			p.Database = val
+		case "database_container":
+			p.DatabaseContainer = val
+		case "services":
+			if val == "" {
+				inServices = true
+			}
 		case "project_type":
 			p.ProjectType = ProjectType(val)
 		case "created_at":

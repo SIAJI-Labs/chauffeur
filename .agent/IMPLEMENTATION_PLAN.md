@@ -223,13 +223,13 @@ chauffeur-v2/
 
 ### Overview
 
-A web-based admin panel served via `chauf serve`, providing a GUI alternative to the CLI for users unfamiliar with terminal interfaces. Single binary deployment — frontend embedded in Go binary.
+A web-based admin panel served via `chauf webui`, providing a GUI alternative to the CLI for users unfamiliar with terminal interfaces. Single binary deployment — frontend embedded in Go binary.
 
 ### Goals
 
 1. **Accessible**: Web UI for users who prefer GUI over CLI
 2. **Real-time**: WebSocket streaming for logs and status updates
-3. **Embedded**: Single `chauf serve` command, no separate frontend process
+3. **Embedded**: Single `chauf webui` command, no separate frontend process
 4. **Minimal**: Start with podman container management (start/stop/status/logs/backup/restore)
 
 ### Architecture
@@ -320,7 +320,7 @@ type WSMessage struct {
 ### Implementation Steps
 
 1. [ ] Create `internal/panel/` package structure
-2. [ ] Implement basic HTTP server with `chauf serve` command
+2. [ ] Implement basic HTTP server with `chauf webui` command
 3. [ ] Add REST API handlers for containers
 4. [ ] Implement WebSocket server for log streaming
 5. [ ] Create React frontend scaffold (Vite + React + TypeScript)
@@ -330,7 +330,7 @@ type WSMessage struct {
 9. [ ] Build Container Detail page with logs
 10. [ ] Build Backup/Restore page
 11. [ ] Embed static files in Go binary
-12. [ ] Add `chauf serve` to CLI commands
+12. [ ] Add `chauf webui` to CLI commands
 
 ### Key Decisions
 
@@ -410,7 +410,7 @@ Go:
 
 ### Phase 7: Admin Panel ✅ IN PROGRESS
 - [x] Create `internal/panel/` package structure
-- [x] Implement `chauf serve` HTTP server
+- [x] Implement `chauf webui` HTTP server
 - [x] Add REST API handlers for containers
 - [x] Implement SSE log streaming
 - [x] Create React frontend scaffold (Vite + React + TypeScript)
@@ -422,7 +422,7 @@ Go:
 - [ ] Build Container Detail + Logs pages
 - [ ] Build Backup/Restore page
 - [x] Embed static files in Go binary
-- [x] Wire up `chauf serve` command
+- [x] Wire up `chauf webui` command
 - [x] Add background daemon mode (default, `-f` for foreground)
 - [x] Add PID file management (`--stop` flag)
 

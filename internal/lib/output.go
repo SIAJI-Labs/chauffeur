@@ -19,6 +19,15 @@ var IsTTY = func() bool {
 	return (fi.Mode() & os.ModeCharDevice) != 0
 }()
 
+// IsInteractive reports whether stdin and stdout can safely be used for prompts.
+func IsInteractive() bool {
+	if !IsTTY {
+		return false
+	}
+	fi, err := os.Stdin.Stat()
+	return err == nil && fi.Mode()&os.ModeCharDevice != 0
+}
+
 func ansi(code, s string) string {
 	if !IsTTY {
 		return s
@@ -30,6 +39,7 @@ func ansi(code, s string) string {
 func Bold(s string) string   { return ansi("1", s) }
 func Gray(s string) string   { return ansi("90", s) }
 func Cyan(s string) string   { return ansi("36", s) }
+func Purple(s string) string { return ansi("35", s) }
 func Red(s string) string    { return ansi("31", s) }
 func Green(s string) string  { return ansi("32", s) }
 func Yellow(s string) string { return ansi("33", s) }
