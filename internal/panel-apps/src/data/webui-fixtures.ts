@@ -1,6 +1,7 @@
 import {
   Activity,
   Bell,
+  Boxes,
   Bug,
   Check,
   CircleAlert,
@@ -849,6 +850,122 @@ export const commandPaletteEntries = [
     icon: Settings2,
   },
 ];
+
+export const previewDestinationFixtures = {
+  "recent-activity": {
+    eyebrow: "Workspace signal",
+    title: "Recent activity",
+    description:
+      "A single timeline for project, service, runtime, and backup events.",
+    status: "Preview",
+    icon: Activity,
+    sections: [
+      { label: "Healthy", value: "2 events", detail: "Certificates and project routes" },
+      { label: "Attention", value: "1 event", detail: "client-portal needs HTTPS" },
+      { label: "Disconnected", value: "No live feed", detail: "Activity streaming requires backend support" },
+    ],
+  },
+  "command-palette": {
+    eyebrow: "Workspace shortcut",
+    title: "Command palette",
+    description: "Search pages, projects, services, toggles, and future actions from one keyboard-first surface.",
+    status: "Preview",
+    icon: Search,
+    sections: [
+      { label: "Shortcut", value: "Ctrl / Cmd + K", detail: "Open the global palette" },
+      { label: "Available", value: "Navigation", detail: "Open Projects, Services, and System" },
+      { label: "Planned", value: "Mutations", detail: "Actions stay previews until backend support exists" },
+    ],
+  },
+  "project-linking": {
+    eyebrow: "Projects / onboarding",
+    title: "Link a project",
+    description: "Preview the folder, runtime, and local route review used before linking a project.",
+    status: "Next",
+    icon: FolderGit2,
+    sections: projectLinkingSteps.map((step) => ({ label: step.number, value: step.title, detail: step.detail })),
+  },
+  "service-catalog": {
+    eyebrow: "Services / discovery",
+    title: "Service catalog",
+    description: "Browse service presets without installing or changing any local service.",
+    status: "Preview",
+    icon: Boxes,
+    sections: serviceCatalogFixtures.slice(0, 3).map((service) => ({ label: service.category, value: service.name, detail: `${service.state} · ${service.detail}` })),
+  },
+  "chauffeur-runtime": {
+    eyebrow: "System / core",
+    title: "Chauffeur runtime",
+    description: "Review the panel and CLI runtime connection without changing the host process.",
+    status: "Preview",
+    icon: Activity,
+    sections: [{ label: "Connected", value: "v0.1.0", detail: "Runtime health is represented by static fixtures" }, { label: "Planned", value: "Restart and update", detail: "Requires backend" }],
+  },
+  "dns-nginx": {
+    eyebrow: "System / gateway",
+    title: "DNS and Nginx",
+    description: "Inspect local resolver and gateway health, logs, and configuration previews.",
+    status: "Preview",
+    icon: Globe2,
+    sections: [{ label: "DNS", value: "Ready", detail: ".test resolver fixture" }, { label: "Nginx", value: "Online", detail: "Local routes and TLS gateway" }, { label: "Configuration", value: "Planned", detail: "Editing requires backend" }],
+  },
+  "node-runtimes": {
+    eyebrow: "System / toolchain",
+    title: "Node.js and Bun",
+    description: "Compare installed JavaScript runtimes and their project assignment states.",
+    status: "Preview",
+    icon: TerminalSquare,
+    sections: [{ label: "Ready", value: "Node.js 22.12", detail: "System-managed default" }, { label: "Planned", value: "Bun", detail: "Not installed · install preview" }],
+  },
+  "system-tools": {
+    eyebrow: "System / toolchain",
+    title: "Tools and watchers",
+    description: "Review certificate, tunnel, and file-watcher availability before connecting controls.",
+    status: "Preview",
+    icon: Wrench,
+    sections: [{ label: "Ready", value: "mkcert", detail: "Certificate tool available" }, { label: "Update", value: "ngrok", detail: "Version 3.18 is available" }, { label: "Idle", value: "File watcher", detail: "Start action requires backend" }],
+  },
+  "debug-bridge": {
+    eyebrow: "System / diagnostics",
+    title: "Debug bridge",
+    description: "Choose diagnostic lenses without enabling a bridge or exposing application data.",
+    status: "Preview",
+    icon: Bug,
+    sections: debugBridgeLensFixtures.slice(0, 3).map((lens) => ({ label: lens.state, value: lens.name, detail: lens.detail })),
+  },
+  workers: {
+    eyebrow: "Resources / automation",
+    title: "Workers",
+    description: "See active, sleeping, failed, and stopped worker profiles across the workspace.",
+    status: "Preview",
+    icon: ListChecks,
+    sections: workerStates.map((worker) => ({ label: worker.state, value: worker.name, detail: worker.detail })),
+  },
+  resources: {
+    eyebrow: "Resources / capacity",
+    title: "Resource usage",
+    description: "Review static CPU, memory, disk, and reclaimable storage signals.",
+    status: "Preview",
+    icon: Gauge,
+    sections: resourceSummary.map((resource) => ({ label: resource.label, value: resource.value, detail: resource.detail })),
+  },
+  "resource-telemetry": {
+    eyebrow: "Resources / telemetry",
+    title: "CPU and memory",
+    description: "Inspect the telemetry surface planned for runtime and container pressure.",
+    status: "Preview",
+    icon: Cpu,
+    sections: resourceSummary.slice(0, 2).map((resource) => ({ label: resource.label, value: resource.value, detail: resource.detail })),
+  },
+  issues: {
+    eyebrow: "Resources / diagnostics",
+    title: "Issues and diagnostics",
+    description: "Collect actionable workspace warnings without running a live doctor command.",
+    status: "Preview",
+    icon: CircleAlert,
+    sections: [{ label: "Attention", value: "SSL disabled", detail: "client-portal needs certificate setup" }, { label: "Planned", value: "Workspace doctor", detail: "Checks require backend support" }],
+  },
+} as const;
 
 export const onboardingSteps = [
   {

@@ -61,6 +61,7 @@ const serviceTabValues = serviceDetailTabs.map(
 );
 
 type ServicePreview =
+  | "service-action"
   | "create-database"
   | "drop-database"
   | "export-database"
@@ -167,8 +168,8 @@ function ServiceDetailPage() {
                   <Button
                     key={action}
                     variant="ghost"
-                    disabled
                     className="service-action"
+                    onClick={() => setPreview("service-action")}
                   >
                     {action}
                     <Badge variant="outline">Planned</Badge>
@@ -579,6 +580,12 @@ function ServicePreviewDialog({
     ServicePreview,
     { title: string; description: string; action: string }
   > = {
+    "service-action": {
+      title: "Service action preview",
+      description:
+        "Review this service operation before connecting it to a local runtime API.",
+      action: "Continue",
+    },
     "create-database": {
       title: "Create database preview",
       description:

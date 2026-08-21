@@ -9,18 +9,35 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SystemRouteImport } from './routes/system'
+import { Route as ServicesRouteImport } from './routes/services'
+import { Route as ProjectsRouteImport } from './routes/projects'
 import { Route as DocsRouteImport } from './routes/docs'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as ProjectsRouteImport } from './routes/projects'
-import { Route as ProjectsNameRouteImport } from './routes/projects.$name'
-import { Route as ServicesRouteImport } from './routes/services'
-import { Route as ServicesNameRouteImport } from './routes/services.$name'
-import { Route as SystemRouteImport } from './routes/system'
+import { Route as PreviewSlugRouteImport } from './routes/preview.$slug'
+import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SystemPhpRouteImport } from './routes/system.php'
+import { Route as ServicesNameRouteImport } from './routes/services.$name'
+import { Route as ProjectsNameRouteImport } from './routes/projects.$name'
 import { Route as ContainersBackupRouteImport } from './routes/containers.backup'
 import { Route as ContainersIndexRouteImport } from './routes/containers._index'
 import { Route as ContainersNameRouteImport } from './routes/containers.$name'
 
+const SystemRoute = SystemRouteImport.update({
+  id: '/system',
+  path: '/system',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ServicesRoute = ServicesRouteImport.update({
+  id: '/services',
+  path: '/services',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProjectsRoute = ProjectsRouteImport.update({
+  id: '/projects',
+  path: '/projects',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DocsRoute = DocsRouteImport.update({
   id: '/docs',
   path: '/docs',
@@ -31,35 +48,30 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ProjectsRoute = ProjectsRouteImport.update({
-  id: '/projects',
-  path: '/projects',
+const PreviewSlugRoute = PreviewSlugRouteImport.update({
+  id: '/preview/$slug',
+  path: '/preview/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ProjectsNameRoute = ProjectsNameRouteImport.update({
-  id: '/projects/$name',
-  path: '/projects/$name',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ServicesRoute = ServicesRouteImport.update({
-  id: '/services',
-  path: '/services',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ServicesNameRoute = ServicesNameRouteImport.update({
-  id: '/services/$name',
-  path: '/services/$name',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SystemRoute = SystemRouteImport.update({
-  id: '/system',
-  path: '/system',
+const SettingsRoute = SettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SystemPhpRoute = SystemPhpRouteImport.update({
-  id: '/system/php',
-  path: '/system/php',
-  getParentRoute: () => rootRouteImport,
+  id: '/php',
+  path: '/php',
+  getParentRoute: () => SystemRoute,
+} as any)
+const ServicesNameRoute = ServicesNameRouteImport.update({
+  id: '/$name',
+  path: '/$name',
+  getParentRoute: () => ServicesRoute,
+} as any)
+const ProjectsNameRoute = ProjectsNameRouteImport.update({
+  id: '/$name',
+  path: '/$name',
+  getParentRoute: () => ProjectsRoute,
 } as any)
 const ContainersBackupRoute = ContainersBackupRouteImport.update({
   id: '/containers/backup',
@@ -79,84 +91,106 @@ const ContainersNameRoute = ContainersNameRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/projects': typeof ProjectsRoute
-  '/projects/$name': typeof ProjectsNameRoute
-  '/services': typeof ServicesRoute
-  '/services/$name': typeof ServicesNameRoute
-  '/system': typeof SystemRoute
-  '/system/php': typeof SystemPhpRoute
+  '/preview/$slug': typeof PreviewSlugRoute
+  '/settings': typeof SettingsRoute
   '/docs': typeof DocsRoute
+  '/projects': typeof ProjectsRouteWithChildren
+  '/services': typeof ServicesRouteWithChildren
+  '/system': typeof SystemRouteWithChildren
   '/containers/$name': typeof ContainersNameRoute
   '/containers': typeof ContainersIndexRoute
   '/containers/backup': typeof ContainersBackupRoute
+  '/projects/$name': typeof ProjectsNameRoute
+  '/services/$name': typeof ServicesNameRoute
+  '/system/php': typeof SystemPhpRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/projects': typeof ProjectsRoute
-  '/projects/$name': typeof ProjectsNameRoute
-  '/services': typeof ServicesRoute
-  '/services/$name': typeof ServicesNameRoute
-  '/system': typeof SystemRoute
-  '/system/php': typeof SystemPhpRoute
+  '/preview/$slug': typeof PreviewSlugRoute
+  '/settings': typeof SettingsRoute
   '/docs': typeof DocsRoute
+  '/projects': typeof ProjectsRouteWithChildren
+  '/services': typeof ServicesRouteWithChildren
+  '/system': typeof SystemRouteWithChildren
   '/containers/$name': typeof ContainersNameRoute
   '/containers': typeof ContainersIndexRoute
   '/containers/backup': typeof ContainersBackupRoute
+  '/projects/$name': typeof ProjectsNameRoute
+  '/services/$name': typeof ServicesNameRoute
+  '/system/php': typeof SystemPhpRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/projects': typeof ProjectsRoute
-  '/projects/$name': typeof ProjectsNameRoute
-  '/services': typeof ServicesRoute
-  '/services/$name': typeof ServicesNameRoute
-  '/system': typeof SystemRoute
-  '/system/php': typeof SystemPhpRoute
+  '/preview/$slug': typeof PreviewSlugRoute
+  '/settings': typeof SettingsRoute
   '/docs': typeof DocsRoute
+  '/projects': typeof ProjectsRouteWithChildren
+  '/services': typeof ServicesRouteWithChildren
+  '/system': typeof SystemRouteWithChildren
   '/containers/$name': typeof ContainersNameRoute
   '/containers/_index': typeof ContainersIndexRoute
   '/containers/backup': typeof ContainersBackupRoute
+  '/projects/$name': typeof ProjectsNameRoute
+  '/services/$name': typeof ServicesNameRoute
+  '/system/php': typeof SystemPhpRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/projects'
-    | '/projects/$name'
-    | '/services'
-    | '/services/$name'
-    | '/system'
-    | '/system/php'
     | '/docs'
+    | '/projects'
+    | '/services'
+    | '/system'
     | '/containers/$name'
     | '/containers'
     | '/containers/backup'
+    | '/projects/$name'
+    | '/services/$name'
+    | '/system/php'
+    | '/preview/$slug'
+    | '/settings'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/projects' | '/projects/$name' | '/services' | '/services/$name' | '/system' | '/system/php' | '/docs' | '/containers/$name' | '/containers' | '/containers/backup'
+  to:
+    | '/'
+    | '/docs'
+    | '/projects'
+    | '/services'
+    | '/system'
+    | '/containers/$name'
+    | '/containers'
+    | '/containers/backup'
+    | '/projects/$name'
+    | '/services/$name'
+    | '/system/php'
+    | '/preview/$slug'
+    | '/settings'
   id:
     | '__root__'
     | '/'
-    | '/projects'
-    | '/projects/$name'
-    | '/services'
-    | '/services/$name'
-    | '/system'
-    | '/system/php'
     | '/docs'
+    | '/projects'
+    | '/services'
+    | '/system'
     | '/containers/$name'
     | '/containers/_index'
     | '/containers/backup'
+    | '/projects/$name'
+    | '/services/$name'
+    | '/system/php'
+    | '/preview/$slug'
+    | '/settings'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  ProjectsRoute: typeof ProjectsRoute
-  ProjectsNameRoute: typeof ProjectsNameRoute
-  ServicesRoute: typeof ServicesRoute
-  ServicesNameRoute: typeof ServicesNameRoute
-  SystemRoute: typeof SystemRoute
-  SystemPhpRoute: typeof SystemPhpRoute
+  PreviewSlugRoute: typeof PreviewSlugRoute
+  SettingsRoute: typeof SettingsRoute
   DocsRoute: typeof DocsRoute
+  ProjectsRoute: typeof ProjectsRouteWithChildren
+  ServicesRoute: typeof ServicesRouteWithChildren
+  SystemRoute: typeof SystemRouteWithChildren
   ContainersNameRoute: typeof ContainersNameRoute
   ContainersIndexRoute: typeof ContainersIndexRoute
   ContainersBackupRoute: typeof ContainersBackupRoute
@@ -164,13 +198,6 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/system/php': {
-      id: '/system/php'
-      path: '/system/php'
-      fullPath: '/system/php'
-      preLoaderRoute: typeof SystemPhpRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/system': {
       id: '/system'
       path: '/system'
@@ -178,25 +205,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SystemRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/services/$name': {
-      id: '/services/$name'
-      path: '/services/$name'
-      fullPath: '/services/$name'
-      preLoaderRoute: typeof ServicesNameRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/services': {
       id: '/services'
       path: '/services'
       fullPath: '/services'
       preLoaderRoute: typeof ServicesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/projects/$name': {
-      id: '/projects/$name'
-      path: '/projects/$name'
-      fullPath: '/projects/$name'
-      preLoaderRoute: typeof ProjectsNameRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/projects': {
@@ -219,6 +232,41 @@ declare module '@tanstack/react-router' {
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/preview/$slug': {
+      id: '/preview/$slug'
+      path: '/preview/$slug'
+      fullPath: '/preview/$slug'
+      preLoaderRoute: typeof PreviewSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/system/php': {
+      id: '/system/php'
+      path: '/php'
+      fullPath: '/system/php'
+      preLoaderRoute: typeof SystemPhpRouteImport
+      parentRoute: typeof SystemRoute
+    }
+    '/services/$name': {
+      id: '/services/$name'
+      path: '/$name'
+      fullPath: '/services/$name'
+      preLoaderRoute: typeof ServicesNameRouteImport
+      parentRoute: typeof ServicesRoute
+    }
+    '/projects/$name': {
+      id: '/projects/$name'
+      path: '/$name'
+      fullPath: '/projects/$name'
+      preLoaderRoute: typeof ProjectsNameRouteImport
+      parentRoute: typeof ProjectsRoute
     }
     '/containers/backup': {
       id: '/containers/backup'
@@ -244,15 +292,49 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface ProjectsRouteChildren {
+  ProjectsNameRoute: typeof ProjectsNameRoute
+}
+
+const ProjectsRouteChildren: ProjectsRouteChildren = {
+  ProjectsNameRoute: ProjectsNameRoute,
+}
+
+const ProjectsRouteWithChildren = ProjectsRoute._addFileChildren(
+  ProjectsRouteChildren,
+)
+
+interface ServicesRouteChildren {
+  ServicesNameRoute: typeof ServicesNameRoute
+}
+
+const ServicesRouteChildren: ServicesRouteChildren = {
+  ServicesNameRoute: ServicesNameRoute,
+}
+
+const ServicesRouteWithChildren = ServicesRoute._addFileChildren(
+  ServicesRouteChildren,
+)
+
+interface SystemRouteChildren {
+  SystemPhpRoute: typeof SystemPhpRoute
+}
+
+const SystemRouteChildren: SystemRouteChildren = {
+  SystemPhpRoute: SystemPhpRoute,
+}
+
+const SystemRouteWithChildren =
+  SystemRoute._addFileChildren(SystemRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  ProjectsRoute: ProjectsRoute,
-  ProjectsNameRoute: ProjectsNameRoute,
-  ServicesRoute: ServicesRoute,
-  ServicesNameRoute: ServicesNameRoute,
-  SystemRoute: SystemRoute,
-  SystemPhpRoute: SystemPhpRoute,
+  PreviewSlugRoute: PreviewSlugRoute,
+  SettingsRoute: SettingsRoute,
   DocsRoute: DocsRoute,
+  ProjectsRoute: ProjectsRouteWithChildren,
+  ServicesRoute: ServicesRouteWithChildren,
+  SystemRoute: SystemRouteWithChildren,
   ContainersNameRoute: ContainersNameRoute,
   ContainersIndexRoute: ContainersIndexRoute,
   ContainersBackupRoute: ContainersBackupRoute,

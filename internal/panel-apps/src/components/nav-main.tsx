@@ -3,6 +3,7 @@
 import * as React from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { ChevronRight } from "lucide-react";
+import type { SidebarGroup as SidebarNavigationGroup } from "@/data/sidebar-destinations";
 
 import {
   Collapsible,
@@ -10,7 +11,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import {
-  SidebarGroup,
+  SidebarGroup as SidebarGroupPrimitive,
   SidebarMenu,
   SidebarMenuAction,
   SidebarMenuButton,
@@ -23,20 +24,7 @@ import {
 export function NavMain({
   items,
 }: {
-  items: Array<{
-    title: string;
-    url: string;
-    icon: React.ReactNode;
-    isActive?: boolean;
-    items?: Array<{
-      title: string;
-      url: string;
-      icon?: React.ReactNode;
-      status?: string;
-      disabled?: boolean;
-    }>;
-    disabled?: boolean;
-  }>;
+  items: Array<SidebarNavigationGroup>;
 }) {
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
@@ -44,10 +32,12 @@ export function NavMain({
   const [openGroups, setOpenGroups] = React.useState<Record<string, boolean>>(
     {},
   );
-  const isPathActive = (url: string) =>
-    url === "/"
+  const isPathActive = (url: string) => {
+    const destinationPath = url.split(/[?#]/, 1)[0] || "/";
+    return destinationPath === "/"
       ? pathname === "/"
-      : pathname === url || pathname.startsWith(`${url}/`);
+      : pathname === destinationPath || pathname.startsWith(`${destinationPath}/`);
+  };
 
   React.useEffect(() => {
     setOpenGroups((current) => {
@@ -60,7 +50,7 @@ export function NavMain({
   }, [items, pathname]);
 
   return (
-    <SidebarGroup>
+    <SidebarGroupPrimitive>
       <SidebarMenu>
         {items.map((item) => {
           const groupActive = isPathActive(item.url);
@@ -85,8 +75,7 @@ export function NavMain({
                 aria-current={
                   groupActive && !item.items?.length ? "page" : undefined
                 }
-                disabled={item.disabled}
-                render={item.disabled ? undefined : <Link to={item.url} />}
+                render={<Link to={item.url} />}
               >
                 {item.icon}
                 <span>{item.title}</span>
@@ -107,25 +96,14 @@ export function NavMain({
                         <SidebarMenuSubItem key={subItem.title}>
                           <SidebarMenuSubButton
                             isActive={
-                              !subItem.disabled && isPathActive(subItem.url)
+                              isPathActive(subItem.url)
                             }
                             aria-current={
-                              !subItem.disabled && isPathActive(subItem.url)
+                              isPathActive(subItem.url)
                                 ? "page"
                                 : undefined
                             }
-                            aria-disabled={subItem.disabled || undefined}
-                            tabIndex={subItem.disabled ? -1 : undefined}
-                            className={
-                              subItem.disabled ? "planned-nav-item" : undefined
-                            }
-                            render={
-                              subItem.disabled ? (
-                                <span />
-                              ) : (
-                                <Link to={subItem.url} />
-                              )
-                            }
+                            render={<Link to={subItem.url} />}
                           >
                             {subItem.icon}
                             <span className="nav-subitem-title">
@@ -149,6 +127,6 @@ export function NavMain({
           );
         })}
       </SidebarMenu>
-    </SidebarGroup>
+    </SidebarGroupPrimitive>
   );
 }
