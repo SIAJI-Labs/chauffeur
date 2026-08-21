@@ -20,26 +20,27 @@ import (
 
 const (
 	panelDomain = "panel.test"
+	panelPort   = 3083
 	pidFileName = "panel.pid"
 	logFileName = "panel.log"
 )
 
-func RunServe(args []string) error {
+func runWebUIServer(args []string) error {
 	flags := flag.NewFlagSet("serve", flag.ContinueOnError)
 	flags.SetOutput(os.Stdout)
 	flags.Usage = func() {
-		fmt.Println("  chauf serve — start the web admin panel")
+		fmt.Println("  chauf webui start — start the web admin panel")
 		fmt.Println()
 		fmt.Println("  Starts a local HTTP server with a web-based admin panel")
 		fmt.Println("  for managing database containers.")
 		fmt.Println()
-		fmt.Printf("  Usage:  %s\n", lib.Bold("chauf serve [flags]"))
+		fmt.Printf("  Usage:  %s\n", lib.Bold("chauf webui start [flags]"))
 		fmt.Println()
 		fmt.Println("  Flags:")
 		flags.PrintDefaults()
 	}
 
-	port := flags.Int("port", 3000, "Port to listen on")
+	port := flags.Int("port", panelPort, "Port to listen on")
 	host := flags.String("host", panelDomain, "Hostname for the panel")
 	stop := flags.Bool("stop", false, "Stop a running panel server")
 	foreground := flags.Bool("f", false, "Run in foreground instead of background")
@@ -60,12 +61,15 @@ func RunServe(args []string) error {
 	if *stop {
 		return stopPanelServer(pidPath, url)
 	}
+	if *dev {
+		return runDevServer(*port)
+	}
 
 	if existingPID, err := getRunningPID(pidPath); err == nil && existingPID > 0 {
 		if isProcessRunning(existingPID) {
 			lib.Warn(fmt.Sprintf("Panel server is already running at %s", lib.Cyan(url)))
 			lib.Info(fmt.Sprintf("  PID: %d", existingPID))
-			lib.Info(fmt.Sprintf("  %s", lib.Gray("Run 'chauf serve --stop' to stop")))
+			lib.Info(fmt.Sprintf("  %s", lib.Gray("Run 'chauf webui stop' to stop")))
 			return nil
 		}
 		os.Remove(pidPath)
@@ -75,11 +79,221 @@ func RunServe(args []string) error {
 		return runPanelForeground(*port, *host)
 	}
 
-	if *dev {
-		return runDevServer(*port)
+	return runPanelDaemon(root, pidPath, logPath, *port, *host)
+}
+
+// RunWebUI provides the canonical lifecycle command for the local web UI.
+// The existing serve command remains the compatibility entry point.
+func RunWebUI(args []string) error {
+	if len(args) == 0 {
+		return webUIHelp()
 	}
 
-	return runPanelDaemon(root, pidPath, logPath, *port, *host)
+	switch args[0] {
+	case "start":
+		startArgs := withoutArg(args[1:], "--fresh")
+		if err := rebuildWebUIIfChanged(startArgs, containsArg(args[1:], "--fresh")); err != nil {
+			return err
+		}
+		return runWebUIServer(startArgs)
+	case "stop":
+		return runWebUIServer(append([]string{"--stop"}, args[1:]...))
+	case "status":
+		return webUIStatus(args[1:])
+	case "help", "--help", "-h":
+		return webUIHelp()
+	default:
+		return fmt.Errorf("unknown webui subcommand %q — use: start, status, stop", args[0])
+	}
+}
+
+// rebuildWebUIIfChanged keeps source-checkout development honest. The panel is
+// embedded in the Go binary, so refreshing frontend assets without replacing
+// the executable would still serve the old UI.
+func rebuildWebUIIfChanged(args []string, force bool) error {
+	if os.Getenv("CHAUFFEUR_WEBUI_REBUILT") == "1" || containsArg(args, "--dev") {
+		return nil
+	}
+
+	repoRoot, ok := sourceRepoRoot()
+	if !ok {
+		return nil
+	}
+
+	executable, err := os.Executable()
+	if err != nil {
+		return nil
+	}
+	executableInfo, err := os.Stat(executable)
+	if err != nil {
+		return nil
+	}
+
+	changed, err := sourceIsNewer(repoRoot, executableInfo.ModTime())
+	if err != nil {
+		return err
+	}
+	if !changed && !force {
+		return nil
+	}
+
+	if force {
+		lib.Info("Fresh build requested, rebuilding Web UI...")
+	} else {
+		lib.Info("Changes detected, rebuilding Web UI...")
+	}
+	build := exec.Command("make", "build")
+	build.Dir = repoRoot
+	build.Stdout = os.Stdout
+	build.Stderr = os.Stderr
+	if err := build.Run(); err != nil {
+		return fmt.Errorf("rebuild Web UI: %w", err)
+	}
+
+	binary := filepath.Join(repoRoot, "build", "chauf")
+	if _, err := os.Stat(binary); err != nil {
+		return fmt.Errorf("rebuilt Web UI binary not found: %w", err)
+	}
+
+	env := append(os.Environ(), "CHAUFFEUR_WEBUI_REBUILT=1")
+	return syscall.Exec(binary, append([]string{binary, "webui", "start"}, args...), env)
+}
+
+func containsArg(args []string, wanted string) bool {
+	for _, arg := range args {
+		if arg == wanted {
+			return true
+		}
+	}
+	return false
+}
+
+func withoutArg(args []string, unwanted string) []string {
+	filtered := make([]string, 0, len(args))
+	for _, arg := range args {
+		if arg != unwanted {
+			filtered = append(filtered, arg)
+		}
+	}
+	return filtered
+}
+
+func sourceRepoRoot() (string, bool) {
+	dir, err := os.Getwd()
+	if err != nil {
+		return "", false
+	}
+	for {
+		if fileExists(filepath.Join(dir, "go.mod")) && fileExists(filepath.Join(dir, "internal", "panel-apps", "package.json")) {
+			return dir, true
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", false
+		}
+		dir = parent
+	}
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+func sourceIsNewer(root string, since time.Time) (bool, error) {
+	paths := []string{
+		filepath.Join(root, "internal", "panel-apps", "index.html"),
+		filepath.Join(root, "internal", "panel-apps", "src"),
+		filepath.Join(root, "internal", "panel-apps", "public"),
+		filepath.Join(root, "internal", "panel-apps", "package.json"),
+		filepath.Join(root, "internal", "panel-apps", "package-lock.json"),
+		filepath.Join(root, "internal", "panel-apps", "vite.config.ts"),
+		filepath.Join(root, "Makefile"),
+		filepath.Join(root, "internal", "panel", "static"),
+	}
+	for _, path := range paths {
+		changed, err := pathIsNewer(path, since)
+		if err != nil {
+			return false, err
+		}
+		if changed {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func pathIsNewer(path string, since time.Time) (bool, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	if !info.IsDir() {
+		return info.ModTime().After(since), nil
+	}
+	var newer bool
+	err = filepath.WalkDir(path, func(current string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if newer {
+			return filepath.SkipAll
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		fileInfo, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		newer = fileInfo.ModTime().After(since)
+		return nil
+	})
+	return newer, err
+}
+
+func webUIHelp() error {
+	fmt.Printf("\n%s\n\n", lib.Bold("chauf webui — manage the local web UI"))
+	fmt.Printf("  %s\n\n", lib.Gray("Usage: chauf webui <start|status|stop> [flags]"))
+	fmt.Printf("  %-18s  %s\n", "start", lib.Gray("Start the web UI in the background"))
+	fmt.Printf("  %-18s  %s\n", "status", lib.Gray("Show whether the web UI is running"))
+	fmt.Printf("  %-18s  %s\n", "stop", lib.Gray("Stop the web UI"))
+	fmt.Println()
+	fmt.Printf("  %s\n", lib.Gray("Use chauf webui start [--port PORT] [--host HOST] [--fresh|--dev]"))
+	fmt.Println()
+	return nil
+}
+
+func webUIStatus(args []string) error {
+	flags := flag.NewFlagSet("webui status", flag.ContinueOnError)
+	flags.SetOutput(os.Stdout)
+	port := flags.Int("port", panelPort, "Web UI port")
+	host := flags.String("host", panelDomain, "Web UI hostname")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+
+	root := workspace.Root()
+	pidPath := filepath.Join(root, pidFileName)
+	url := fmt.Sprintf("http://%s", net.JoinHostPort(*host, strconv.Itoa(*port)))
+	pid, err := getRunningPID(pidPath)
+	if err != nil || pid <= 0 || !isProcessRunning(pid) {
+		if err == nil {
+			_ = os.Remove(pidPath)
+		}
+		lib.Info("Web UI is stopped")
+		lib.Pair("URL", url)
+		return nil
+	}
+
+	lib.Success("Web UI is running")
+	lib.Pair("URL", lib.Cyan(url))
+	lib.Pair("PID", strconv.Itoa(pid))
+	lib.Pair("Log", filepath.Join(root, logFileName))
+	return nil
 }
 
 func runPanelForeground(port int, host string) error {
@@ -107,45 +321,78 @@ func runPanelForeground(port int, host string) error {
 }
 
 func runDevServer(port int) error {
-	panelAppsDir := filepath.Join("internal", "panel-apps")
+	repoRoot, ok := sourceRepoRoot()
+	if !ok {
+		return fmt.Errorf("web UI development mode requires a Chauffeur source checkout")
+	}
+	if _, err := exec.LookPath("npm"); err != nil {
+		return fmt.Errorf("web UI development mode requires npm in PATH")
+	}
+
+	panelAppsDir := filepath.Join(repoRoot, "internal", "panel-apps")
 	goServerAddr := net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
+	goServer := panel.NewDevServerWithAddr(goServerAddr, "http://localhost:5173")
 
-	goServer := panel.NewServerWithAddr(goServerAddr)
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
+	serverErr := make(chan error, 1)
 	go func() {
-		goServer.Start(ctx)
+		serverErr <- goServer.Start(ctx)
 	}()
 
-	time.Sleep(500 * time.Millisecond)
+	select {
+	case err := <-serverErr:
+		if err != nil {
+			return fmt.Errorf("start web UI API server: %w", err)
+		}
+		return fmt.Errorf("web UI API server stopped before Vite started")
+	case <-time.After(300 * time.Millisecond):
+	}
 
 	cmd := exec.Command("npm", "run", "dev")
 	cmd.Dir = panelAppsDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+	cmd.Env = append(os.Environ(), fmt.Sprintf("CHAUFFEUR_WEBUI_API_PORT=%d", port))
 
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("start vite dev server: %w", err)
 	}
+	viteErr := make(chan error, 1)
+	go func() {
+		viteErr <- cmd.Wait()
+	}()
 
 	lib.Success("Chauffeur Panel dev mode")
 	lib.Info(fmt.Sprintf("  Go API server: http://localhost:%d", port))
-	lib.Info("  Frontend: http://localhost:5173 (API proxy: /api -> localhost:3000)")
+	lib.Info(fmt.Sprintf("  Frontend with HMR: http://localhost:5173"))
+	lib.Info(fmt.Sprintf("  API proxy: /api -> localhost:%d", port))
 	fmt.Println()
 	fmt.Printf("  %s\n", lib.Gray("Press Ctrl+C to stop both servers"))
 
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-	<-sigCh
-
-	lib.Info("Shutting down servers...")
-	cmd.Process.Kill()
-	cmd.Wait()
-	cancel()
-
-	return nil
+	select {
+	case <-ctx.Done():
+		lib.Info("Shutting down development servers...")
+		_ = cmd.Process.Signal(syscall.SIGTERM)
+		select {
+		case <-viteErr:
+		case <-time.After(2 * time.Second):
+			_ = cmd.Process.Kill()
+		}
+		return nil
+	case err := <-serverErr:
+		_ = cmd.Process.Kill()
+		if err != nil {
+			return fmt.Errorf("web UI API server: %w", err)
+		}
+		return fmt.Errorf("web UI API server stopped unexpectedly")
+	case err := <-viteErr:
+		if err != nil {
+			return fmt.Errorf("vite dev server: %w", err)
+		}
+		return nil
+	}
 }
 
 func getBinaryPath() string {
@@ -168,7 +415,7 @@ func runPanelDaemon(root, pidPath, logPath string, port int, host string) error 
 	logFile.Close()
 
 	binaryPath := getBinaryPath()
-	cmd := exec.Command(binaryPath, "serve", "-f", "--port", strconv.Itoa(port), "--host", host)
+	cmd := exec.Command(binaryPath, "webui", "start", "-f", "--port", strconv.Itoa(port), "--host", host)
 	cmd.Stdout, _ = os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 	cmd.Stderr, _ = os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 	cmd.Dir = root
@@ -199,7 +446,7 @@ func runPanelDaemon(root, pidPath, logPath string, port int, host string) error 
 	lib.Info(fmt.Sprintf("  URL: %s", lib.Cyan(url)))
 	lib.Info(fmt.Sprintf("  Log: %s", logPath))
 	fmt.Println()
-	fmt.Printf("  %s\n", lib.Gray("Run 'chauf serve --stop' to stop"))
+	fmt.Printf("  %s\n", lib.Gray("Run 'chauf webui stop' to stop"))
 
 	return nil
 }

@@ -1,18 +1,16 @@
 import { defineConfig } from "vite"
-import { devtools } from "@tanstack/devtools-vite"
-import { tanstackStart } from "@tanstack/react-start/plugin/vite"
 import viteReact from "@vitejs/plugin-react"
 import viteTsConfigPaths from "vite-tsconfig-paths"
 import tailwindcss from "@tailwindcss/vite"
 
+const apiPort = process.env.CHAUFFEUR_WEBUI_API_PORT || "3083"
+
 const config = defineConfig({
   plugins: [
-    devtools(),
     viteTsConfigPaths({
       projects: ["./tsconfig.json"],
     }),
     tailwindcss(),
-    tanstackStart(),
     viteReact(),
   ],
   ssr: {
@@ -20,9 +18,10 @@ const config = defineConfig({
   },
   server: {
     port: 5173,
+    strictPort: true,
     proxy: {
       "/api": {
-        target: "http://localhost:3000",
+        target: `http://localhost:${apiPort}`,
         changeOrigin: true,
       },
     },

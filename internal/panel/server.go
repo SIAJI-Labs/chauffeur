@@ -16,10 +16,11 @@ import (
 )
 
 type Server struct {
-	addr       string
-	port       int
-	httpServer *http.Server
-	client     *podman.PodmanClient
+	addr           string
+	port           int
+	httpServer     *http.Server
+	client         *podman.PodmanClient
+	devFrontendURL string
 }
 
 func logErrorValue(err error) string {
@@ -75,6 +76,12 @@ func NewServerWithAddr(addr string) *Server {
 	}
 }
 
+func NewDevServerWithAddr(addr, frontendURL string) *Server {
+	server := NewServerWithAddr(addr)
+	server.devFrontendURL = strings.TrimRight(frontendURL, "/")
+	return server
+}
+
 func (s *Server) Start(ctx context.Context) error {
 	mux := http.NewServeMux()
 
@@ -103,14 +110,22 @@ func (s *Server) Start(ctx context.Context) error {
 
 	log.Printf("Panel server starting on http://%s", s.addr)
 
+	serveErr := make(chan error, 1)
 	go func() {
-		if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Printf("Server error: %v", err)
-		}
+		serveErr <- s.httpServer.ListenAndServe()
 	}()
 
-	<-ctx.Done()
-	return s.httpServer.Shutdown(context.Background())
+	select {
+	case <-ctx.Done():
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		return s.httpServer.Shutdown(shutdownCtx)
+	case err := <-serveErr:
+		if err == http.ErrServerClosed {
+			return nil
+		}
+		return fmt.Errorf("listen on %s: %w", s.addr, err)
+	}
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -443,6 +458,10 @@ func (s *Server) handleRestoreBackup(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
+	if s.devFrontendURL != "" {
+		http.Redirect(w, r, s.devFrontendURL+r.URL.RequestURI(), http.StatusTemporaryRedirect)
+		return
+	}
 	html, err := indexHTML()
 	if err != nil {
 		http.Error(w, "Failed to load index", http.StatusInternalServerError)

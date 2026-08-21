@@ -1,11 +1,17 @@
-.PHONY: build dev install clean test
+.PHONY: build panel-assets dev install clean test
 
 BIN     := chauf
 BUILD   := build
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS := -ldflags "-X main.version=$(VERSION)"
 
-build:
+panel-assets:
+	cd internal/panel-apps && npm run build
+	rm -rf internal/panel/static
+	mkdir -p internal/panel/static
+	cp -R internal/panel-apps/dist/* internal/panel/static/
+
+build: panel-assets
 	go build $(LDFLAGS) -o $(BUILD)/$(BIN) ./cmd/chauf
 
 dev:

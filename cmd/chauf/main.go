@@ -125,10 +125,10 @@ func main() {
 	case "podman":
 		err = commands.RunPodman(args[1:])
 
-	// ── Admin Panel ──────────────────────────────────────────────────────────
+	// ── Web UI ───────────────────────────────────────────────────────────────
 
-	case "serve":
-		err = commands.RunServe(args[1:])
+	case "webui":
+		err = commands.RunWebUI(args[1:])
 
 	default:
 		lib.Error(fmt.Sprintf("unknown command %q", args[0]))
@@ -291,6 +291,14 @@ func printCommands() {
 				{"podman list", "List all managed containers"},
 				{"podman remove", "Remove a container"},
 				{"podman console", "Attach to container for CLI access"},
+			},
+		},
+		{
+			"Web UI",
+			[]entry{
+				{"webui start", "Start the local web UI"},
+				{"webui status", "Show web UI status"},
+				{"webui stop", "Stop the local web UI"},
 			},
 		},
 	}

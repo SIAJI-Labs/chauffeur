@@ -2,9 +2,9 @@
 
 ## Panel process
 
-`chauf serve` starts a local Go HTTP server. By default it runs in the background, records a PID in `panel.pid`, writes output to `panel.log`, prevents duplicate instances, and handles graceful termination with a kill fallback. `-f` keeps it foregrounded; `--dev` supports frontend development behavior.
+`chauf webui start` starts a local Go HTTP server. By default it runs in the background, records a PID in `panel.pid`, writes output to `panel.log`, prevents duplicate instances, and handles graceful termination with a kill fallback. `-f` keeps it foregrounded. `--dev` runs the API and Vite together from a source checkout, enables hot module replacement at `http://localhost:5173`, and skips embedded asset builds. Frontend development does not require `chauf self-update`; use that command only to update or reinstall the Chauffeur binary.
 
-The intended address is commonly described as `http://panel.test:3000`, while the server itself binds to loopback and does not create DNS for `panel.test`. This needs to be made explicit or implemented consistently.
+The default address is `http://panel.test:3083`, while the server itself binds to loopback and does not create DNS for `panel.test`. This needs to be made explicit or implemented consistently.
 
 ## Backend API
 

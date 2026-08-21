@@ -228,7 +228,7 @@ goreleaser build --single-target --snapshot  # Local snapshot
 
 ### Architecture
 
-The admin panel is a React SPA served by the Go binary via `chauf serve`.
+The admin panel is a React SPA served by the Go binary via `chauf webui`.
 
 ```
 chauffeur-v2/
@@ -249,11 +249,13 @@ chauffeur-v2/
 ### Running the Panel
 
 ```bash
-chauf serve              # Start in background (default)
-chauf serve -f          # Run in foreground
-chauf serve --stop      # Stop running server
-chauf serve --port 8080 # Custom port (default: 3000)
-chauf serve --host app.test # Custom hostname (default: panel.test)
+chauf webui start              # Start in background (default)
+chauf webui start -f           # Run in foreground
+chauf webui start --fresh      # Force a fresh frontend rebuild before starting
+chauf webui start --dev        # Run the API + Vite with hot module replacement
+chauf webui stop               # Stop running server
+chauf webui start --port 8080  # Custom port (default: 3083)
+chauf webui start --host app.test # Custom hostname (default: panel.test)
 ```
 
 ### Frontend Tech Stack

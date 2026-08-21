@@ -11,6 +11,12 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as DocsRouteImport } from './routes/docs'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ProjectsRouteImport } from './routes/projects'
+import { Route as ProjectsNameRouteImport } from './routes/projects.$name'
+import { Route as ServicesRouteImport } from './routes/services'
+import { Route as ServicesNameRouteImport } from './routes/services.$name'
+import { Route as SystemRouteImport } from './routes/system'
+import { Route as SystemPhpRouteImport } from './routes/system.php'
 import { Route as ContainersBackupRouteImport } from './routes/containers.backup'
 import { Route as ContainersIndexRouteImport } from './routes/containers._index'
 import { Route as ContainersNameRouteImport } from './routes/containers.$name'
@@ -23,6 +29,36 @@ const DocsRoute = DocsRouteImport.update({
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProjectsRoute = ProjectsRouteImport.update({
+  id: '/projects',
+  path: '/projects',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProjectsNameRoute = ProjectsNameRouteImport.update({
+  id: '/projects/$name',
+  path: '/projects/$name',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ServicesRoute = ServicesRouteImport.update({
+  id: '/services',
+  path: '/services',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ServicesNameRoute = ServicesNameRouteImport.update({
+  id: '/services/$name',
+  path: '/services/$name',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SystemRoute = SystemRouteImport.update({
+  id: '/system',
+  path: '/system',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SystemPhpRoute = SystemPhpRouteImport.update({
+  id: '/system/php',
+  path: '/system/php',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ContainersBackupRoute = ContainersBackupRouteImport.update({
@@ -43,6 +79,12 @@ const ContainersNameRoute = ContainersNameRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/projects': typeof ProjectsRoute
+  '/projects/$name': typeof ProjectsNameRoute
+  '/services': typeof ServicesRoute
+  '/services/$name': typeof ServicesNameRoute
+  '/system': typeof SystemRoute
+  '/system/php': typeof SystemPhpRoute
   '/docs': typeof DocsRoute
   '/containers/$name': typeof ContainersNameRoute
   '/containers': typeof ContainersIndexRoute
@@ -50,6 +92,12 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/projects': typeof ProjectsRoute
+  '/projects/$name': typeof ProjectsNameRoute
+  '/services': typeof ServicesRoute
+  '/services/$name': typeof ServicesNameRoute
+  '/system': typeof SystemRoute
+  '/system/php': typeof SystemPhpRoute
   '/docs': typeof DocsRoute
   '/containers/$name': typeof ContainersNameRoute
   '/containers': typeof ContainersIndexRoute
@@ -58,6 +106,12 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/projects': typeof ProjectsRoute
+  '/projects/$name': typeof ProjectsNameRoute
+  '/services': typeof ServicesRoute
+  '/services/$name': typeof ServicesNameRoute
+  '/system': typeof SystemRoute
+  '/system/php': typeof SystemPhpRoute
   '/docs': typeof DocsRoute
   '/containers/$name': typeof ContainersNameRoute
   '/containers/_index': typeof ContainersIndexRoute
@@ -67,15 +121,27 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/projects'
+    | '/projects/$name'
+    | '/services'
+    | '/services/$name'
+    | '/system'
+    | '/system/php'
     | '/docs'
     | '/containers/$name'
     | '/containers'
     | '/containers/backup'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/docs' | '/containers/$name' | '/containers' | '/containers/backup'
+  to: '/' | '/projects' | '/projects/$name' | '/services' | '/services/$name' | '/system' | '/system/php' | '/docs' | '/containers/$name' | '/containers' | '/containers/backup'
   id:
     | '__root__'
     | '/'
+    | '/projects'
+    | '/projects/$name'
+    | '/services'
+    | '/services/$name'
+    | '/system'
+    | '/system/php'
     | '/docs'
     | '/containers/$name'
     | '/containers/_index'
@@ -84,6 +150,12 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ProjectsRoute: typeof ProjectsRoute
+  ProjectsNameRoute: typeof ProjectsNameRoute
+  ServicesRoute: typeof ServicesRoute
+  ServicesNameRoute: typeof ServicesNameRoute
+  SystemRoute: typeof SystemRoute
+  SystemPhpRoute: typeof SystemPhpRoute
   DocsRoute: typeof DocsRoute
   ContainersNameRoute: typeof ContainersNameRoute
   ContainersIndexRoute: typeof ContainersIndexRoute
@@ -92,6 +164,48 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/system/php': {
+      id: '/system/php'
+      path: '/system/php'
+      fullPath: '/system/php'
+      preLoaderRoute: typeof SystemPhpRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/system': {
+      id: '/system'
+      path: '/system'
+      fullPath: '/system'
+      preLoaderRoute: typeof SystemRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/services/$name': {
+      id: '/services/$name'
+      path: '/services/$name'
+      fullPath: '/services/$name'
+      preLoaderRoute: typeof ServicesNameRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/services': {
+      id: '/services'
+      path: '/services'
+      fullPath: '/services'
+      preLoaderRoute: typeof ServicesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/projects/$name': {
+      id: '/projects/$name'
+      path: '/projects/$name'
+      fullPath: '/projects/$name'
+      preLoaderRoute: typeof ProjectsNameRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/projects': {
+      id: '/projects'
+      path: '/projects'
+      fullPath: '/projects'
+      preLoaderRoute: typeof ProjectsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/docs': {
       id: '/docs'
       path: '/docs'
@@ -132,6 +246,12 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ProjectsRoute: ProjectsRoute,
+  ProjectsNameRoute: ProjectsNameRoute,
+  ServicesRoute: ServicesRoute,
+  ServicesNameRoute: ServicesNameRoute,
+  SystemRoute: SystemRoute,
+  SystemPhpRoute: SystemPhpRoute,
   DocsRoute: DocsRoute,
   ContainersNameRoute: ContainersNameRoute,
   ContainersIndexRoute: ContainersIndexRoute,

@@ -2,9 +2,13 @@ package panel
 
 import (
 	"bytes"
+	"context"
 	"log"
-	"sync"
+	"net"
+	"net/http"
+	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -102,6 +106,35 @@ func TestLogCreateBackupFailureNilErrorDoesNotPanic(t *testing.T) {
 
 	if !strings.Contains(output, `panel: backup failure container="chauf-mysql8" database="analytics" error="<nil>"`) {
 		t.Fatalf("expected nil-error failure log, got %q", output)
+	}
+}
+
+func TestServerStartReportsOccupiedPort(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+
+	server := NewServerWithAddr(listener.Addr().String())
+	err = server.Start(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "address already in use") {
+		t.Fatalf("Start() error = %v, want occupied port error", err)
+	}
+}
+
+func TestDevServerRedirectsPageRequestsToVite(t *testing.T) {
+	server := NewDevServerWithAddr("127.0.0.1:0", "http://localhost:5173/")
+	request := httptest.NewRequest(http.MethodGet, "/containers?status=running", nil)
+	response := httptest.NewRecorder()
+
+	server.handleIndex(response, request)
+
+	if response.Code != http.StatusTemporaryRedirect {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusTemporaryRedirect)
+	}
+	if location := response.Header().Get("Location"); location != "http://localhost:5173/containers?status=running" {
+		t.Fatalf("Location = %q", location)
 	}
 }
 

@@ -14,6 +14,7 @@ This document indexes all feature specifications. Each spec file contains detail
 | [specs/service-orchestration.md](./specs/service-orchestration.md) | Service lifecycle management |
 | [specs/podman.md](./specs/podman.md) | Podman database containers and backup/restore |
 | [specs/admin-panel.md](./specs/admin-panel.md) | Web-based admin panel for container management |
+| [specs/webui-goals.md](./specs/webui-goals.md) | Static-first Web UI expansion checklist inspired by Lerd |
 | [specs/cli-commands.md](./specs/cli-commands.md) | Complete CLI command reference |
 | [specs/future-plans.md](./specs/future-plans.md) | Planned V2 features |
 
@@ -133,7 +134,7 @@ logging:
 | `chauf podman console` | Attach to container's database CLI |
 | `chauf podman backup` | Interactive database backup |
 | `chauf podman restore` | Interactive database restore |
-| `chauf serve` | Start web admin panel |
+| `chauf webui start` | Start web admin panel |
 
 ### PHP Version Support
 
