@@ -14,11 +14,34 @@ import { Route as ServicesRouteImport } from './routes/services'
 import { Route as ProjectsRouteImport } from './routes/projects'
 import { Route as DocsRouteImport } from './routes/docs'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as PreviewSlugRouteImport } from './routes/preview.$slug'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as ActivityRouteImport } from './routes/activity'
+import { Route as ProjectsLinkRouteImport } from './routes/projects.link'
+import { Route as ServicesCatalogRouteImport } from './routes/services.catalog'
+import { Route as SystemRuntimeRouteImport } from './routes/system.runtime'
+import { Route as SystemNetworkRouteImport } from './routes/system.network'
+import { Route as SystemNodeRouteImport } from './routes/system.node'
+import { Route as SystemToolsRouteImport } from './routes/system.tools'
+import { Route as SystemDebugRouteImport } from './routes/system.debug'
+import { Route as ResourcesWorkersRouteImport } from './routes/resources.workers'
+import { Route as ResourcesUsageRouteImport } from './routes/resources.usage'
+import { Route as ResourcesTelemetryRouteImport } from './routes/resources.telemetry'
+import { Route as ResourcesIssuesRouteImport } from './routes/resources.issues'
 import { Route as SystemPhpRouteImport } from './routes/system.php'
 import { Route as ServicesNameRouteImport } from './routes/services.$name'
 import { Route as ProjectsNameRouteImport } from './routes/projects.$name'
+import { Route as ProjectsOverviewRouteImport } from './routes/projects.overview'
+import { Route as ProjectsLogsRouteImport } from './routes/projects.logs'
+import { Route as ProjectsEnvironmentRouteImport } from './routes/projects.environment'
+import { Route as ProjectsDiagnosticsRouteImport } from './routes/projects.diagnostics'
+import { Route as ProjectsWorktreesRouteImport } from './routes/projects.worktrees'
+import { Route as ServicesDetailsRouteImport } from './routes/services.details'
+import { Route as ServicesDatabasesRouteImport } from './routes/services.databases'
+import { Route as ServicesDataLifecycleRouteImport } from './routes/services.data-lifecycle'
+import { Route as ServicesEntitiesRouteImport } from './routes/services.entities'
+import { Route as ServicesLogsRouteImport } from './routes/services.logs'
+import { Route as ServicesConfigurationRouteImport } from './routes/services.configuration'
+import { Route as ServicesDependenciesRouteImport } from './routes/services.dependencies'
 import { Route as ContainersBackupRouteImport } from './routes/containers.backup'
 import { Route as ContainersIndexRouteImport } from './routes/containers._index'
 import { Route as ContainersNameRouteImport } from './routes/containers.$name'
@@ -48,15 +71,130 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const PreviewSlugRoute = PreviewSlugRouteImport.update({
-  id: '/preview/$slug',
-  path: '/preview/$slug',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
   getParentRoute: () => rootRouteImport,
+} as any)
+const ActivityRoute = ActivityRouteImport.update({
+  id: '/activity',
+  path: '/activity',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProjectsLinkRoute = ProjectsLinkRouteImport.update({
+  id: '/link',
+  path: '/link',
+  getParentRoute: () => ProjectsRoute,
+} as any)
+const ServicesCatalogRoute = ServicesCatalogRouteImport.update({
+  id: '/catalog',
+  path: '/catalog',
+  getParentRoute: () => ServicesRoute,
+} as any)
+const SystemRuntimeRoute = SystemRuntimeRouteImport.update({
+  id: '/runtime',
+  path: '/runtime',
+  getParentRoute: () => SystemRoute,
+} as any)
+const SystemNetworkRoute = SystemNetworkRouteImport.update({
+  id: '/network',
+  path: '/network',
+  getParentRoute: () => SystemRoute,
+} as any)
+const SystemNodeRoute = SystemNodeRouteImport.update({
+  id: '/node',
+  path: '/node',
+  getParentRoute: () => SystemRoute,
+} as any)
+const SystemToolsRoute = SystemToolsRouteImport.update({
+  id: '/tools',
+  path: '/tools',
+  getParentRoute: () => SystemRoute,
+} as any)
+const SystemDebugRoute = SystemDebugRouteImport.update({
+  id: '/debug',
+  path: '/debug',
+  getParentRoute: () => SystemRoute,
+} as any)
+const ResourcesWorkersRoute = ResourcesWorkersRouteImport.update({
+  id: '/resources/workers',
+  path: '/resources/workers',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ResourcesUsageRoute = ResourcesUsageRouteImport.update({
+  id: '/resources/usage',
+  path: '/resources/usage',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ResourcesTelemetryRoute = ResourcesTelemetryRouteImport.update({
+  id: '/resources/telemetry',
+  path: '/resources/telemetry',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ResourcesIssuesRoute = ResourcesIssuesRouteImport.update({
+  id: '/resources/issues',
+  path: '/resources/issues',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProjectsOverviewRoute = ProjectsOverviewRouteImport.update({
+  id: '/overview',
+  path: '/overview',
+  getParentRoute: () => ProjectsRoute,
+} as any)
+const ProjectsLogsRoute = ProjectsLogsRouteImport.update({
+  id: '/logs',
+  path: '/logs',
+  getParentRoute: () => ProjectsRoute,
+} as any)
+const ProjectsEnvironmentRoute = ProjectsEnvironmentRouteImport.update({
+  id: '/environment',
+  path: '/environment',
+  getParentRoute: () => ProjectsRoute,
+} as any)
+const ProjectsDiagnosticsRoute = ProjectsDiagnosticsRouteImport.update({
+  id: '/diagnostics',
+  path: '/diagnostics',
+  getParentRoute: () => ProjectsRoute,
+} as any)
+const ProjectsWorktreesRoute = ProjectsWorktreesRouteImport.update({
+  id: '/worktrees',
+  path: '/worktrees',
+  getParentRoute: () => ProjectsRoute,
+} as any)
+const ServicesDetailsRoute = ServicesDetailsRouteImport.update({
+  id: '/details',
+  path: '/details',
+  getParentRoute: () => ServicesRoute,
+} as any)
+const ServicesDatabasesRoute = ServicesDatabasesRouteImport.update({
+  id: '/databases',
+  path: '/databases',
+  getParentRoute: () => ServicesRoute,
+} as any)
+const ServicesDataLifecycleRoute = ServicesDataLifecycleRouteImport.update({
+  id: '/data-lifecycle',
+  path: '/data-lifecycle',
+  getParentRoute: () => ServicesRoute,
+} as any)
+const ServicesEntitiesRoute = ServicesEntitiesRouteImport.update({
+  id: '/entities',
+  path: '/entities',
+  getParentRoute: () => ServicesRoute,
+} as any)
+const ServicesLogsRoute = ServicesLogsRouteImport.update({
+  id: '/logs',
+  path: '/logs',
+  getParentRoute: () => ServicesRoute,
+} as any)
+const ServicesConfigurationRoute = ServicesConfigurationRouteImport.update({
+  id: '/configuration',
+  path: '/configuration',
+  getParentRoute: () => ServicesRoute,
+} as any)
+const ServicesDependenciesRoute = ServicesDependenciesRouteImport.update({
+  id: '/dependencies',
+  path: '/dependencies',
+  getParentRoute: () => ServicesRoute,
 } as any)
 const SystemPhpRoute = SystemPhpRouteImport.update({
   id: '/php',
@@ -91,8 +229,31 @@ const ContainersNameRoute = ContainersNameRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/preview/$slug': typeof PreviewSlugRoute
   '/settings': typeof SettingsRoute
+  '/activity': typeof ActivityRoute
+  '/projects/link': typeof ProjectsLinkRoute
+  '/projects/overview': typeof ProjectsOverviewRoute
+  '/projects/logs': typeof ProjectsLogsRoute
+  '/projects/environment': typeof ProjectsEnvironmentRoute
+  '/projects/diagnostics': typeof ProjectsDiagnosticsRoute
+  '/projects/worktrees': typeof ProjectsWorktreesRoute
+  '/services/catalog': typeof ServicesCatalogRoute
+  '/services/details': typeof ServicesDetailsRoute
+  '/services/databases': typeof ServicesDatabasesRoute
+  '/services/data-lifecycle': typeof ServicesDataLifecycleRoute
+  '/services/entities': typeof ServicesEntitiesRoute
+  '/services/logs': typeof ServicesLogsRoute
+  '/services/configuration': typeof ServicesConfigurationRoute
+  '/services/dependencies': typeof ServicesDependenciesRoute
+  '/system/runtime': typeof SystemRuntimeRoute
+  '/system/network': typeof SystemNetworkRoute
+  '/system/node': typeof SystemNodeRoute
+  '/system/tools': typeof SystemToolsRoute
+  '/system/debug': typeof SystemDebugRoute
+  '/resources/workers': typeof ResourcesWorkersRoute
+  '/resources/usage': typeof ResourcesUsageRoute
+  '/resources/telemetry': typeof ResourcesTelemetryRoute
+  '/resources/issues': typeof ResourcesIssuesRoute
   '/docs': typeof DocsRoute
   '/projects': typeof ProjectsRouteWithChildren
   '/services': typeof ServicesRouteWithChildren
@@ -106,8 +267,31 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/preview/$slug': typeof PreviewSlugRoute
   '/settings': typeof SettingsRoute
+  '/activity': typeof ActivityRoute
+  '/projects/link': typeof ProjectsLinkRoute
+  '/projects/overview': typeof ProjectsOverviewRoute
+  '/projects/logs': typeof ProjectsLogsRoute
+  '/projects/environment': typeof ProjectsEnvironmentRoute
+  '/projects/diagnostics': typeof ProjectsDiagnosticsRoute
+  '/projects/worktrees': typeof ProjectsWorktreesRoute
+  '/services/catalog': typeof ServicesCatalogRoute
+  '/services/details': typeof ServicesDetailsRoute
+  '/services/databases': typeof ServicesDatabasesRoute
+  '/services/data-lifecycle': typeof ServicesDataLifecycleRoute
+  '/services/entities': typeof ServicesEntitiesRoute
+  '/services/logs': typeof ServicesLogsRoute
+  '/services/configuration': typeof ServicesConfigurationRoute
+  '/services/dependencies': typeof ServicesDependenciesRoute
+  '/system/runtime': typeof SystemRuntimeRoute
+  '/system/network': typeof SystemNetworkRoute
+  '/system/node': typeof SystemNodeRoute
+  '/system/tools': typeof SystemToolsRoute
+  '/system/debug': typeof SystemDebugRoute
+  '/resources/workers': typeof ResourcesWorkersRoute
+  '/resources/usage': typeof ResourcesUsageRoute
+  '/resources/telemetry': typeof ResourcesTelemetryRoute
+  '/resources/issues': typeof ResourcesIssuesRoute
   '/docs': typeof DocsRoute
   '/projects': typeof ProjectsRouteWithChildren
   '/services': typeof ServicesRouteWithChildren
@@ -122,8 +306,31 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/preview/$slug': typeof PreviewSlugRoute
   '/settings': typeof SettingsRoute
+  '/activity': typeof ActivityRoute
+  '/projects/link': typeof ProjectsLinkRoute
+  '/projects/overview': typeof ProjectsOverviewRoute
+  '/projects/logs': typeof ProjectsLogsRoute
+  '/projects/environment': typeof ProjectsEnvironmentRoute
+  '/projects/diagnostics': typeof ProjectsDiagnosticsRoute
+  '/projects/worktrees': typeof ProjectsWorktreesRoute
+  '/services/catalog': typeof ServicesCatalogRoute
+  '/services/details': typeof ServicesDetailsRoute
+  '/services/databases': typeof ServicesDatabasesRoute
+  '/services/data-lifecycle': typeof ServicesDataLifecycleRoute
+  '/services/entities': typeof ServicesEntitiesRoute
+  '/services/logs': typeof ServicesLogsRoute
+  '/services/configuration': typeof ServicesConfigurationRoute
+  '/services/dependencies': typeof ServicesDependenciesRoute
+  '/system/runtime': typeof SystemRuntimeRoute
+  '/system/network': typeof SystemNetworkRoute
+  '/system/node': typeof SystemNodeRoute
+  '/system/tools': typeof SystemToolsRoute
+  '/system/debug': typeof SystemDebugRoute
+  '/resources/workers': typeof ResourcesWorkersRoute
+  '/resources/usage': typeof ResourcesUsageRoute
+  '/resources/telemetry': typeof ResourcesTelemetryRoute
+  '/resources/issues': typeof ResourcesIssuesRoute
   '/docs': typeof DocsRoute
   '/projects': typeof ProjectsRouteWithChildren
   '/services': typeof ServicesRouteWithChildren
@@ -149,8 +356,31 @@ export interface FileRouteTypes {
     | '/projects/$name'
     | '/services/$name'
     | '/system/php'
-    | '/preview/$slug'
     | '/settings'
+    | '/activity'
+    | '/projects/link'
+    | '/projects/overview'
+    | '/projects/logs'
+    | '/projects/environment'
+    | '/projects/diagnostics'
+    | '/projects/worktrees'
+    | '/services/catalog'
+    | '/services/details'
+    | '/services/databases'
+    | '/services/data-lifecycle'
+    | '/services/entities'
+    | '/services/logs'
+    | '/services/configuration'
+    | '/services/dependencies'
+    | '/system/runtime'
+    | '/system/network'
+    | '/system/node'
+    | '/system/tools'
+    | '/system/debug'
+    | '/resources/workers'
+    | '/resources/usage'
+    | '/resources/telemetry'
+    | '/resources/issues'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -164,8 +394,31 @@ export interface FileRouteTypes {
     | '/projects/$name'
     | '/services/$name'
     | '/system/php'
-    | '/preview/$slug'
     | '/settings'
+    | '/activity'
+    | '/projects/link'
+    | '/projects/overview'
+    | '/projects/logs'
+    | '/projects/environment'
+    | '/projects/diagnostics'
+    | '/projects/worktrees'
+    | '/services/catalog'
+    | '/services/details'
+    | '/services/databases'
+    | '/services/data-lifecycle'
+    | '/services/entities'
+    | '/services/logs'
+    | '/services/configuration'
+    | '/services/dependencies'
+    | '/system/runtime'
+    | '/system/network'
+    | '/system/node'
+    | '/system/tools'
+    | '/system/debug'
+    | '/resources/workers'
+    | '/resources/usage'
+    | '/resources/telemetry'
+    | '/resources/issues'
   id:
     | '__root__'
     | '/'
@@ -179,14 +432,41 @@ export interface FileRouteTypes {
     | '/projects/$name'
     | '/services/$name'
     | '/system/php'
-    | '/preview/$slug'
     | '/settings'
+    | '/activity'
+    | '/projects/link'
+    | '/projects/overview'
+    | '/projects/logs'
+    | '/projects/environment'
+    | '/projects/diagnostics'
+    | '/projects/worktrees'
+    | '/services/catalog'
+    | '/services/details'
+    | '/services/databases'
+    | '/services/data-lifecycle'
+    | '/services/entities'
+    | '/services/logs'
+    | '/services/configuration'
+    | '/services/dependencies'
+    | '/system/runtime'
+    | '/system/network'
+    | '/system/node'
+    | '/system/tools'
+    | '/system/debug'
+    | '/resources/workers'
+    | '/resources/usage'
+    | '/resources/telemetry'
+    | '/resources/issues'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  PreviewSlugRoute: typeof PreviewSlugRoute
   SettingsRoute: typeof SettingsRoute
+  ActivityRoute: typeof ActivityRoute
+  ResourcesWorkersRoute: typeof ResourcesWorkersRoute
+  ResourcesUsageRoute: typeof ResourcesUsageRoute
+  ResourcesTelemetryRoute: typeof ResourcesTelemetryRoute
+  ResourcesIssuesRoute: typeof ResourcesIssuesRoute
   DocsRoute: typeof DocsRoute
   ProjectsRoute: typeof ProjectsRouteWithChildren
   ServicesRoute: typeof ServicesRouteWithChildren
@@ -233,18 +513,179 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/preview/$slug': {
-      id: '/preview/$slug'
-      path: '/preview/$slug'
-      fullPath: '/preview/$slug'
-      preLoaderRoute: typeof PreviewSlugRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/settings': {
       id: '/settings'
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/activity': {
+      id: '/activity'
+      path: '/activity'
+      fullPath: '/activity'
+      preLoaderRoute: typeof ActivityRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/projects/link': {
+      id: '/projects/link'
+      path: '/link'
+      fullPath: '/projects/link'
+      preLoaderRoute: typeof ProjectsLinkRouteImport
+      parentRoute: typeof ProjectsRoute
+    }
+    '/projects/overview': {
+      id: '/projects/overview'
+      path: '/overview'
+      fullPath: '/projects/overview'
+      preLoaderRoute: typeof ProjectsOverviewRouteImport
+      parentRoute: typeof ProjectsRoute
+    }
+    '/projects/logs': {
+      id: '/projects/logs'
+      path: '/logs'
+      fullPath: '/projects/logs'
+      preLoaderRoute: typeof ProjectsLogsRouteImport
+      parentRoute: typeof ProjectsRoute
+    }
+    '/projects/environment': {
+      id: '/projects/environment'
+      path: '/environment'
+      fullPath: '/projects/environment'
+      preLoaderRoute: typeof ProjectsEnvironmentRouteImport
+      parentRoute: typeof ProjectsRoute
+    }
+    '/projects/diagnostics': {
+      id: '/projects/diagnostics'
+      path: '/diagnostics'
+      fullPath: '/projects/diagnostics'
+      preLoaderRoute: typeof ProjectsDiagnosticsRouteImport
+      parentRoute: typeof ProjectsRoute
+    }
+    '/projects/worktrees': {
+      id: '/projects/worktrees'
+      path: '/worktrees'
+      fullPath: '/projects/worktrees'
+      preLoaderRoute: typeof ProjectsWorktreesRouteImport
+      parentRoute: typeof ProjectsRoute
+    }
+    '/services/catalog': {
+      id: '/services/catalog'
+      path: '/catalog'
+      fullPath: '/services/catalog'
+      preLoaderRoute: typeof ServicesCatalogRouteImport
+      parentRoute: typeof ServicesRoute
+    }
+    '/services/details': {
+      id: '/services/details'
+      path: '/details'
+      fullPath: '/services/details'
+      preLoaderRoute: typeof ServicesDetailsRouteImport
+      parentRoute: typeof ServicesRoute
+    }
+    '/services/databases': {
+      id: '/services/databases'
+      path: '/databases'
+      fullPath: '/services/databases'
+      preLoaderRoute: typeof ServicesDatabasesRouteImport
+      parentRoute: typeof ServicesRoute
+    }
+    '/services/data-lifecycle': {
+      id: '/services/data-lifecycle'
+      path: '/data-lifecycle'
+      fullPath: '/services/data-lifecycle'
+      preLoaderRoute: typeof ServicesDataLifecycleRouteImport
+      parentRoute: typeof ServicesRoute
+    }
+    '/services/entities': {
+      id: '/services/entities'
+      path: '/entities'
+      fullPath: '/services/entities'
+      preLoaderRoute: typeof ServicesEntitiesRouteImport
+      parentRoute: typeof ServicesRoute
+    }
+    '/services/logs': {
+      id: '/services/logs'
+      path: '/logs'
+      fullPath: '/services/logs'
+      preLoaderRoute: typeof ServicesLogsRouteImport
+      parentRoute: typeof ServicesRoute
+    }
+    '/services/configuration': {
+      id: '/services/configuration'
+      path: '/configuration'
+      fullPath: '/services/configuration'
+      preLoaderRoute: typeof ServicesConfigurationRouteImport
+      parentRoute: typeof ServicesRoute
+    }
+    '/services/dependencies': {
+      id: '/services/dependencies'
+      path: '/dependencies'
+      fullPath: '/services/dependencies'
+      preLoaderRoute: typeof ServicesDependenciesRouteImport
+      parentRoute: typeof ServicesRoute
+    }
+    '/system/runtime': {
+      id: '/system/runtime'
+      path: '/runtime'
+      fullPath: '/system/runtime'
+      preLoaderRoute: typeof SystemRuntimeRouteImport
+      parentRoute: typeof SystemRoute
+    }
+    '/system/network': {
+      id: '/system/network'
+      path: '/network'
+      fullPath: '/system/network'
+      preLoaderRoute: typeof SystemNetworkRouteImport
+      parentRoute: typeof SystemRoute
+    }
+    '/system/node': {
+      id: '/system/node'
+      path: '/node'
+      fullPath: '/system/node'
+      preLoaderRoute: typeof SystemNodeRouteImport
+      parentRoute: typeof SystemRoute
+    }
+    '/system/tools': {
+      id: '/system/tools'
+      path: '/tools'
+      fullPath: '/system/tools'
+      preLoaderRoute: typeof SystemToolsRouteImport
+      parentRoute: typeof SystemRoute
+    }
+    '/system/debug': {
+      id: '/system/debug'
+      path: '/debug'
+      fullPath: '/system/debug'
+      preLoaderRoute: typeof SystemDebugRouteImport
+      parentRoute: typeof SystemRoute
+    }
+    '/resources/workers': {
+      id: '/resources/workers'
+      path: '/resources/workers'
+      fullPath: '/resources/workers'
+      preLoaderRoute: typeof ResourcesWorkersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/resources/usage': {
+      id: '/resources/usage'
+      path: '/resources/usage'
+      fullPath: '/resources/usage'
+      preLoaderRoute: typeof ResourcesUsageRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/resources/telemetry': {
+      id: '/resources/telemetry'
+      path: '/resources/telemetry'
+      fullPath: '/resources/telemetry'
+      preLoaderRoute: typeof ResourcesTelemetryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/resources/issues': {
+      id: '/resources/issues'
+      path: '/resources/issues'
+      fullPath: '/resources/issues'
+      preLoaderRoute: typeof ResourcesIssuesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/system/php': {
@@ -294,10 +735,22 @@ declare module '@tanstack/react-router' {
 
 interface ProjectsRouteChildren {
   ProjectsNameRoute: typeof ProjectsNameRoute
+  ProjectsLinkRoute: typeof ProjectsLinkRoute
+  ProjectsOverviewRoute: typeof ProjectsOverviewRoute
+  ProjectsLogsRoute: typeof ProjectsLogsRoute
+  ProjectsEnvironmentRoute: typeof ProjectsEnvironmentRoute
+  ProjectsDiagnosticsRoute: typeof ProjectsDiagnosticsRoute
+  ProjectsWorktreesRoute: typeof ProjectsWorktreesRoute
 }
 
 const ProjectsRouteChildren: ProjectsRouteChildren = {
   ProjectsNameRoute: ProjectsNameRoute,
+  ProjectsLinkRoute: ProjectsLinkRoute,
+  ProjectsOverviewRoute: ProjectsOverviewRoute,
+  ProjectsLogsRoute: ProjectsLogsRoute,
+  ProjectsEnvironmentRoute: ProjectsEnvironmentRoute,
+  ProjectsDiagnosticsRoute: ProjectsDiagnosticsRoute,
+  ProjectsWorktreesRoute: ProjectsWorktreesRoute,
 }
 
 const ProjectsRouteWithChildren = ProjectsRoute._addFileChildren(
@@ -306,10 +759,26 @@ const ProjectsRouteWithChildren = ProjectsRoute._addFileChildren(
 
 interface ServicesRouteChildren {
   ServicesNameRoute: typeof ServicesNameRoute
+  ServicesCatalogRoute: typeof ServicesCatalogRoute
+  ServicesDetailsRoute: typeof ServicesDetailsRoute
+  ServicesDatabasesRoute: typeof ServicesDatabasesRoute
+  ServicesDataLifecycleRoute: typeof ServicesDataLifecycleRoute
+  ServicesEntitiesRoute: typeof ServicesEntitiesRoute
+  ServicesLogsRoute: typeof ServicesLogsRoute
+  ServicesConfigurationRoute: typeof ServicesConfigurationRoute
+  ServicesDependenciesRoute: typeof ServicesDependenciesRoute
 }
 
 const ServicesRouteChildren: ServicesRouteChildren = {
   ServicesNameRoute: ServicesNameRoute,
+  ServicesCatalogRoute: ServicesCatalogRoute,
+  ServicesDetailsRoute: ServicesDetailsRoute,
+  ServicesDatabasesRoute: ServicesDatabasesRoute,
+  ServicesDataLifecycleRoute: ServicesDataLifecycleRoute,
+  ServicesEntitiesRoute: ServicesEntitiesRoute,
+  ServicesLogsRoute: ServicesLogsRoute,
+  ServicesConfigurationRoute: ServicesConfigurationRoute,
+  ServicesDependenciesRoute: ServicesDependenciesRoute,
 }
 
 const ServicesRouteWithChildren = ServicesRoute._addFileChildren(
@@ -318,10 +787,20 @@ const ServicesRouteWithChildren = ServicesRoute._addFileChildren(
 
 interface SystemRouteChildren {
   SystemPhpRoute: typeof SystemPhpRoute
+  SystemRuntimeRoute: typeof SystemRuntimeRoute
+  SystemNetworkRoute: typeof SystemNetworkRoute
+  SystemNodeRoute: typeof SystemNodeRoute
+  SystemToolsRoute: typeof SystemToolsRoute
+  SystemDebugRoute: typeof SystemDebugRoute
 }
 
 const SystemRouteChildren: SystemRouteChildren = {
   SystemPhpRoute: SystemPhpRoute,
+  SystemRuntimeRoute: SystemRuntimeRoute,
+  SystemNetworkRoute: SystemNetworkRoute,
+  SystemNodeRoute: SystemNodeRoute,
+  SystemToolsRoute: SystemToolsRoute,
+  SystemDebugRoute: SystemDebugRoute,
 }
 
 const SystemRouteWithChildren =
@@ -329,8 +808,12 @@ const SystemRouteWithChildren =
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  PreviewSlugRoute: PreviewSlugRoute,
   SettingsRoute: SettingsRoute,
+  ActivityRoute: ActivityRoute,
+  ResourcesWorkersRoute: ResourcesWorkersRoute,
+  ResourcesUsageRoute: ResourcesUsageRoute,
+  ResourcesTelemetryRoute: ResourcesTelemetryRoute,
+  ResourcesIssuesRoute: ResourcesIssuesRoute,
   DocsRoute: DocsRoute,
   ProjectsRoute: ProjectsRouteWithChildren,
   ServicesRoute: ServicesRouteWithChildren,

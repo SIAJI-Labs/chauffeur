@@ -28,13 +28,14 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 
-export type DestinationStatus = "Available" | "Preview" | "Next" | "Planned";
+export type DestinationStatus = "Available" | "Next" | "Planned";
 
 export type SidebarDestination = {
   title: string;
   url: string;
   icon: ReactNode;
   status?: DestinationStatus;
+  action?: "command-palette";
 };
 
 export type SidebarGroup = SidebarDestination & {
@@ -60,18 +61,11 @@ export const sidebarNavigation: {
       icon: <LayoutDashboard />,
       items: [
         destination("Overview", "/", <LayoutDashboard />, "Available"),
-        destination(
-          "Recent activity",
-          "/preview/recent-activity",
-          <Activity />,
-          "Preview",
-        ),
-        destination(
-          "Command palette",
-          "/preview/command-palette",
-          <Search />,
-          "Preview",
-        ),
+        destination("Recent activity", "/activity", <Activity />, "Available"),
+        {
+          ...destination("Command palette", "/", <Search />, "Available"),
+          action: "command-palette" as const,
+        },
       ],
     },
     {
@@ -80,36 +74,31 @@ export const sidebarNavigation: {
       icon: <FolderGit2 />,
       items: [
         destination("Project list", "/projects", <FolderGit2 />, "Available"),
-        destination(
-          "Link a project",
-          "/preview/project-linking",
-          <GitBranch />,
-          "Next",
-        ),
+        destination("Link a project", "/projects/link", <GitBranch />, "Next"),
         destination(
           "Project overview",
-          "/projects/commerce-api#overview",
+          "/projects/overview",
           <FileCode2 />,
-          "Available",
+          "Planned",
         ),
-        destination("Logs", "/projects/commerce-api#logs", <FileText />, "Available"),
+        destination("Logs", "/projects/logs", <FileText />, "Planned"),
         destination(
           "Environment",
-          "/projects/commerce-api#environment",
+          "/projects/environment",
           <Braces />,
-          "Available",
+          "Planned",
         ),
         destination(
           "Diagnostics",
-          "/projects/commerce-api#diagnostics",
+          "/projects/diagnostics",
           <Wrench />,
-          "Available",
+          "Planned",
         ),
         destination(
           "Worktrees",
-          "/projects/commerce-api#worktrees",
+          "/projects/worktrees",
           <GitBranch />,
-          "Available",
+          "Planned",
         ),
       ],
     },
@@ -121,51 +110,46 @@ export const sidebarNavigation: {
         destination("Installed services", "/services", <Server />, "Available"),
         destination(
           "Service details",
-          "/services/PostgreSQL#admin",
+          "/services/details",
           <FileCode2 />,
-          "Available",
+          "Planned",
         ),
         destination(
           "Service catalog",
-          "/preview/service-catalog",
+          "/services/catalog",
           <Boxes />,
-          "Preview",
+          "Available",
         ),
         destination(
           "Databases and entities",
-          "/services/PostgreSQL#databases",
+          "/services/databases",
           <Database />,
-          "Available",
+          "Planned",
         ),
         destination(
           "Import, export, snapshots",
-          "/services/PostgreSQL#databases",
+          "/services/data-lifecycle",
           <DatabaseBackup />,
-          "Preview",
+          "Planned",
         ),
         destination(
           "Entity actions",
-          "/services/PostgreSQL#entities",
+          "/services/entities",
           <FileCode2 />,
-          "Preview",
+          "Planned",
         ),
-        destination(
-          "Service logs",
-          "/services/PostgreSQL#logs",
-          <FileText />,
-          "Available",
-        ),
+        destination("Service logs", "/services/logs", <FileText />, "Planned"),
         destination(
           "Configuration",
-          "/services/PostgreSQL#configuration",
+          "/services/configuration",
           <Settings2 />,
-          "Preview",
+          "Planned",
         ),
         destination(
           "Ports and dependencies",
-          "/services/PostgreSQL#ports",
+          "/services/dependencies",
           <Network />,
-          "Preview",
+          "Planned",
         ),
       ],
     },
@@ -177,26 +161,36 @@ export const sidebarNavigation: {
         destination("System health", "/system", <ShieldCheck />, "Available"),
         destination(
           "Chauffeur runtime",
-          "/preview/chauffeur-runtime",
+          "/system/runtime",
           <Activity />,
-          "Preview",
+          "Available",
         ),
-        destination("DNS and Nginx", "/preview/dns-nginx", <Globe2 />, "Preview"),
+        destination(
+          "DNS and Nginx",
+          "/system/network",
+          <Globe2 />,
+          "Available",
+        ),
         destination("PHP runtimes", "/system/php", <Server />, "Available"),
         destination(
           "Node.js and Bun",
-          "/preview/node-runtimes",
+          "/system/node",
           <TerminalSquare />,
-          "Preview",
+          "Available",
         ),
         destination(
           "Tools and watchers",
-          "/preview/system-tools",
+          "/system/tools",
           <Wrench />,
-          "Preview",
+          "Available",
         ),
-        destination("Debug bridge", "/preview/debug-bridge", <Bug />, "Preview"),
-        destination("Settings and updates", "/settings", <Settings2 />, "Available"),
+        destination("Debug bridge", "/system/debug", <Bug />, "Available"),
+        destination(
+          "Settings and updates",
+          "/settings",
+          <Settings2 />,
+          "Available",
+        ),
       ],
     },
     {
@@ -204,24 +198,46 @@ export const sidebarNavigation: {
       url: "/containers",
       icon: <HardDrive />,
       items: [
-        destination("Database containers", "/containers", <Container />, "Available"),
-        destination("Backups", "/containers/backup", <DatabaseBackup />, "Available"),
-        destination("Workers", "/preview/workers", <ListChecks />, "Preview"),
-        destination("Resource usage", "/preview/resources", <Gauge />, "Preview"),
+        destination(
+          "Database containers",
+          "/containers",
+          <Container />,
+          "Available",
+        ),
+        destination(
+          "Backups",
+          "/containers/backup",
+          <DatabaseBackup />,
+          "Available",
+        ),
+        destination(
+          "Workers",
+          "/resources/workers",
+          <ListChecks />,
+          "Available",
+        ),
+        destination(
+          "Resource usage",
+          "/resources/usage",
+          <Gauge />,
+          "Available",
+        ),
         destination(
           "CPU and memory",
-          "/preview/resource-telemetry",
+          "/resources/telemetry",
           <Cpu />,
-          "Preview",
+          "Available",
         ),
         destination(
           "Issues and diagnostics",
-          "/preview/issues",
+          "/resources/issues",
           <CircleAlert />,
-          "Preview",
+          "Available",
         ),
       ],
     },
   ],
-  navSecondary: [destination("Documentation", "/docs", <BookOpen />, "Available")],
+  navSecondary: [
+    destination("Documentation", "/docs", <BookOpen />, "Available"),
+  ],
 };

@@ -1,5 +1,10 @@
 import * as React from "react";
-import { Link, createFileRoute } from "@tanstack/react-router";
+import {
+  Link,
+  Outlet,
+  createFileRoute,
+  useRouterState,
+} from "@tanstack/react-router";
 import {
   ArrowUpRight,
   ChevronRight,
@@ -50,6 +55,11 @@ type ProjectGroup = "workspace" | "framework";
 type ProjectSort = "name" | "status" | "recent";
 
 function ProjectsPage() {
+  const pathname = useRouterState({
+    select: (state) => state.location.pathname,
+  });
+  if (pathname !== "/projects") return <Outlet />;
+
   const [search, setSearch] = React.useState("");
   const [groupBy, setGroupBy] = React.useState<ProjectGroup>("workspace");
   const [sortBy, setSortBy] = React.useState<ProjectSort>("name");

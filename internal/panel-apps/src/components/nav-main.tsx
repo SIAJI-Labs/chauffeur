@@ -5,15 +5,10 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import { ChevronRight } from "lucide-react";
 import type { SidebarGroup as SidebarNavigationGroup } from "@/data/sidebar-destinations";
 
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
+import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import {
   SidebarGroup as SidebarGroupPrimitive,
   SidebarMenu,
-  SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarMenuSub,
@@ -21,11 +16,7 @@ import {
   SidebarMenuSubItem,
 } from "@/components/ui/sidebar";
 
-export function NavMain({
-  items,
-}: {
-  items: Array<SidebarNavigationGroup>;
-}) {
+export function NavMain({ items }: { items: Array<SidebarNavigationGroup> }) {
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   });
@@ -36,14 +27,21 @@ export function NavMain({
     const destinationPath = url.split(/[?#]/, 1)[0] || "/";
     return destinationPath === "/"
       ? pathname === "/"
-      : pathname === destinationPath || pathname.startsWith(`${destinationPath}/`);
+      : pathname === destinationPath ||
+          pathname.startsWith(`${destinationPath}/`);
   };
+  const isSubitemActive = (
+    subItem: NonNullable<SidebarNavigationGroup["items"]>[number],
+  ) => subItem.action !== "command-palette" && isPathActive(subItem.url);
+  const isGroupActive = (item: SidebarNavigationGroup) =>
+    isPathActive(item.url) ||
+    item.items?.some((subItem) => isSubitemActive(subItem)) === true;
 
   React.useEffect(() => {
     setOpenGroups((current) => {
       const next = { ...current };
       for (const item of items) {
-        if (item.isActive || isPathActive(item.url)) next[item.title] = true;
+        if (item.isActive || isGroupActive(item)) next[item.title] = true;
       }
       return next;
     });
@@ -53,14 +51,17 @@ export function NavMain({
     <SidebarGroupPrimitive>
       <SidebarMenu>
         {items.map((item) => {
-          const groupActive = isPathActive(item.url);
+          const hasSubitems = Boolean(item.items?.length);
+          const groupActive = isGroupActive(item);
+          const groupOpen =
+            openGroups[item.title] ?? (item.isActive === true || groupActive);
+          const groupContentId = `sidebar-group-${item.title
+            .toLowerCase()
+            .replaceAll(/[^a-z0-9]+/g, "-")}`;
           return (
             <Collapsible
               key={item.title}
-              open={
-                openGroups[item.title] ??
-                (item.isActive === true || groupActive)
-              }
+              open={groupOpen}
               onOpenChange={(open) =>
                 setOpenGroups((current) => ({
                   ...current,
@@ -71,57 +72,67 @@ export function NavMain({
             >
               <SidebarMenuButton
                 tooltip={item.title}
-                isActive={groupActive && !item.items?.length}
-                aria-current={
-                  groupActive && !item.items?.length ? "page" : undefined
+                isActive={groupActive}
+                aria-current={groupActive && !hasSubitems ? "page" : undefined}
+                aria-expanded={hasSubitems ? groupOpen : undefined}
+                aria-controls={hasSubitems ? groupContentId : undefined}
+                render={hasSubitems ? undefined : <Link to={item.url} />}
+                onClick={
+                  hasSubitems
+                    ? () =>
+                        setOpenGroups((current) => ({
+                          ...current,
+                          [item.title]: !groupOpen,
+                        }))
+                    : undefined
                 }
-                render={<Link to={item.url} />}
               >
                 {item.icon}
                 <span>{item.title}</span>
+                {hasSubitems ? (
+                  <ChevronRight
+                    aria-hidden="true"
+                    className={`ms-auto size-4 transition-transform ${
+                      groupOpen ? "rotate-90" : ""
+                    }`}
+                  />
+                ) : null}
               </SidebarMenuButton>
               {item.items?.length ? (
-                <>
-                  <CollapsibleTrigger
-                    render={
-                      <SidebarMenuAction className="aria-expanded:rotate-90" />
-                    }
-                  >
-                    <ChevronRight className="size-4" />
-                    <span className="sr-only">Toggle</span>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent>
-                    <SidebarMenuSub>
-                      {item.items.map((subItem) => (
-                        <SidebarMenuSubItem key={subItem.title}>
-                          <SidebarMenuSubButton
-                            isActive={
-                              isPathActive(subItem.url)
-                            }
-                            aria-current={
-                              isPathActive(subItem.url)
-                                ? "page"
-                                : undefined
-                            }
-                            render={<Link to={subItem.url} />}
-                          >
-                            {subItem.icon}
-                            <span className="nav-subitem-title">
-                              {subItem.title}
+                <CollapsibleContent id={groupContentId}>
+                  <SidebarMenuSub>
+                    {item.items.map((subItem) => (
+                      <SidebarMenuSubItem key={subItem.title}>
+                        <SidebarMenuSubButton
+                          isActive={isSubitemActive(subItem)}
+                          aria-current={
+                            isSubitemActive(subItem) ? "page" : undefined
+                          }
+                          render={<Link to={subItem.url} />}
+                          onClick={(event) => {
+                            if (subItem.action !== "command-palette") return;
+                            event.preventDefault();
+                            window.dispatchEvent(
+                              new Event("chauffeur:open-command-palette"),
+                            );
+                          }}
+                        >
+                          {subItem.icon}
+                          <span className="nav-subitem-title">
+                            {subItem.title}
+                          </span>
+                          {subItem.status ? (
+                            <span
+                              className={`sidebar-status-badge ${subItem.status.toLowerCase().replaceAll(" ", "-")}`}
+                            >
+                              {subItem.status}
                             </span>
-                            {subItem.status ? (
-                              <span
-                                className={`sidebar-status-badge ${subItem.status.toLowerCase().replaceAll(" ", "-")}`}
-                              >
-                                {subItem.status}
-                              </span>
-                            ) : null}
-                          </SidebarMenuSubButton>
-                        </SidebarMenuSubItem>
-                      ))}
-                    </SidebarMenuSub>
-                  </CollapsibleContent>
-                </>
+                          ) : null}
+                        </SidebarMenuSubButton>
+                      </SidebarMenuSubItem>
+                    ))}
+                  </SidebarMenuSub>
+                </CollapsibleContent>
               ) : null}
             </Collapsible>
           );
