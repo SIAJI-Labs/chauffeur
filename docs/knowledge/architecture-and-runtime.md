@@ -84,7 +84,7 @@ Shutdown reverses the dependency direction: nginx stops before FPM. Restart uses
 
 ## Project linking flow
 
-`chauf link` resolves the path, detects Laravel/WordPress/generic project type, selects a PHP version, generates a slug and `.test` domain, checks domain conflicts, renders nginx configuration, enables the site, optionally generates mkcert certificates, optionally writes dedicated FPM state, persists project config, and reloads nginx when active.
+`chauf link` resolves the path, detects Laravel/WordPress/PHP/JavaScript project type, asks for an explicit type when no supported marker is found, selects a PHP version for PHP-backed projects or a local proxy port for JavaScript projects, generates a slug and `.test` domain, checks domain conflicts, renders either PHP-FPM or reverse-proxy nginx configuration, enables the site, optionally generates mkcert certificates, optionally writes dedicated FPM state, persists project config, and reloads nginx when active.
 
 ## PHP and Composer resolution
 
