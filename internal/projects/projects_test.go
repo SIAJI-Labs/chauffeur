@@ -56,13 +56,13 @@ func TestIsValidDomain(t *testing.T) {
 	}
 
 	invalid := []string{
-		"my-project.local",   // wrong TLD
+		"my-project.local", // wrong TLD
 		"my-project.com",
-		"-bad.test",          // leading hyphen
-		"bad-.test",          // trailing hyphen
-		"My-Project.test",    // uppercase
-		".test",              // no label before tld
-		"my project.test",    // space
+		"-bad.test",       // leading hyphen
+		"bad-.test",       // trailing hyphen
+		"My-Project.test", // uppercase
+		".test",           // no label before tld
+		"my project.test", // space
 		"",
 	}
 	for _, d := range invalid {
@@ -98,10 +98,55 @@ func TestDetect_WordPress(t *testing.T) {
 	}
 }
 
-func TestDetect_Generic(t *testing.T) {
+func TestDetect_Unknown(t *testing.T) {
 	dir := t.TempDir()
-	if got := projects.Detect(dir); got != projects.TypeGeneric {
-		t.Errorf("Detect = %q, want %q", got, projects.TypeGeneric)
+	if got := projects.Detect(dir); got != projects.TypeUnknown {
+		t.Errorf("Detect = %q, want %q", got, projects.TypeUnknown)
+	}
+}
+
+func TestDetect_PHP(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "index.php"), []byte("<?php"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if got := projects.Detect(dir); got != projects.TypePHP {
+		t.Errorf("Detect = %q, want %q", got, projects.TypePHP)
+	}
+}
+
+func TestDetect_JavaScript(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "package.json"), []byte(`{"scripts":{"dev":"vite"}}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if got := projects.Detect(dir); got != projects.TypeReverseProxy {
+		t.Errorf("Detect = %q, want %q", got, projects.TypeReverseProxy)
+	}
+}
+
+func TestDefaultProxyPortFor(t *testing.T) {
+	tests := []struct {
+		name string
+		file string
+		port int
+	}{
+		{name: "default", port: projects.DefaultProxyPort},
+		{name: "vite", file: "vite.config.ts", port: 5173},
+		{name: "angular", file: "angular.json", port: 4200},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if tc.file != "" {
+				if err := os.WriteFile(filepath.Join(dir, tc.file), []byte("{}"), 0644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if got := projects.DefaultProxyPortFor(dir); got != tc.port {
+				t.Errorf("DefaultProxyPortFor = %d, want %d", got, tc.port)
+			}
+		})
 	}
 }
 
@@ -217,6 +262,25 @@ func TestSaveLoad_SSL(t *testing.T) {
 	}
 	if got.FPM.Socket != "/tmp/test.sock" {
 		t.Errorf("FPM.Socket: got %q, want %q", got.FPM.Socket, "/tmp/test.sock")
+	}
+}
+
+func TestSaveLoad_ReverseProxy(t *testing.T) {
+	root := t.TempDir()
+	p := newTestProject()
+	p.ProjectType = projects.TypeReverseProxy
+	p.PHPVersion = ""
+	p.ProxyPort = 5173
+
+	if err := projects.Save(p, root); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	got, err := projects.Load(root, p.Slug)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got.ProjectType != projects.TypeReverseProxy || got.ProxyPort != 5173 {
+		t.Fatalf("reverse proxy config = type %q, port %d", got.ProjectType, got.ProxyPort)
 	}
 }
 
@@ -466,6 +530,37 @@ func TestRenderNginxConfig_HTTP_WordPress(t *testing.T) {
 	}
 }
 
+func TestRenderNginxConfig_HTTP_ReverseProxy(t *testing.T) {
+	root := t.TempDir()
+	p := &projects.Project{
+		Slug:        "react-app",
+		Path:        "/home/user/Projects/react-app",
+		Domain:      "react-app.test",
+		SSL:         false,
+		ProjectType: projects.TypeReverseProxy,
+		ProxyPort:   5173,
+	}
+
+	out, err := projects.RenderNginxConfig(p, root, 8080, 8443)
+	if err != nil {
+		t.Fatalf("RenderNginxConfig: %v", err)
+	}
+	for _, want := range []string{
+		"proxy_pass http://localhost:5173",
+		"proxy_set_header Host $proxy_host",
+		"proxy_set_header X-Forwarded-Host $host",
+		"proxy_set_header Upgrade $http_upgrade",
+		"proxy_set_header Connection \"upgrade\"",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("reverse proxy config missing %q\n\nGot:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "fastcgi_pass") || strings.Contains(out, "try_files") {
+		t.Errorf("reverse proxy config contains PHP routing:\n%s", out)
+	}
+}
+
 func TestRenderNginxConfig_HTTPS(t *testing.T) {
 	root := t.TempDir()
 	p := &projects.Project{
@@ -486,7 +581,6 @@ func TestRenderNginxConfig_HTTPS(t *testing.T) {
 		"listen 8080",
 		"return 301 https://$host:8443$request_uri",
 		"listen 8443 ssl",
-		"http2 on",
 		"ssl_certificate",
 		"ssl_certificate_key",
 		"ssl_protocols TLSv1.2 TLSv1.3",

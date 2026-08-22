@@ -12,9 +12,15 @@ import (
 type ProjectType string
 
 const (
-	TypeLaravel   ProjectType = "laravel"
-	TypeWordPress ProjectType = "wordpress"
-	TypeGeneric   ProjectType = "generic"
+	TypeLaravel      ProjectType = "laravel"
+	TypeWordPress    ProjectType = "wordpress"
+	TypePHP          ProjectType = "php"
+	TypeReverseProxy ProjectType = "reverse-proxy"
+	TypeUnknown      ProjectType = ""
+
+	// TypeGeneric is retained for project configs written before explicit PHP
+	// project types were introduced.
+	TypeGeneric ProjectType = "generic"
 )
 
 // FPMConfig describes the PHP-FPM pool configuration for a project.
@@ -35,6 +41,7 @@ type Project struct {
 	ProjectType       ProjectType
 	NodeMode          string
 	NodeVersion       string
+	ProxyPort         int
 	Database          string
 	DatabaseContainer string
 	Services          []string
@@ -203,6 +210,9 @@ func marshalProject(p *Project) string {
 		line("  mode: " + p.NodeMode)
 		line("  version: \"" + p.NodeVersion + "\"")
 	}
+	if p.ProxyPort > 0 {
+		line(fmt.Sprintf("proxy_port: %d", p.ProxyPort))
+	}
 	if p.Database != "" {
 		line("database: " + p.Database)
 	}
@@ -312,6 +322,10 @@ func unmarshalProject(data string) (*Project, error) {
 			inFPM = true
 		case "node":
 			inNode = true
+		case "proxy_port":
+			if _, err := fmt.Sscanf(val, "%d", &p.ProxyPort); err != nil {
+				return nil, fmt.Errorf("invalid proxy_port %q", val)
+			}
 		case "database":
 			p.Database = val
 		case "database_container":

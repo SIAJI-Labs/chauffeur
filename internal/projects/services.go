@@ -25,6 +25,14 @@ func ReloadNginx(workspaceRoot string) error {
 	if err := proc.Signal(syscall.Signal(0)); err != nil {
 		return nil // process does not exist
 	}
+	nginxBin := filepath.Join(workspaceRoot, "nginx", "sbin", "nginx")
+	nginxConfig := filepath.Join(workspaceRoot, "nginx", "etc", "nginx.conf")
+	if _, statErr := os.Stat(nginxBin); statErr == nil {
+		cmd := exec.Command(nginxBin, "-t", "-c", nginxConfig)
+		if output, testErr := cmd.CombinedOutput(); testErr != nil {
+			return fmt.Errorf("nginx configuration test failed: %w\n%s", testErr, strings.TrimSpace(string(output)))
+		}
+	}
 	return proc.Signal(syscall.SIGHUP)
 }
 

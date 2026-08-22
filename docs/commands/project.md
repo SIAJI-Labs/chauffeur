@@ -6,7 +6,7 @@ Commands that register and manage projects.
 
 ## `chauf link`
 
-**Purpose**: Register the current directory (or a specified path) as a Chauffeur-managed project. Generates an nginx site config, assigns a PHP version and FPM strategy, and sets up `.test` domain routing.
+**Purpose**: Register the current directory (or a specified path) as a Chauffeur-managed project. Chauffeur detects Laravel, WordPress, PHP, and JavaScript projects, then generates either a PHP/FPM or reverse-proxy nginx site config and sets up `.test` domain routing.
 
 Running `chauf link` on an already-linked project updates its configuration — it does not fail or create a duplicate.
 
@@ -20,6 +20,8 @@ chauf link [flags]
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--php <version>` | string | global default | PHP version for this project (e.g. `8.3`, `7.4`) |
+| `--type <type>` | string | auto-detected | Explicitly choose `laravel`, `wordpress`, `php`, or `reverse-proxy` when detection is unavailable or should be overridden |
+| `--proxy-port <port>` | int | `3000` | Local development-server port for a reverse-proxy project |
 | `--secure` | bool | false | Generate a trusted SSL certificate and serve over HTTPS |
 | `--dedicated-fpm` | bool | false | Provision a dedicated PHP-FPM pool for this project instead of using the shared pool |
 | `--alias <domain>` | string | — | Add an additional `.test` domain pointing to this project. Repeatable. |
@@ -43,6 +45,9 @@ chauf link --dedicated-fpm
 
 # Link with multiple domain aliases
 chauf link --alias admin.my-app.test --alias api.my-app.test
+
+# Link a JavaScript development server through nginx
+chauf link --type reverse-proxy --proxy-port 5173
 
 # Link with all options at once
 chauf link --php 8.1 --secure --dedicated-fpm --alias admin.my-app.test
@@ -75,9 +80,19 @@ Linking my-app...
 |------|-----------|
 | `laravel` | `artisan` file in project root |
 | `wordpress` | `wp-config.php` or `wp-login.php` in project root |
-| `generic` | Fallback |
+| `php` | A PHP entry point such as `index.php`, `public/index.php`, or another root-level `.php` file |
+| `reverse-proxy` | `package.json` or a recognized JavaScript framework config such as Vite, Next, Nuxt, Astro, Angular, or Svelte |
+| unknown | No supported marker; interactive links ask for a type, while noninteractive links require `--type` |
 
-The detected type selects the appropriate nginx template (Laravel URL rewriting, WordPress permalink support, etc.).
+The detected type selects the appropriate nginx template. Reverse-proxy sites forward HTTP and WebSocket traffic to `127.0.0.1:<proxy-port>` and do not require an installed PHP version.
+
+In interactive mode, the wizard first displays the detection result and offers:
+
+- Continue with the detected setup.
+- Change project type and choose Laravel, WordPress, PHP, or reverse proxy.
+
+Reverse-proxy setup also offers detected conventional ports plus `Custom port`.
+The custom value must be between `1` and `65535`.
 
 **Offline DNS warning**: When DNS is not protected against network-state changes, `chauf link` prints a warning with the `/etc/hosts` lines needed to guarantee offline access:
 

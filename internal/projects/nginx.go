@@ -23,6 +23,8 @@ type nginxData struct {
 	HTTPSPort         string
 	CertFile          string
 	KeyFile           string
+	ProxyPort         int
+	ReverseProxy      bool
 	TryFilesParam     string // "$args" for WordPress, "$query_string" for others
 	ClientMaxBodySize string
 }
@@ -34,11 +36,24 @@ server {
 
     client_max_body_size {{.ClientMaxBodySize}};
 
-    root {{.DocumentRoot}};
-    index index.php index.html;
-
     access_log {{.WorkspaceRoot}}/nginx/logs/{{.Slug}}-access.log;
     error_log  {{.WorkspaceRoot}}/nginx/logs/{{.Slug}}-error.log;
+
+{{if .ReverseProxy}}
+    location / {
+        proxy_pass http://localhost:{{.ProxyPort}};
+        proxy_http_version 1.1;
+        proxy_set_header Host $proxy_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+{{else}}
+    root {{.DocumentRoot}};
+    index index.php index.html;
 
     location / {
         try_files $uri $uri/ /index.php?{{.TryFilesParam}};
@@ -50,6 +65,7 @@ server {
         fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
         include {{.WorkspaceRoot}}/nginx/etc/fastcgi_params;
     }
+{{end}}
 
     location ~ /\.ht {
         deny all;
@@ -75,11 +91,24 @@ server {
 
     client_max_body_size {{.ClientMaxBodySize}};
 
-    root {{.DocumentRoot}};
-    index index.php index.html;
-
     access_log {{.WorkspaceRoot}}/nginx/logs/{{.Slug}}-access.log;
     error_log  {{.WorkspaceRoot}}/nginx/logs/{{.Slug}}-error.log;
+
+{{if .ReverseProxy}}
+    location / {
+        proxy_pass http://localhost:{{.ProxyPort}};
+        proxy_http_version 1.1;
+        proxy_set_header Host $proxy_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+{{else}}
+    root {{.DocumentRoot}};
+    index index.php index.html;
 
     location / {
         try_files $uri $uri/ /index.php?{{.TryFilesParam}};
@@ -92,6 +121,7 @@ server {
         fastcgi_param HTTPS on;
         include {{.WorkspaceRoot}}/nginx/etc/fastcgi_params;
     }
+{{end}}
 
     location ~ /\.ht {
         deny all;
@@ -102,6 +132,13 @@ server {
 // RenderNginxConfig generates the nginx site config content for a project.
 func RenderNginxConfig(p *Project, workspaceRoot string, httpPort, httpsPort int) (string, error) {
 	docRoot := DocumentRoot(p.Path, p.ProjectType)
+	proxyPort := p.ProxyPort
+	if proxyPort == 0 {
+		proxyPort = DefaultProxyPort
+	}
+	if proxyPort < 1 || proxyPort > 65535 {
+		return "", fmt.Errorf("invalid reverse proxy port: %d", proxyPort)
+	}
 	tryParam := "$query_string"
 	if p.ProjectType == TypeWordPress {
 		tryParam = "$args"
@@ -126,6 +163,8 @@ func RenderNginxConfig(p *Project, workspaceRoot string, httpPort, httpsPort int
 		HTTPSPort:         strconv.Itoa(httpsPort),
 		CertFile:          filepath.Join(workspaceRoot, "nginx", "certs", p.Domain+".crt"),
 		KeyFile:           filepath.Join(workspaceRoot, "nginx", "certs", p.Domain+".key"),
+		ProxyPort:         proxyPort,
+		ReverseProxy:      p.ProjectType == TypeReverseProxy,
 		TryFilesParam:     tryParam,
 		ClientMaxBodySize: bodySize,
 	}

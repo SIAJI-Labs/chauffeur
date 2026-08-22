@@ -19,9 +19,11 @@ import (
 func RunLink(args []string) error {
 	flags := flag.NewFlagSet("link", flag.ContinueOnError)
 	flags.SetOutput(os.Stdout)
-	lib.SetFlagUsage(flags, "chauf link — configure and register a project directory", "chauf link [path] [--interactive|--no-interactive] [--php <version>] [--site <domain>] [--secure] [--dedicated-fpm] [--name <slug>] [--alias <domain>]")
+	lib.SetFlagUsage(flags, "chauf link — configure and register a project directory", "chauf link [path] [--interactive|--no-interactive] [--type <type>] [--proxy-port <port>] [--php <version>] [--site <domain>] [--secure] [--dedicated-fpm] [--name <slug>] [--alias <domain>]")
 
 	phpFlag := flags.String("php", "", "PHP version for this project")
+	typeFlag := flags.String("type", "", "Project type: laravel, wordpress, php, or reverse-proxy")
+	proxyPortFlag := flags.Int("proxy-port", 0, "Local port for a reverse-proxy project (default 3000)")
 	interactiveFlag := flags.Bool("interactive", false, "Configure project options interactively")
 	noInteractiveFlag := flags.Bool("no-interactive", false, "Never prompt for project options")
 	secureFlag := flags.Bool("secure", false, "Enable SSL from the start")
@@ -60,39 +62,16 @@ func RunLink(args []string) error {
 		return fmt.Errorf("%s is not a directory", dirPath)
 	}
 
-	// An unqualified interactive link is the project setup wizard. Explicit
-	// flags remain the scriptable path and are never overridden by prompts.
-	if (*interactiveFlag || (!*noInteractiveFlag && tui.Interactive() && flags.NFlag() == 0)) && tui.Interactive() {
-		setup, err := runLinkWizard(dirPath, cfg)
+	detectedType := projects.Detect(dirPath)
+	projectType := detectedType
+	if *typeFlag != "" {
+		parsed, err := parseProjectType(*typeFlag)
 		if err != nil {
 			return err
 		}
-		if setup.cancelled {
-			return nil
-		}
-		if setup.php != "" {
-			*phpFlag = setup.php
-		}
-		*secureFlag, *dedicatedFPM = setup.secure, setup.dedicated
+		projectType = parsed
 	}
-
-	// Resolve PHP version
-	phpVersion := cfg.PHP.DefaultVersion
-	if *phpFlag != "" {
-		mm := installers.MajorMinor(*phpFlag)
-		if mm == "" {
-			return fmt.Errorf("invalid PHP version: %q", *phpFlag)
-		}
-		phpVersion = mm
-	}
-
-	// Validate the PHP version is installed
-	inst, _ := installers.NewPHPInstaller(phpVersion, installers.BuildOpts{})
-	if !inst.IsInstalled() {
-		lib.Warn(fmt.Sprintf("PHP %s is not installed.", phpVersion))
-		lib.Info(lib.Gray("Install it first:  chauf install php " + phpVersion))
-		return nil
-	}
+	wantsWizard := (*interactiveFlag || (!*noInteractiveFlag && tui.Interactive() && flags.NFlag() == 0)) && tui.Interactive()
 
 	// Generate slug and primary domain
 	slug := projects.GenerateSlug(dirPath)
@@ -132,6 +111,94 @@ func RunLink(args []string) error {
 	if err != nil {
 		return err
 	}
+	if existing != nil && *typeFlag == "" {
+		projectType = existing.ProjectType
+	}
+
+	if projectType == projects.TypeUnknown {
+		if !wantsWizard {
+			return fmt.Errorf("could not detect project type; choose one with --type laravel|wordpress|php|reverse-proxy")
+		}
+	}
+	if !wantsWizard || *typeFlag != "" {
+		printProjectDetection(detectedType, projectType)
+	}
+
+	proxyPort := *proxyPortFlag
+	proxyPortExplicit := *proxyPortFlag != 0
+	if existing != nil && proxyPort == 0 {
+		proxyPort = existing.ProxyPort
+	}
+
+	// An unqualified interactive link is the project setup wizard. Explicit
+	// flags remain the scriptable path and are never overridden by prompts.
+	if wantsWizard {
+		if *typeFlag == "" {
+			selected, err := runProjectTypeWizard(detectedType)
+			if err != nil {
+				return err
+			}
+			if selected == projects.TypeUnknown {
+				return nil
+			}
+			projectType = selected
+		}
+		setup, err := runLinkWizard(dirPath, cfg, projectType)
+		if err != nil {
+			return err
+		}
+		if setup.cancelled {
+			return nil
+		}
+		if setup.php != "" {
+			*phpFlag = setup.php
+		}
+		if setup.proxyPort > 0 && !proxyPortExplicit {
+			proxyPort = setup.proxyPort
+		}
+		*secureFlag, *dedicatedFPM = setup.secure, setup.dedicated
+	}
+	if projectType == projects.TypeReverseProxy {
+		if proxyPort == 0 {
+			proxyPort = projects.DefaultProxyPortFor(dirPath)
+		}
+		if proxyPort < 1 || proxyPort > 65535 {
+			return fmt.Errorf("invalid --proxy-port %d; must be between 1 and 65535", proxyPort)
+		}
+	} else {
+		if *proxyPortFlag != 0 {
+			return fmt.Errorf("--proxy-port requires --type reverse-proxy or a detected JavaScript project")
+		}
+		proxyPort = 0
+	}
+	if projectType == projects.TypeReverseProxy {
+		if *phpFlag != "" {
+			return fmt.Errorf("--php is not used by reverse-proxy projects")
+		}
+		if *dedicatedFPM {
+			return fmt.Errorf("--dedicated-fpm is not used by reverse-proxy projects")
+		}
+	}
+
+	phpVersion := ""
+	if projectType != projects.TypeReverseProxy {
+		phpVersion = cfg.PHP.DefaultVersion
+		if *phpFlag != "" {
+			mm := installers.MajorMinor(*phpFlag)
+			if mm == "" {
+				return fmt.Errorf("invalid PHP version: %q", *phpFlag)
+			}
+			phpVersion = mm
+		}
+
+		// Validate the PHP version is installed for PHP-backed projects only.
+		inst, _ := installers.NewPHPInstaller(phpVersion, installers.BuildOpts{})
+		if !inst.IsInstalled() {
+			lib.Warn(fmt.Sprintf("PHP %s is not installed.", phpVersion))
+			lib.Info(lib.Gray("Install it first:  chauf install php " + phpVersion))
+			return nil
+		}
+	}
 
 	// Detect slug collision: same slug, different path (two dirs with the same name)
 	if existing == nil {
@@ -150,6 +217,8 @@ func RunLink(args []string) error {
 		p = existing
 		// Apply flag overrides to existing project
 		p.PHPVersion = phpVersion
+		p.ProjectType = projectType
+		p.ProxyPort = proxyPort
 		p.FPM.Dedicated = *dedicatedFPM
 		if *secureFlag {
 			p.SSL = true
@@ -187,7 +256,8 @@ func RunLink(args []string) error {
 			PHPVersion:  phpVersion,
 			SSL:         *secureFlag,
 			FPM:         projects.FPMConfig{Dedicated: *dedicatedFPM, Socket: sockPath},
-			ProjectType: projects.Detect(dirPath),
+			ProjectType: projectType,
+			ProxyPort:   proxyPort,
 			CreatedAt:   time.Now().UTC().Format(time.RFC3339),
 		}
 	}
@@ -235,7 +305,9 @@ func RunLink(args []string) error {
 
 	// Reload nginx if running
 	if projects.IsNginxRunning(root) {
-		_ = projects.ReloadNginx(root)
+		if err := projects.ReloadNginx(root); err != nil {
+			return fmt.Errorf("reload nginx: %w", err)
+		}
 	}
 
 	// ── Output ──────────────────────────────────────────────────────────────────
@@ -256,7 +328,11 @@ func RunLink(args []string) error {
 	}
 	lib.Pair("Domain", fmt.Sprintf("%s://%s:%d", scheme, p.Domain, port))
 	lib.Pair("Path", p.Path)
-	lib.Pair("PHP", phpFPMLabel(p))
+	if p.ProjectType == projects.TypeReverseProxy {
+		lib.Pair("Proxy", fmt.Sprintf("http://127.0.0.1:%d", p.ProxyPort))
+	} else {
+		lib.Pair("PHP", phpFPMLabel(p))
+	}
 	lib.Pair("Type", titleCase(string(p.ProjectType)))
 
 	if len(p.Aliases) > 0 {
@@ -321,7 +397,7 @@ func RunLinks(args []string) error {
 	// ── Tabular output ────────────────────────────────────────────────────────
 	const domW = 32
 	header := fmt.Sprintf(" %-20s  %-*s  %-5s  %-9s  %s",
-		"Project", domW, "Domain", "PHP", "FPM", "SSL")
+		"Project", domW, "Domain", "Type", "FPM", "SSL")
 	sep := strings.Repeat("─", len(header))
 	fmt.Printf(" %s\n%s\n", lib.Bold(header[1:]), sep)
 
@@ -331,8 +407,15 @@ func RunLinks(args []string) error {
 		if p.FPM.Dedicated {
 			fpmMode = "dedicated"
 		}
+		if p.ProjectType == projects.TypeReverseProxy {
+			fpmMode = "-"
+		}
+		projectType := string(p.ProjectType)
+		if p.ProjectType == projects.TypeReverseProxy {
+			projectType = fmt.Sprintf("proxy:%d", p.ProxyPort)
+		}
 		fmt.Printf(" %-20s  %-*s  %-5s  %-9s  %s\n",
-			p.Slug, domW, p.Domain, p.PHPVersion, fpmMode, scheme)
+			p.Slug, domW, p.Domain, projectType, fpmMode, scheme)
 		for _, a := range p.Aliases {
 			fmt.Printf(" %-20s  %-*s  %-5s  %-9s  %s\n",
 				"", domW, "↳ "+a, "", "", lib.Gray("alias"))
@@ -396,20 +479,39 @@ func printProjectDetail(p *projects.Project, root string, cfg workspace.Config) 
 		lib.Pair("", fmt.Sprintf("  ↳ %s", lib.Gray(a)))
 	}
 	lib.Pair("  Path", short(p.Path))
-	lib.Pair("  PHP", phpFPMLabel(p))
+	runtimeLabel, runtimeValue := projectDetailRuntime(p)
+	lib.Pair("  "+runtimeLabel, runtimeValue)
 	lib.Pair("  Type", titleCase(string(p.ProjectType)))
 	lib.Pair("  SSL", schemeLabel(p.SSL))
 	if p.SSL {
 		lib.Pair("  Cert", short(root+"/nginx/certs/"+p.Domain+".crt"))
 	}
-	lib.Pair("  Socket", short(p.FPMSocketPath(root)))
+	if p.ProjectType != projects.TypeReverseProxy {
+		lib.Pair("  Socket", short(p.FPMSocketPath(root)))
+	}
 	lib.Pair("  Nginx", short(root+"/nginx/etc/sites-available/"+p.Slug+".conf"))
 	lib.Pair("  Config", short(p.ConfigPath(root)))
 
 	nginxRunning := pidFileRunning(root + "/nginx/logs/nginx.pid")
+	if p.ProjectType == projects.TypeReverseProxy {
+		lib.Pair("  Services", fmt.Sprintf("nginx %s  /  proxy target localhost:%d",
+			serviceStatus(nginxRunning), p.ProxyPort))
+		return
+	}
 	fpmRunning := pidFileRunning(root + "/php/" + p.PHPVersion + "/runtime/php-fpm/php-fpm.pid")
 	lib.Pair("  Services", fmt.Sprintf("nginx %s  /  php-fpm %s %s",
 		serviceStatus(nginxRunning), p.PHPVersion, serviceStatus(fpmRunning)))
+}
+
+func projectDetailRuntime(p *projects.Project) (string, string) {
+	if p.ProjectType == projects.TypeReverseProxy {
+		proxyPort := p.ProxyPort
+		if proxyPort == 0 {
+			proxyPort = projects.DefaultProxyPortFor(p.Path)
+		}
+		return "Proxy", fmt.Sprintf("http://localhost:%d", proxyPort)
+	}
+	return "PHP", phpFPMLabel(p)
 }
 
 // ── chauf unlink ──────────────────────────────────────────────────────────────
@@ -456,11 +558,9 @@ func RunUnlink(args []string) error {
 	if !*yesFlag {
 		fmt.Println()
 		lib.Info(fmt.Sprintf("Unlink project %s?", lib.Bold(p.Slug)))
-		lib.Pair("  Domain", p.Domain)
-		if len(p.Aliases) > 0 {
-			lib.Pair("  Aliases", strings.Join(p.Aliases, ", "))
+		for _, item := range unlinkSummary(p, workspace.Load()) {
+			lib.Pair(item.label, item.value)
 		}
-		lib.Pair("  SSL", fmt.Sprintf("%v", p.SSL))
 		fmt.Println()
 		if !tui.Confirm("Confirm") {
 			lib.Info("Cancelled.")
@@ -483,7 +583,9 @@ func RunUnlink(args []string) error {
 
 	// Reload nginx
 	if projects.IsNginxRunning(root) {
-		_ = projects.ReloadNginx(root)
+		if err := projects.ReloadNginx(root); err != nil {
+			return fmt.Errorf("reload nginx: %w", err)
+		}
 	}
 
 	fmt.Println()
@@ -492,6 +594,56 @@ func RunUnlink(args []string) error {
 
 	_ = *allFlag // --all handled implicitly (full unlink removes everything)
 	return nil
+}
+
+type unlinkSummaryItem struct {
+	label string
+	value string
+}
+
+func unlinkSummary(p *projects.Project, cfg workspace.Config) []unlinkSummaryItem {
+	scheme := "http"
+	port := cfg.Nginx.HTTPPort
+	sslStatus := "Disabled (HTTP only)"
+	if p.SSL {
+		scheme = "https"
+		port = cfg.Nginx.HTTPSPort
+		sslStatus = fmt.Sprintf("Enabled at %s://%s:%d (certificate retained)", scheme, p.Domain, port)
+	}
+
+	items := []unlinkSummaryItem{
+		{label: "Path", value: p.Path},
+		{label: "Domain", value: fmt.Sprintf("%s://%s:%d", scheme, p.Domain, port)},
+		{label: "SSL", value: sslStatus},
+		{label: "Type", value: projectTypeSetupLabel(p.ProjectType)},
+	}
+	if len(p.Aliases) > 0 {
+		items = append(items, unlinkSummaryItem{label: "Aliases", value: strings.Join(p.Aliases, ", ")})
+	}
+	if p.ProjectType == projects.TypeReverseProxy {
+		proxyPort := p.ProxyPort
+		if proxyPort == 0 {
+			proxyPort = projects.DefaultProxyPortFor(p.Path)
+		}
+		items = append(items,
+			unlinkSummaryItem{label: "Proxy target", value: fmt.Sprintf("http://localhost:%d", proxyPort)},
+			unlinkSummaryItem{label: "Runtime", value: "No PHP-FPM; external development server"},
+		)
+	} else {
+		fpmMode := "shared FPM"
+		if p.FPM.Dedicated {
+			fpmMode = "dedicated FPM"
+		}
+		items = append(items, unlinkSummaryItem{
+			label: "Runtime",
+			value: fmt.Sprintf("PHP %s · %s", p.PHPVersion, fpmMode),
+		})
+	}
+	items = append(items, unlinkSummaryItem{
+		label: "Nginx",
+		value: "Route and enabled-site link will be removed",
+	})
+	return items
 }
 
 // ── chauf secure ─────────────────────────────────────────────────────────────
@@ -555,7 +707,9 @@ func RunSecure(args []string) error {
 		return fmt.Errorf("save project config: %w", err)
 	}
 	if projects.IsNginxRunning(root) {
-		_ = projects.ReloadNginx(root)
+		if err := projects.ReloadNginx(root); err != nil {
+			return fmt.Errorf("reload nginx: %w", err)
+		}
 	}
 
 	fmt.Println()
@@ -615,7 +769,9 @@ func RunUnsecure(args []string) error {
 		return fmt.Errorf("save project config: %w", err)
 	}
 	if projects.IsNginxRunning(root) {
-		_ = projects.ReloadNginx(root)
+		if err := projects.ReloadNginx(root); err != nil {
+			return fmt.Errorf("reload nginx: %w", err)
+		}
 	}
 
 	fmt.Println()
@@ -634,6 +790,29 @@ func phpFPMLabel(p *projects.Project) string {
 		mode = "dedicated FPM"
 	}
 	return fmt.Sprintf("%s (%s)", p.PHPVersion, mode)
+}
+
+func parseProjectType(value string) (projects.ProjectType, error) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "laravel":
+		return projects.TypeLaravel, nil
+	case "wordpress", "wp":
+		return projects.TypeWordPress, nil
+	case "php":
+		return projects.TypePHP, nil
+	case "reverse-proxy", "reverse_proxy", "proxy":
+		return projects.TypeReverseProxy, nil
+	default:
+		return projects.TypeUnknown, fmt.Errorf("invalid project type %q; choose laravel, wordpress, php, or reverse-proxy", value)
+	}
+}
+
+func printProjectDetection(detected, selected projects.ProjectType) {
+	if detected == projects.TypeUnknown {
+		lib.Info(fmt.Sprintf("Project type was not detected automatically; using %s setup.", projectTypeSetupLabel(selected)))
+		return
+	}
+	lib.Info(fmt.Sprintf("Project detected as %s, using %s setup.", projectTypeDetectionLabel(detected), projectTypeSetupLabel(selected)))
 }
 
 func validateDomainUnused(workspaceRoot, domain, skipSlug string) error {
@@ -678,7 +857,9 @@ func removeAlias(p *projects.Project, root string, alias string) error {
 		return err
 	}
 	if projects.IsNginxRunning(root) {
-		_ = projects.ReloadNginx(root)
+		if err := projects.ReloadNginx(root); err != nil {
+			return fmt.Errorf("reload nginx: %w", err)
+		}
 	}
 
 	fmt.Println()
