@@ -190,6 +190,7 @@ func (p Podman) EnsureWorkspace(ctx context.Context, workspace WorkspaceScope) e
 	if err := p.validateNginxPorts(ctx, workspace.HTTPPort, workspace.HTTPSPort); err != nil {
 		return err
 	}
+	phpContainersChanged := false
 	for _, container := range workspace.PHPContainers {
 		for _, hostPath := range container.Roots {
 			info, err := os.Stat(hostPath)
@@ -226,6 +227,20 @@ func (p Podman) EnsureWorkspace(ctx context.Context, workspace WorkspaceScope) e
 		}
 	}
 	for _, container := range workspace.PHPContainers {
+		name := scopeContainerName(container.Scope)
+		exists, err := p.run(ctx, "container", "exists", name)
+		if err != nil {
+			return err
+		}
+		if exists.ExitCode != 0 {
+			phpContainersChanged = true
+		} else {
+			_, matches, inspectErr := p.inspectPHPContainer(ctx, name, container.Scope, container.Roots)
+			if inspectErr != nil {
+				return inspectErr
+			}
+			phpContainersChanged = phpContainersChanged || !matches
+		}
 		if err := p.EnsurePHPContainerWithRoots(ctx, container.Scope, container.Image, container.Roots); err != nil {
 			return err
 		}
@@ -236,6 +251,21 @@ func (p Podman) EnsureWorkspace(ctx context.Context, workspace WorkspaceScope) e
 	}
 	if err := os.WriteFile(workspace.ConfigPath, []byte(config), 0644); err != nil {
 		return fmt.Errorf("write Podman nginx config: %w", err)
+	}
+	if phpContainersChanged {
+		state, err := p.run(ctx, "container", "inspect", "chauf-nginx", "--format", "{{.State.Status}}")
+		if err != nil {
+			return err
+		}
+		if state.ExitCode == 0 && strings.TrimSpace(state.Stdout) == "running" {
+			restarted, restartErr := p.run(ctx, "container", "restart", "chauf-nginx")
+			if restartErr != nil {
+				return restartErr
+			}
+			if restarted.ExitCode != 0 {
+				return commandFailure("restart nginx after PHP container reconciliation", restarted)
+			}
+		}
 	}
 	return p.EnsureNginxContainerWithRootsAndPorts(ctx, workspace.ConfigPath, workspace.Roots, workspace.HTTPPort, workspace.HTTPSPort, workspace.CertificateDir)
 }
