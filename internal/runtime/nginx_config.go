@@ -59,7 +59,13 @@ func BuildWorkspaceScope(workspace, configPath, certificateDir string, httpPort,
 		}
 		containers[index].Roots[mountPath] = project.Path
 		roots[mountPath] = project.Path
-		routes = append(routes, NginxRoute{ServerName: strings.Join(project.Domains, " "), DocumentRoot: mountPath, Upstream: name, SSL: project.SSL, CertName: project.CertName})
+		documentRoot := mountPath
+		if project.DocumentRoot != "" {
+			if relative, err := filepath.Rel(project.Path, project.DocumentRoot); err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+				documentRoot = filepath.Join(mountPath, relative)
+			}
+		}
+		routes = append(routes, NginxRoute{ServerName: strings.Join(project.Domains, " "), DocumentRoot: documentRoot, Upstream: name, SSL: project.SSL, CertName: project.CertName})
 	}
 	return WorkspaceScope{Workspace: workspace, ConfigPath: configPath, CertificateDir: certificateDir, HTTPPort: httpPort, HTTPSPort: httpsPort, Roots: roots, PHPContainers: containers, Routes: routes}, nil
 }

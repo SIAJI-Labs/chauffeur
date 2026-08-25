@@ -427,22 +427,7 @@ func startPodmanServices(root string, cfg workspace.Config) error {
 	if err != nil {
 		return err
 	}
-	all, err := projects.ListAll(root)
-	if err != nil {
-		return err
-	}
-	specs := make([]chauftruntime.ProjectSpec, 0, len(all))
-	for _, p := range all {
-		if p.ProjectType == projects.TypeReverseProxy {
-			continue
-		}
-		specs = append(specs, chauftruntime.ProjectSpec{Slug: p.Slug, Path: p.Path, Version: p.PHPVersion, Domains: p.AllDomains(), Dedicated: p.FPM.Dedicated, SSL: p.SSL, CertName: p.Domain})
-	}
-	if len(specs) == 0 {
-		return fmt.Errorf("no PHP project is linked; Podman nginx requires a linked PHP project")
-	}
-	configPath := filepath.Join(root, "nginx", "container.conf")
-	scope, err := chauftruntime.BuildWorkspaceScope(root, configPath, filepath.Join(root, "nginx", "certs"), cfg.Nginx.HTTPPort, cfg.Nginx.HTTPSPort, specs)
+	scope, err := buildPodmanWorkspaceScope(root, cfg)
 	if err != nil {
 		return err
 	}
@@ -454,6 +439,24 @@ func startPodmanServices(root string, cfg workspace.Config) error {
 	}
 	lib.Success("All services running.")
 	return nil
+}
+
+func buildPodmanWorkspaceScope(root string, cfg workspace.Config) (chauftruntime.WorkspaceScope, error) {
+	all, err := projects.ListAll(root)
+	if err != nil {
+		return chauftruntime.WorkspaceScope{}, err
+	}
+	specs := make([]chauftruntime.ProjectSpec, 0, len(all))
+	for _, p := range all {
+		if p.ProjectType == projects.TypeReverseProxy {
+			continue
+		}
+		specs = append(specs, chauftruntime.ProjectSpec{Slug: p.Slug, Path: p.Path, Version: p.PHPVersion, Domains: p.AllDomains(), Dedicated: p.FPM.Dedicated, SSL: p.SSL, DocumentRoot: projects.DocumentRoot(p.Path, p.ProjectType), CertName: p.Domain})
+	}
+	if len(specs) == 0 {
+		return chauftruntime.WorkspaceScope{}, fmt.Errorf("no PHP project is linked; Podman nginx requires a linked PHP project")
+	}
+	return chauftruntime.BuildWorkspaceScope(root, filepath.Join(root, "nginx", "container.conf"), filepath.Join(root, "nginx", "certs"), cfg.Nginx.HTTPPort, cfg.Nginx.HTTPSPort, specs)
 }
 
 func stopPodmanServices(root string) error {

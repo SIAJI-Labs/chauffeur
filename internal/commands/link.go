@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -1113,9 +1112,11 @@ func applyLinkProject(p *projects.Project, root string, cfg workspace.Config) (p
 			if err != nil {
 				return err
 			}
-			return rt.EnsureLinkedProject(context.Background(), root, filepath.Join(root, "nginx", "container.conf"), filepath.Join(root, "nginx", "certs"), cfg.Nginx.HTTPPort, cfg.Nginx.HTTPSPort, chauftruntime.ProjectSpec{
-				Slug: p.Slug, Path: p.Path, Version: p.PHPVersion, Domains: p.AllDomains(), Dedicated: p.FPM.Dedicated, SSL: p.SSL, CertName: p.Domain,
-			})
+			scope, err := buildPodmanWorkspaceScope(root, cfg)
+			if err != nil {
+				return err
+			}
+			return rt.EnsureWorkspace(context.Background(), scope)
 		},
 		GenerateNginx: func() error {
 			if err := projects.WriteNginxConfig(p, root, cfg.Nginx.HTTPPort, cfg.Nginx.HTTPSPort); err != nil {

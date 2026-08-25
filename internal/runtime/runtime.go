@@ -307,9 +307,6 @@ func (p Podman) EnsurePHPContainerWithRoots(ctx context.Context, scope Scope, im
 			return err
 		}
 		if !matches {
-			if state == "running" {
-				return fmt.Errorf("PHP container %s has incorrect labels or mounts while running; stop it and retry to reconcile the selected project runtime", name)
-			}
 			removed, removeErr := p.run(ctx, "container", "rm", "-f", name)
 			if removeErr != nil {
 				return removeErr
@@ -335,7 +332,7 @@ func (p Podman) EnsurePHPContainerWithRoots(ctx context.Context, scope Scope, im
 	if scope.Dedicated {
 		scopeKind = "dedicated"
 	}
-	args := []string{"run", "-d", "--name", name, "--network", "chauf-net", "--label", "com.siegg.chauffeur.role=php-fpm", "--label", "com.siegg.chauffeur.php.version=" + scope.Version, "--label", "com.siegg.chauffeur.scope=" + scopeKind}
+	args := []string{"run", "-d", "--userns", "keep-id", "--name", name, "--network", "chauf-net", "--label", "com.siegg.chauffeur.role=php-fpm", "--label", "com.siegg.chauffeur.php.version=" + scope.Version, "--label", "com.siegg.chauffeur.scope=" + scopeKind, "--label", "com.siegg.chauffeur.userns=keep-id"}
 	for containerPath, hostPath := range roots {
 		args = append(args, "--volume", hostPath+":"+containerPath+":rw")
 	}
@@ -387,6 +384,9 @@ func (p Podman) inspectPHPContainer(ctx context.Context, name string, scope Scop
 	if entry.Config.Labels["com.siegg.chauffeur.role"] != "php-fpm" ||
 		entry.Config.Labels["com.siegg.chauffeur.php.version"] != scope.Version ||
 		entry.Config.Labels["com.siegg.chauffeur.scope"] != scopeKind || len(entry.Mounts) != len(roots) {
+		return entry.State.Status, false, nil
+	}
+	if entry.Config.Labels["com.siegg.chauffeur.userns"] != "keep-id" {
 		return entry.State.Status, false, nil
 	}
 	for _, mount := range entry.Mounts {
@@ -455,7 +455,20 @@ func (p Podman) EnsureNginxContainerWithRootsAndPorts(ctx context.Context, confi
 			return err
 		}
 		if strings.TrimSpace(state.Stdout) == "running" {
-			return nil
+			matches, err := p.nginxContainerMountsMatch(ctx, name, configPath, roots, certDir)
+			if err != nil {
+				return err
+			}
+			if matches {
+				return nil
+			}
+			removed, err := p.run(ctx, "container", "rm", "-f", name)
+			if err != nil {
+				return err
+			}
+			if removed.ExitCode != 0 {
+				return commandFailure("remove stale nginx container", removed)
+			}
 		}
 		removed, err := p.run(ctx, "container", "rm", "-f", name)
 		if err != nil {
@@ -484,6 +497,45 @@ func (p Podman) EnsureNginxContainerWithRootsAndPorts(ctx context.Context, confi
 		return commandFailure("create nginx container", result)
 	}
 	return p.waitContainerRunning(ctx, name)
+}
+
+func (p Podman) nginxContainerMountsMatch(ctx context.Context, name, configPath string, roots map[string]string, certDir string) (bool, error) {
+	result, err := p.run(ctx, "container", "inspect", name, "--format", "json")
+	if err != nil {
+		return false, err
+	}
+	if result.ExitCode != 0 {
+		return false, commandFailure("inspect nginx container "+name, result)
+	}
+	var entries []struct {
+		Mounts []struct {
+			Source      string `json:"Source"`
+			Destination string `json:"Destination"`
+		} `json:"Mounts"`
+	}
+	if err := json.Unmarshal([]byte(result.Stdout), &entries); err != nil || len(entries) == 0 {
+		return false, fmt.Errorf("inspect nginx container %s returned invalid metadata", name)
+	}
+	actual := make(map[string]string, len(entries[0].Mounts))
+	for _, mount := range entries[0].Mounts {
+		actual[mount.Destination] = filepath.Clean(mount.Source)
+	}
+	want := map[string]string{"/etc/nginx/conf.d/default.conf": filepath.Clean(configPath)}
+	if certDir != "" {
+		want["/etc/nginx/certs"] = filepath.Clean(certDir)
+	}
+	for destination, source := range roots {
+		want[destination] = filepath.Clean(source)
+	}
+	if len(actual) != len(want) {
+		return false, nil
+	}
+	for destination, source := range want {
+		if actual[destination] != source {
+			return false, nil
+		}
+	}
+	return true, nil
 }
 
 func (p Podman) waitContainerRunning(ctx context.Context, name string) error {

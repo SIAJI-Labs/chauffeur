@@ -37,6 +37,18 @@ func TestBuildWorkspaceScopeResolvesSharedAndDedicatedResources(t *testing.T) {
 	}
 }
 
+func TestBuildWorkspaceScopeUsesProjectDocumentRoot(t *testing.T) {
+	scope, err := BuildWorkspaceScope("/workspace", "/workspace/nginx/container.conf", "/workspace/nginx/certs", 18080, 18443, []ProjectSpec{
+		{Slug: "laravel", Path: "/home/laravel", DocumentRoot: "/home/laravel/public", Version: "8.3", Domains: []string{"laravel.test"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := scope.Routes[0].DocumentRoot; got != "/workspace/laravel/public" {
+		t.Fatalf("document root = %q; want /workspace/laravel/public", got)
+	}
+}
+
 func TestRenderNginxPHPConfigUsesContainerUpstream(t *testing.T) {
 	config, err := RenderNginxPHPConfig("/workspace", "chauf-php83-fpm", 8080)
 	if err != nil {

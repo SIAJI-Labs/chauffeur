@@ -122,7 +122,7 @@ type existingPHPRunner struct{ args [][]string }
 func (r *existingPHPRunner) Run(_ context.Context, args ...string) (CommandResult, error) {
 	r.args = append(r.args, args)
 	if len(args) >= 2 && args[0] == "container" && args[1] == "inspect" {
-		return CommandResult{Stdout: `[{"State":{"Status":"exited"},"Config":{"Labels":{"com.siegg.chauffeur.role":"php-fpm","com.siegg.chauffeur.php.version":"8.3","com.siegg.chauffeur.scope":"shared"}},"Mounts":[{"Source":"/tmp/project","Destination":"/workspace","RW":true}]}]`}, nil
+		return CommandResult{Stdout: `[{"State":{"Status":"exited"},"Config":{"Labels":{"com.siegg.chauffeur.role":"php-fpm","com.siegg.chauffeur.php.version":"8.3","com.siegg.chauffeur.scope":"shared","com.siegg.chauffeur.userns":"keep-id"}},"Mounts":[{"Source":"/tmp/project","Destination":"/workspace","RW":true}]}]`}, nil
 	}
 	if len(args) >= 2 && args[0] == "image" && args[1] == "inspect" {
 		return CommandResult{Stdout: `[{"Id":"sha256:test","Architecture":"amd64"}]`}, nil
