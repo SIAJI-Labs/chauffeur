@@ -14,6 +14,7 @@ import (
 
 	"github.com/siegg/chauffeur/internal/installers"
 	"github.com/siegg/chauffeur/internal/lib"
+	chauftruntime "github.com/siegg/chauffeur/internal/runtime"
 	"github.com/siegg/chauffeur/internal/workspace"
 )
 
@@ -21,6 +22,8 @@ func RunUpdate(args []string) error {
 	if len(args) == 0 {
 		return updateHelp()
 	}
+	printRuntime(workspace.Load())
+	fmt.Println()
 	switch strings.ToLower(args[0]) {
 	case "nginx":
 		return updateNginx(args[1:])
@@ -75,6 +78,9 @@ func parseUpdateFlags(name string, args []string) (updateOpts, []string, error) 
 // ── update nginx ───────────────────────────────────────────────────────────────
 
 func updateNginx(args []string) error {
+	if workspace.Load().Runtime.Engine == string(chauftruntime.EnginePodman) {
+		return fmt.Errorf("nginx is managed by the Podman image; pull %s explicitly", chauftruntime.NginxImage)
+	}
 	opts, _, err := parseUpdateFlags("nginx", args)
 	if err != nil {
 		return err
@@ -137,6 +143,9 @@ func updatePHP(args []string) error {
 	if mm == "" {
 		return fmt.Errorf("invalid PHP version: %q", positionals[0])
 	}
+	if workspace.Load().Runtime.Engine == string(chauftruntime.EnginePodman) {
+		return updatePodmanPHP(mm, opts)
+	}
 
 	inst, err := installers.NewPHPInstaller(mm, installers.BuildOpts{})
 	if err != nil {
@@ -189,9 +198,34 @@ func updatePHP(args []string) error {
 	return installPHP(mm, installers.BuildOpts{Force: true, Verbose: opts.verbose})
 }
 
+func updatePodmanPHP(version string, opts updateOpts) error {
+	if !isInstalledPHPVersion(version) {
+		return fmt.Errorf("PHP %s Podman image is not installed — run: chauf install php %s", version, version)
+	}
+	if opts.dryRun {
+		lib.Info(lib.Gray("(dry-run) would rebuild Podman PHP image " + version))
+		return nil
+	}
+	lib.Info(fmt.Sprintf("Rebuilding Podman PHP %s image", version))
+	return installPodmanPHP(version, true, opts.verbose)
+}
+
+func podmanPHPImages() []string {
+	versions := make([]string, 0)
+	for _, version := range installers.SupportedPHPVersions {
+		if isInstalledPHPVersion(version) {
+			versions = append(versions, version)
+		}
+	}
+	return versions
+}
+
 // ── update composer ────────────────────────────────────────────────────────────
 
 func updateComposer(args []string) error {
+	if workspace.Load().Runtime.Engine == string(chauftruntime.EnginePodman) {
+		return fmt.Errorf("Composer is managed inside Podman PHP images; rebuild the selected PHP image instead")
+	}
 	opts, _, err := parseUpdateFlags("composer", args)
 	if err != nil {
 		return err
@@ -261,14 +295,18 @@ func updateAll(args []string) error {
 	var anyErr error
 
 	nginxInst := installers.NewNginxInstaller(installers.BuildOpts{})
-	if nginxInst.IsInstalled() {
+	if workspace.Load().Runtime.Engine != string(chauftruntime.EnginePodman) && nginxInst.IsInstalled() {
 		if err := updateNginx(allArgs); err != nil {
 			lib.Warn("nginx update failed: " + err.Error())
 			anyErr = err
 		}
 	}
 
-	for _, mm := range installers.ListInstalledPHP(root) {
+	phpVersions := installers.ListInstalledPHP(root)
+	if workspace.Load().Runtime.Engine == string(chauftruntime.EnginePodman) {
+		phpVersions = podmanPHPImages()
+	}
+	for _, mm := range phpVersions {
 		phpArgs := append([]string{mm}, allArgs...)
 		if err := updatePHP(phpArgs); err != nil {
 			lib.Warn("PHP " + mm + " update failed: " + err.Error())
@@ -277,7 +315,7 @@ func updateAll(args []string) error {
 	}
 
 	compInst := installers.NewComposerInstaller(installers.BuildOpts{})
-	if compInst.IsInstalled() {
+	if workspace.Load().Runtime.Engine != string(chauftruntime.EnginePodman) && compInst.IsInstalled() {
 		if err := updateComposer(allArgs); err != nil {
 			lib.Warn("Composer update failed: " + err.Error())
 			anyErr = err
@@ -311,14 +349,22 @@ func updateList(args []string) error {
 
 	// nginx
 	nginxInst := installers.NewNginxInstaller(installers.BuildOpts{})
-	if nginxInst.IsInstalled() {
+	if workspace.Load().Runtime.Engine != string(chauftruntime.EnginePodman) && nginxInst.IsInstalled() {
 		current := nginxInst.InstalledVersion()
 		latest := nginxInst.ResolveVersion()
 		rows = append(rows, row{"nginx", current, latest, versionNewer(latest, current)})
 	}
 
 	// PHP versions
-	for _, mm := range installers.ListInstalledPHP(root) {
+	phpVersions := installers.ListInstalledPHP(root)
+	if workspace.Load().Runtime.Engine == string(chauftruntime.EnginePodman) {
+		phpVersions = podmanPHPImages()
+	}
+	for _, mm := range phpVersions {
+		if workspace.Load().Runtime.Engine == string(chauftruntime.EnginePodman) {
+			rows = append(rows, row{"php " + mm, "Podman image", "rebuild locally", false})
+			continue
+		}
 		phpInst, err := installers.NewPHPInstaller(mm, installers.BuildOpts{})
 		if err != nil {
 			continue
@@ -333,7 +379,7 @@ func updateList(args []string) error {
 
 	// composer
 	compInst := installers.NewComposerInstaller(installers.BuildOpts{})
-	if compInst.IsInstalled() {
+	if workspace.Load().Runtime.Engine != string(chauftruntime.EnginePodman) && compInst.IsInstalled() {
 		current := compInst.InstalledVersion()
 		latest := compInst.ResolveVersion()
 		rows = append(rows, row{"composer", current, latest, versionNewer(latest, current)})
@@ -718,4 +764,3 @@ func updateHelp() error {
 	fmt.Println()
 	return nil
 }
-

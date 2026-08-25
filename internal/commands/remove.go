@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/siegg/chauffeur/internal/installers"
 	"github.com/siegg/chauffeur/internal/lib"
+	chauftruntime "github.com/siegg/chauffeur/internal/runtime"
 	"github.com/siegg/chauffeur/internal/tui"
 	"github.com/siegg/chauffeur/internal/workspace"
 )
@@ -29,11 +31,16 @@ func RunRemove(args []string) error {
 		fmt.Fprintf(os.Stderr, "Usage: chauf remove <nginx|php <version>|composer>\n")
 		return fmt.Errorf("no service specified")
 	}
+	printRuntime(workspace.Load())
+	fmt.Println()
 
 	root := workspace.Root()
 
 	switch strings.ToLower(positionals[0]) {
 	case "nginx":
+		if workspace.Load().Runtime.Engine == string(chauftruntime.EnginePodman) {
+			return fmt.Errorf("nginx is managed by the Podman image; remove it with Podman image management")
+		}
 		return removeNginx(root, *force)
 	case "php":
 		version := ""
@@ -47,12 +54,39 @@ func RunRemove(args []string) error {
 		if mm == "" {
 			return fmt.Errorf("invalid PHP version: %q", version)
 		}
+		if workspace.Load().Runtime.Engine == string(chauftruntime.EnginePodman) {
+			return removePodmanPHP(mm, *force)
+		}
 		return removePHP(root, mm, *force)
 	case "composer":
+		if workspace.Load().Runtime.Engine == string(chauftruntime.EnginePodman) {
+			return fmt.Errorf("Composer is included in the Podman PHP image and is not removed separately")
+		}
 		return removeComposer(root, *force)
 	default:
 		return fmt.Errorf("unknown service %q — available: nginx, php, composer", positionals[0])
 	}
+}
+
+func removePodmanPHP(version string, force bool) error {
+	image := chauftruntime.PHPImage(version)
+	if !isInstalledPHPVersion(version) {
+		lib.Info(fmt.Sprintf("PHP %s Podman image is not installed.", version))
+		return nil
+	}
+	if !force && !confirm("Remove Podman PHP image "+image+"?") {
+		fmt.Println("\n  Aborted.")
+		return nil
+	}
+	rt, err := chauftruntime.ForWorkspace(workspace.Load())
+	if err != nil {
+		return err
+	}
+	if err := rt.RemoveImage(context.Background(), image, force); err != nil {
+		return err
+	}
+	lib.Success("PHP " + version + " Podman image removed")
+	return nil
 }
 
 func removeNginx(root string, force bool) error {

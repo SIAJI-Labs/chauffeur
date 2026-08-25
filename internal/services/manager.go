@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/siegg/chauffeur/internal/projects"
+	"github.com/siegg/chauffeur/internal/system"
 	"github.com/siegg/chauffeur/internal/workspace"
 )
 
@@ -44,6 +45,9 @@ func (m *Manager) AllFPM() ([]*FPMService, error) {
 	var dedicated []*FPMService
 
 	for _, p := range all {
+		if p.ProjectType == projects.TypeReverseProxy || p.PHPVersion == "" {
+			continue
+		}
 		if p.FPM.Dedicated {
 			dedicated = append(dedicated, NewDedicatedFPM(m.root, p.Slug, p.PHPVersion, p.FPM.Socket))
 		} else {
@@ -137,7 +141,9 @@ func (m *Manager) StopAll() ([]StopResult, error) {
 
 	// 1. Stop nginx first (stop accepting new requests)
 	r := StopResult{Label: "nginx"}
-	if !nginx.IsRunning() {
+	if system.IsUnitActive("chauffeur-nginx.service") {
+		r.Err = system.StopUnit("chauffeur-nginx.service")
+	} else if !nginx.IsRunning() {
 		r.AlreadyStopped = true
 	} else {
 		r.Err = nginx.Stop(stopTimeout)
@@ -147,7 +153,10 @@ func (m *Manager) StopAll() ([]StopResult, error) {
 	// 2. Stop FPM pools
 	for _, fpm := range fpms {
 		r := StopResult{Label: "php-fpm " + fpm.Label()}
-		if !fpm.IsRunning() {
+		unit := system.FPMInstanceUnit(fpm.Version())
+		if fpm.Version() != "" && system.IsUnitActive(unit) {
+			r.Err = system.StopUnit(unit)
+		} else if !fpm.IsRunning() {
 			r.AlreadyStopped = true
 		} else {
 			r.Err = fpm.Stop(stopTimeout)

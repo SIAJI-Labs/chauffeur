@@ -1,15 +1,18 @@
 package commands
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/siegg/chauffeur/internal/installers"
 	"github.com/siegg/chauffeur/internal/lib"
 	"github.com/siegg/chauffeur/internal/projects"
+	chauftruntime "github.com/siegg/chauffeur/internal/runtime"
 	"github.com/siegg/chauffeur/internal/tui"
 	"github.com/siegg/chauffeur/internal/workspace"
 )
@@ -19,7 +22,7 @@ import (
 func RunLink(args []string) error {
 	flags := flag.NewFlagSet("link", flag.ContinueOnError)
 	flags.SetOutput(os.Stdout)
-	lib.SetFlagUsage(flags, "chauf link — configure and register a project directory", "chauf link [path] [--interactive|--no-interactive] [--type <type>] [--proxy-port <port>] [--php <version>] [--site <domain>] [--secure] [--dedicated-fpm] [--name <slug>] [--alias <domain>]")
+	lib.SetFlagUsage(flags, "chauf link — configure and register a project directory", "chauf link [path] [--interactive|--no-interactive] [--type <type>] [--proxy-port <port>] [--php <version>] [--site <domain>] [--secure|--insecure] [--fpm shared|dedicated] [--dedicated-fpm] [--name <slug>] [--alias <domain>]")
 
 	phpFlag := flags.String("php", "", "PHP version for this project")
 	typeFlag := flags.String("type", "", "Project type: laravel, wordpress, php, or reverse-proxy")
@@ -27,7 +30,10 @@ func RunLink(args []string) error {
 	interactiveFlag := flags.Bool("interactive", false, "Configure project options interactively")
 	noInteractiveFlag := flags.Bool("no-interactive", false, "Never prompt for project options")
 	secureFlag := flags.Bool("secure", false, "Enable SSL from the start")
+	insecureFlag := flags.Bool("insecure", false, "Disable SSL explicitly")
 	dedicatedFPM := flags.Bool("dedicated-fpm", false, "Use a dedicated PHP-FPM pool")
+	fpmFlag := flags.String("fpm", "", "FPM mode: shared or dedicated")
+	yesFlag := flags.Bool("yes", false, "Confirm the setup plan without prompting")
 	nameFlag := flags.String("name", "", "Custom slug (required when two directories share the same name)")
 	siteFlag := flags.String("site", "", "Custom primary domain (e.g. myapp.test)")
 	var aliases []string
@@ -36,12 +42,39 @@ func RunLink(args []string) error {
 		return nil
 	})
 
-	if err := flags.Parse(args); err != nil {
+	if err := flags.Parse(normalizeLinkArgs(args)); err != nil {
 		return err
 	}
+	if *secureFlag && *insecureFlag {
+		return fmt.Errorf("--secure and --insecure cannot be used together")
+	}
+	if *fpmFlag != "" {
+		switch strings.ToLower(*fpmFlag) {
+		case "shared":
+			*dedicatedFPM = false
+		case "dedicated":
+			*dedicatedFPM = true
+		default:
+			return fmt.Errorf("invalid --fpm %q; choose shared or dedicated", *fpmFlag)
+		}
+	}
+	phpExplicit := *phpFlag != ""
+	secureExplicit := false
+	dedicatedExplicit := false
+	flags.Visit(func(f *flag.Flag) {
+		if f.Name == "secure" {
+			secureExplicit = true
+		}
+		if f.Name == "dedicated-fpm" {
+			dedicatedExplicit = true
+		}
+	})
+	dedicatedExplicit = dedicatedExplicit || *fpmFlag != ""
 
 	root := workspace.Root()
 	cfg := workspace.Load()
+	printRuntime(cfg)
+	fmt.Println()
 
 	// Resolve the target directory (CWD by default)
 	cwd, err := os.Getwd()
@@ -71,7 +104,7 @@ func RunLink(args []string) error {
 		}
 		projectType = parsed
 	}
-	wantsWizard := (*interactiveFlag || (!*noInteractiveFlag && tui.Interactive() && flags.NFlag() == 0)) && tui.Interactive()
+	wantsWizard := (*interactiveFlag || (!*noInteractiveFlag && tui.Interactive() && flags.NFlag() == 0)) && tui.Interactive() && !*yesFlag
 
 	// Generate slug and primary domain
 	slug := projects.GenerateSlug(dirPath)
@@ -143,7 +176,7 @@ func RunLink(args []string) error {
 			}
 			projectType = selected
 		}
-		setup, err := runLinkWizard(dirPath, cfg, projectType)
+		setup, err := runLinkWizard(dirPath, cfg, projectType, existing)
 		if err != nil {
 			return err
 		}
@@ -151,12 +184,41 @@ func RunLink(args []string) error {
 			return nil
 		}
 		if setup.php != "" {
-			*phpFlag = setup.php
+			if !phpExplicit {
+				*phpFlag = setup.php
+			}
+		}
+		if setup.domain != "" && *siteFlag == "" {
+			domain = setup.domain
+		}
+		if len(setup.aliases) > 0 && len(aliases) == 0 {
+			aliases = append([]string(nil), setup.aliases...)
 		}
 		if setup.proxyPort > 0 && !proxyPortExplicit {
 			proxyPort = setup.proxyPort
 		}
-		*secureFlag, *dedicatedFPM = setup.secure, setup.dedicated
+		if !secureExplicit && !*insecureFlag {
+			*secureFlag = setup.secure
+		}
+		if !dedicatedExplicit && *fpmFlag == "" {
+			*dedicatedFPM = setup.dedicated
+		}
+		secureExplicit = secureExplicit || *insecureFlag
+		dedicatedExplicit = dedicatedExplicit || *fpmFlag != ""
+	}
+	if *insecureFlag {
+		*secureFlag = false
+		secureExplicit = true
+	}
+	selectedSSL := *secureFlag
+	selectedDedicated := *dedicatedFPM
+	if existing != nil {
+		if !secureExplicit {
+			selectedSSL = existing.SSL
+		}
+		if !dedicatedExplicit {
+			selectedDedicated = existing.FPM.Dedicated
+		}
 	}
 	if projectType == projects.TypeReverseProxy {
 		if proxyPort == 0 {
@@ -183,6 +245,9 @@ func RunLink(args []string) error {
 	phpVersion := ""
 	if projectType != projects.TypeReverseProxy {
 		phpVersion = cfg.PHP.DefaultVersion
+		if existing != nil && *phpFlag == "" {
+			phpVersion = existing.PHPVersion
+		}
 		if *phpFlag != "" {
 			mm := installers.MajorMinor(*phpFlag)
 			if mm == "" {
@@ -190,14 +255,60 @@ func RunLink(args []string) error {
 			}
 			phpVersion = mm
 		}
+		constraint := projects.PHPConstraint(dirPath)
+		if constraint != "" && !projects.PHPVersionSatisfies(phpVersion, constraint) {
+			return fmt.Errorf("PHP %s does not satisfy composer.json constraint %q", phpVersion, constraint)
+		}
 
 		// Validate the PHP version is installed for PHP-backed projects only.
-		inst, _ := installers.NewPHPInstaller(phpVersion, installers.BuildOpts{})
-		if !inst.IsInstalled() {
-			lib.Warn(fmt.Sprintf("PHP %s is not installed.", phpVersion))
-			lib.Info(lib.Gray("Install it first:  chauf install php " + phpVersion))
-			return nil
+		if cfg.Runtime.Engine == string(chauftruntime.EnginePodman) {
+			result, runErr := (chauftruntime.ExecRunner{}).Run(context.Background(), "image", "exists", chauftruntime.PHPImage(phpVersion))
+			if runErr != nil || result.ExitCode != 0 {
+				return fmt.Errorf("PHP %s Podman image is unavailable: %s", phpVersion, chauftruntime.PHPImage(phpVersion))
+			}
+		} else {
+			inst, _ := installers.NewPHPInstaller(phpVersion, installers.BuildOpts{})
+			if !inst.IsInstalled() {
+				lib.Warn(fmt.Sprintf("PHP %s is not installed.", phpVersion))
+				lib.Info(lib.Gray("Install it first:  chauf install php " + phpVersion))
+				return nil
+			}
 		}
+	}
+
+	phpChoices := make([]projects.RuntimeChoice, 0)
+	if projectType != projects.TypeReverseProxy {
+		available := installedPHPForRuntime(installers.SupportedPHPVersions, cfg.Runtime.Engine)
+		for _, version := range installers.SupportedPHPVersions {
+			if !available[version] {
+				continue
+			}
+			phpChoices = append(phpChoices, projects.RuntimeChoice{
+				Version:  version,
+				State:    "installed",
+				Evidence: fmt.Sprintf("PHP %s is available in the selected %s runtime", version, cfg.Runtime.Engine),
+			})
+		}
+	}
+	plan := projects.BuildSetupPlan(
+		projects.ProjectFacts{
+			Path:         dirPath,
+			Slug:         slug,
+			Type:         projectType,
+			DocumentRoot: projects.DocumentRoot(dirPath, projectType),
+			Existing:     existing,
+		},
+		projects.SetupChoices{
+			PHPVersion: phpVersion,
+			Domain:     domain,
+			Aliases:    append([]string(nil), aliases...),
+			SSL:        selectedSSL,
+			Dedicated:  selectedDedicated,
+		},
+		phpChoices,
+	)
+	if err := plan.Validate(); err != nil {
+		return err
 	}
 
 	// Detect slug collision: same slug, different path (two dirs with the same name)
@@ -219,9 +330,10 @@ func RunLink(args []string) error {
 		p.PHPVersion = phpVersion
 		p.ProjectType = projectType
 		p.ProxyPort = proxyPort
-		p.FPM.Dedicated = *dedicatedFPM
-		if *secureFlag {
-			p.SSL = true
+		p.FPM.Dedicated = selectedDedicated
+		p.SSL = selectedSSL
+		if *siteFlag != "" {
+			p.Domain = domain
 		}
 		// Append any new aliases (skip duplicates)
 		for _, a := range aliases {
@@ -244,7 +356,7 @@ func RunLink(args []string) error {
 		}
 
 		sockPath := ""
-		if *dedicatedFPM {
+		if selectedDedicated {
 			sockPath = root + "/projects/" + slug + "/php-fpm.sock"
 		}
 
@@ -254,8 +366,8 @@ func RunLink(args []string) error {
 			Domain:      domain,
 			Aliases:     aliases,
 			PHPVersion:  phpVersion,
-			SSL:         *secureFlag,
-			FPM:         projects.FPMConfig{Dedicated: *dedicatedFPM, Socket: sockPath},
+			SSL:         selectedSSL,
+			FPM:         projects.FPMConfig{Dedicated: selectedDedicated, Socket: sockPath},
 			ProjectType: projectType,
 			ProxyPort:   proxyPort,
 			CreatedAt:   time.Now().UTC().Format(time.RFC3339),
@@ -274,49 +386,25 @@ func RunLink(args []string) error {
 		}
 	}
 
-	// Generate and write nginx config
-	if err := projects.WriteNginxConfig(p, root, cfg.Nginx.HTTPPort, cfg.Nginx.HTTPSPort); err != nil {
-		return fmt.Errorf("write nginx config: %w", err)
-	}
-
-	// Symlink into sites-enabled
-	if err := projects.EnableNginxSite(p, root); err != nil {
-		return fmt.Errorf("enable nginx site: %w", err)
-	}
-
-	// Handle SSL
-	if p.SSL {
-		if err := ensureSSL(p, root); err != nil {
-			return err
-		}
-	}
-
-	// Dedicated FPM pool config
-	if p.FPM.Dedicated {
-		if err := writeDedicatedFPMConfig(p, root); err != nil {
-			return fmt.Errorf("write dedicated FPM config: %w", err)
-		}
-	}
-
-	// Save project config
-	if err := projects.Save(p, root); err != nil {
-		return fmt.Errorf("save project config: %w", err)
-	}
-
-	// Reload nginx if running
-	if projects.IsNginxRunning(root) {
-		if err := projects.ReloadNginx(root); err != nil {
-			return fmt.Errorf("reload nginx: %w", err)
-		}
+	applyResult, err := applyLinkProject(p, root, cfg)
+	if err != nil {
+		lib.Error(fmt.Sprintf("Link failed [%s]", projects.ApplyFailed))
+		return err
 	}
 
 	// ── Output ──────────────────────────────────────────────────────────────────
 
 	fmt.Println()
 	if isUpdate {
-		lib.Success("Project updated")
+		lib.Success(fmt.Sprintf("Project updated [%s]", applyResult.Status))
 	} else {
-		lib.Success("Project linked")
+		lib.Success(fmt.Sprintf("Project linked [%s]", applyResult.Status))
+	}
+	for _, evidence := range applyResult.Evidence {
+		lib.Info(lib.Gray(evidence))
+	}
+	if applyResult.Remediation != "" {
+		lib.Info(lib.Gray("Next: " + applyResult.Remediation))
 	}
 	fmt.Println()
 
@@ -340,7 +428,7 @@ func RunLink(args []string) error {
 	}
 	fmt.Println()
 
-	if !projects.IsNginxRunning(root) {
+	if !nginxRuntimeRunning(root, cfg) {
 		lib.Info(lib.Gray("Start services:    chauf start"))
 	}
 	if !p.SSL {
@@ -349,6 +437,36 @@ func RunLink(args []string) error {
 	fmt.Println()
 
 	return nil
+}
+
+func nginxRuntimeRunning(root string, cfg workspace.Config) bool {
+	if cfg.Runtime.Engine != string(chauftruntime.EnginePodman) {
+		return projects.IsNginxRunning(root)
+	}
+	rt, err := chauftruntime.ForWorkspace(cfg)
+	if err != nil {
+		return false
+	}
+	statuses, err := rt.Status(context.Background(), chauftruntime.Scope{Service: "nginx"})
+	if err != nil {
+		return false
+	}
+	for _, status := range statuses {
+		if status.Healthy {
+			return true
+		}
+	}
+	return false
+}
+
+// flag.FlagSet stops parsing at the first positional argument, while the
+// documented link syntax allows the path before its flags. Move that leading
+// path behind the flags without changing the existing flags-first form.
+func normalizeLinkArgs(args []string) []string {
+	if len(args) == 0 || strings.HasPrefix(args[0], "-") {
+		return args
+	}
+	return append(append([]string(nil), args[1:]...), args[0])
 }
 
 // ── chauf links ───────────────────────────────────────────────────────────────
@@ -366,6 +484,8 @@ func RunLinks(args []string) error {
 	root := workspace.Root()
 	cfg := workspace.Load()
 
+	fmt.Println()
+	printRuntime(cfg)
 	fmt.Println()
 
 	// ── Single project detail ─────────────────────────────────────────────────
@@ -487,10 +607,30 @@ func printProjectDetail(p *projects.Project, root string, cfg workspace.Config) 
 		lib.Pair("  Cert", short(root+"/nginx/certs/"+p.Domain+".crt"))
 	}
 	if p.ProjectType != projects.TypeReverseProxy {
-		lib.Pair("  Socket", short(p.FPMSocketPath(root)))
+		if cfg.Runtime.Engine == string(chauftruntime.EnginePodman) {
+			lib.Pair("  Socket", lib.Gray("container-managed"))
+		} else {
+			lib.Pair("  Socket", short(p.FPMSocketPath(root)))
+		}
 	}
 	lib.Pair("  Nginx", short(root+"/nginx/etc/sites-available/"+p.Slug+".conf"))
 	lib.Pair("  Config", short(p.ConfigPath(root)))
+
+	if cfg.Runtime.Engine == string(chauftruntime.EnginePodman) {
+		rt, err := chauftruntime.ForWorkspace(cfg)
+		if err != nil {
+			lib.Pair("  Services", lib.Gray("unavailable: "+err.Error()))
+			return
+		}
+		nginxStatus := runtimeContainerStatus(rt, chauftruntime.Scope{Service: "nginx"})
+		if p.ProjectType == projects.TypeReverseProxy {
+			lib.Pair("  Services", fmt.Sprintf("nginx %s  /  proxy target localhost:%d", nginxStatus, p.ProxyPort))
+			return
+		}
+		fpmStatus := runtimeContainerStatus(rt, chauftruntime.Scope{Version: p.PHPVersion, Project: p.Path, Dedicated: p.FPM.Dedicated})
+		lib.Pair("  Services", fmt.Sprintf("nginx %s  /  php-fpm %s %s", nginxStatus, p.PHPVersion, fpmStatus))
+		return
+	}
 
 	nginxRunning := pidFileRunning(root + "/nginx/logs/nginx.pid")
 	if p.ProjectType == projects.TypeReverseProxy {
@@ -501,6 +641,20 @@ func printProjectDetail(p *projects.Project, root string, cfg workspace.Config) 
 	fpmRunning := pidFileRunning(root + "/php/" + p.PHPVersion + "/runtime/php-fpm/php-fpm.pid")
 	lib.Pair("  Services", fmt.Sprintf("nginx %s  /  php-fpm %s %s",
 		serviceStatus(nginxRunning), p.PHPVersion, serviceStatus(fpmRunning)))
+}
+
+func runtimeContainerStatus(rt chauftruntime.Runtime, scope chauftruntime.Scope) string {
+	statuses, err := rt.Status(context.Background(), scope)
+	if err != nil || len(statuses) == 0 {
+		return lib.Gray("○ unavailable")
+	}
+	if statuses[0].Healthy {
+		return lib.Green("● running")
+	}
+	if statuses[0].State == "image-missing" {
+		return lib.Red("✗ image missing")
+	}
+	return lib.Gray("○ stopped")
 }
 
 func projectDetailRuntime(p *projects.Project) (string, string) {
@@ -519,8 +673,9 @@ func projectDetailRuntime(p *projects.Project) (string, string) {
 func RunUnlink(args []string) error {
 	flags := flag.NewFlagSet("unlink", flag.ContinueOnError)
 	flags.SetOutput(os.Stdout)
-	lib.SetFlagUsage(flags, "chauf unlink — unregister a project", "chauf unlink [path] [--alias <domain>] [--all] [--yes]")
+	lib.SetFlagUsage(flags, "chauf unlink — unregister a project", "chauf unlink [path] [--site <domain>] [--alias <domain>] [--all] [--yes]")
 	aliasFlag := flags.String("alias", "", "Remove a specific alias domain only")
+	siteFlag := flags.String("site", "", "Find the project by primary domain or alias")
 	allFlag := flags.Bool("all", false, "Remove all aliases then unlink the project")
 	yesFlag := flags.Bool("yes", false, "Skip confirmation prompt")
 	if err := flags.Parse(args); err != nil {
@@ -528,24 +683,39 @@ func RunUnlink(args []string) error {
 	}
 
 	root := workspace.Root()
+	cfg := workspace.Load()
+	printRuntime(cfg)
+	fmt.Println()
 
-	// Resolve target directory
-	cwd, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("get current directory: %w", err)
+	var p *projects.Project
+	var err error
+	if *siteFlag != "" {
+		if flags.NArg() > 0 {
+			return fmt.Errorf("use either a path or --site, not both")
+		}
+		p, err = projects.FindByDomain(root, *siteFlag)
+	} else {
+		// Resolve target directory
+		cwd, cwdErr := os.Getwd()
+		if cwdErr != nil {
+			return fmt.Errorf("get current directory: %w", cwdErr)
+		}
+		dirPath := cwd
+		if flags.NArg() > 0 {
+			dirPath = flags.Arg(0)
+		}
+		p, err = projects.FindByPath(root, dirPath)
 	}
-	dirPath := cwd
-	if flags.NArg() > 0 {
-		dirPath = flags.Arg(0)
-	}
-
-	p, err := projects.FindByPath(root, dirPath)
 	if err != nil {
 		return err
 	}
 	if p == nil {
-		lib.Warn("No project registered for this directory.")
-		lib.Info(lib.Gray("Register with:  chauf link"))
+		if *siteFlag != "" {
+			lib.Warn("No project registered for site " + *siteFlag + ".")
+		} else {
+			lib.Warn("No project registered for this directory.")
+			lib.Info(lib.Gray("Register with:  chauf link"))
+		}
 		return nil
 	}
 
@@ -582,7 +752,7 @@ func RunUnlink(args []string) error {
 	}
 
 	// Reload nginx
-	if projects.IsNginxRunning(root) {
+	if cfg.Runtime.Engine != string(chauftruntime.EnginePodman) && projects.IsNginxRunning(root) {
 		if err := projects.ReloadNginx(root); err != nil {
 			return fmt.Errorf("reload nginx: %w", err)
 		}
@@ -659,6 +829,8 @@ func RunSecure(args []string) error {
 
 	root := workspace.Root()
 	cfg := workspace.Load()
+	printRuntime(cfg)
+	fmt.Println()
 
 	dirPath := *projectPath
 	if dirPath == "" {
@@ -700,15 +872,21 @@ func RunSecure(args []string) error {
 	}
 
 	p.SSL = true
-	if err := projects.WriteNginxConfig(p, root, cfg.Nginx.HTTPPort, cfg.Nginx.HTTPSPort); err != nil {
-		return fmt.Errorf("write nginx config: %w", err)
-	}
-	if err := projects.Save(p, root); err != nil {
-		return fmt.Errorf("save project config: %w", err)
-	}
-	if projects.IsNginxRunning(root) {
-		if err := projects.ReloadNginx(root); err != nil {
-			return fmt.Errorf("reload nginx: %w", err)
+	if cfg.Runtime.Engine == string(chauftruntime.EnginePodman) {
+		if _, err := applyLinkProject(p, root, cfg); err != nil {
+			return err
+		}
+	} else {
+		if err := projects.WriteNginxConfig(p, root, cfg.Nginx.HTTPPort, cfg.Nginx.HTTPSPort); err != nil {
+			return fmt.Errorf("write nginx config: %w", err)
+		}
+		if err := projects.Save(p, root); err != nil {
+			return fmt.Errorf("save project config: %w", err)
+		}
+		if projects.IsNginxRunning(root) {
+			if err := projects.ReloadNginx(root); err != nil {
+				return fmt.Errorf("reload nginx: %w", err)
+			}
 		}
 	}
 
@@ -737,6 +915,8 @@ func RunUnsecure(args []string) error {
 
 	root := workspace.Root()
 	cfg := workspace.Load()
+	printRuntime(cfg)
+	fmt.Println()
 
 	dirPath := *projectPath
 	if dirPath == "" {
@@ -762,15 +942,21 @@ func RunUnsecure(args []string) error {
 	}
 
 	p.SSL = false
-	if err := projects.WriteNginxConfig(p, root, cfg.Nginx.HTTPPort, cfg.Nginx.HTTPSPort); err != nil {
-		return fmt.Errorf("write nginx config: %w", err)
-	}
-	if err := projects.Save(p, root); err != nil {
-		return fmt.Errorf("save project config: %w", err)
-	}
-	if projects.IsNginxRunning(root) {
-		if err := projects.ReloadNginx(root); err != nil {
-			return fmt.Errorf("reload nginx: %w", err)
+	if cfg.Runtime.Engine == string(chauftruntime.EnginePodman) {
+		if _, err := applyLinkProject(p, root, cfg); err != nil {
+			return err
+		}
+	} else {
+		if err := projects.WriteNginxConfig(p, root, cfg.Nginx.HTTPPort, cfg.Nginx.HTTPSPort); err != nil {
+			return fmt.Errorf("write nginx config: %w", err)
+		}
+		if err := projects.Save(p, root); err != nil {
+			return fmt.Errorf("save project config: %w", err)
+		}
+		if projects.IsNginxRunning(root) {
+			if err := projects.ReloadNginx(root); err != nil {
+				return fmt.Errorf("reload nginx: %w", err)
+			}
 		}
 	}
 
@@ -845,20 +1031,26 @@ func removeAlias(p *projects.Project, root string, alias string) error {
 
 	p.Aliases = append(p.Aliases[:idx], p.Aliases[idx+1:]...)
 
-	if err := projects.WriteNginxConfig(p, root, wCfg.Nginx.HTTPPort, wCfg.Nginx.HTTPSPort); err != nil {
-		return err
-	}
-	if p.SSL {
-		if err := projects.RunMkcert(root, p.Domain, p.AllDomains()); err != nil {
-			lib.Warn("Could not regenerate SSL certificate: " + err.Error())
+	if wCfg.Runtime.Engine == string(chauftruntime.EnginePodman) {
+		if _, err := applyLinkProject(p, root, wCfg); err != nil {
+			return err
 		}
-	}
-	if err := projects.Save(p, root); err != nil {
-		return err
-	}
-	if projects.IsNginxRunning(root) {
-		if err := projects.ReloadNginx(root); err != nil {
-			return fmt.Errorf("reload nginx: %w", err)
+	} else {
+		if err := projects.WriteNginxConfig(p, root, wCfg.Nginx.HTTPPort, wCfg.Nginx.HTTPSPort); err != nil {
+			return err
+		}
+		if p.SSL {
+			if err := projects.RunMkcert(root, p.Domain, p.AllDomains()); err != nil {
+				lib.Warn("Could not regenerate SSL certificate: " + err.Error())
+			}
+		}
+		if err := projects.Save(p, root); err != nil {
+			return err
+		}
+		if projects.IsNginxRunning(root) {
+			if err := projects.ReloadNginx(root); err != nil {
+				return fmt.Errorf("reload nginx: %w", err)
+			}
 		}
 	}
 
@@ -882,6 +1074,77 @@ func ensureSSL(p *projects.Project, root string) error {
 		return nil
 	}
 	return projects.RunMkcert(root, p.Domain, p.AllDomains())
+}
+
+// applyLinkProject is the single mutation boundary for link. Wizard and
+// noninteractive callers both construct intent before entering this function.
+func applyLinkProject(p *projects.Project, root string, cfg workspace.Config) (projects.ApplyResult, error) {
+	plan := projects.SetupPlan{
+		Facts:   projects.ProjectFacts{Path: p.Path, Slug: p.Slug, Type: p.ProjectType, DocumentRoot: projects.DocumentRoot(p.Path, p.ProjectType), Existing: p},
+		Choices: projects.SetupChoices{PHPVersion: p.PHPVersion, Domain: p.Domain, Aliases: p.Aliases, SSL: p.SSL, Dedicated: p.FPM.Dedicated},
+	}
+	return projects.ApplyProjectSetup(context.Background(), plan, projects.ApplyDependencies{
+		Save: func() error { return projects.Save(p, root) },
+		GenerateSSL: func() error {
+			if !p.SSL {
+				return nil
+			}
+			requested := p.SSL
+			if err := ensureSSL(p, root); err != nil {
+				return err
+			}
+			// mkcert may downgrade SSL to HTTP when trust prerequisites are
+			// unavailable; persist that explicit degraded intent.
+			if requested && !p.SSL {
+				return projects.Save(p, root)
+			}
+			return nil
+		},
+		PrepareRuntime: func() error {
+			if p.FPM.Dedicated {
+				if err := writeDedicatedFPMConfig(p, root); err != nil {
+					return fmt.Errorf("write dedicated FPM config: %w", err)
+				}
+			}
+			if p.ProjectType == projects.TypeReverseProxy {
+				return nil
+			}
+			rt, err := chauftruntime.ForWorkspace(cfg)
+			if err != nil {
+				return err
+			}
+			return rt.EnsureLinkedProject(context.Background(), root, filepath.Join(root, "nginx", "container.conf"), filepath.Join(root, "nginx", "certs"), cfg.Nginx.HTTPPort, cfg.Nginx.HTTPSPort, chauftruntime.ProjectSpec{
+				Slug: p.Slug, Path: p.Path, Version: p.PHPVersion, Domains: p.AllDomains(), Dedicated: p.FPM.Dedicated, SSL: p.SSL, CertName: p.Domain,
+			})
+		},
+		GenerateNginx: func() error {
+			if err := projects.WriteNginxConfig(p, root, cfg.Nginx.HTTPPort, cfg.Nginx.HTTPSPort); err != nil {
+				return fmt.Errorf("write nginx config: %w", err)
+			}
+			return nil
+		},
+		EnableRoute: func() error {
+			if err := projects.EnableNginxSite(p, root); err != nil {
+				return fmt.Errorf("enable nginx site: %w", err)
+			}
+			return nil
+		},
+		Reload: func() error {
+			if !projects.IsNginxRunning(root) {
+				return nil
+			}
+			if err := projects.ReloadNginx(root); err != nil {
+				return fmt.Errorf("reload nginx: %w", err)
+			}
+			return nil
+		},
+		Readiness: func() (string, error) {
+			if cfg.Runtime.Engine == string(chauftruntime.EnginePodman) || projects.IsNginxRunning(root) {
+				return "selected runtime and nginx route are ready", nil
+			}
+			return "project intent and nginx route were saved; services are not running", fmt.Errorf("services are not running")
+		},
+	})
 }
 
 func writeDedicatedFPMConfig(p *projects.Project, root string) error {

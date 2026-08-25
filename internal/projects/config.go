@@ -80,7 +80,35 @@ func Save(p *Project, workspaceRoot string) error {
 		return fmt.Errorf("create project dir: %w", err)
 	}
 	p.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
-	return os.WriteFile(p.ConfigPath(workspaceRoot), []byte(marshalProject(p)), 0644)
+	path := p.ConfigPath(workspaceRoot)
+	if previous, err := os.ReadFile(path); err == nil {
+		if err := os.WriteFile(path+".bak", previous, 0644); err != nil {
+			return fmt.Errorf("backup project config: %w", err)
+		}
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("read project config before save: %w", err)
+	}
+	tmp, err := os.CreateTemp(dir, "config.yaml.tmp-")
+	if err != nil {
+		return fmt.Errorf("create project config temp file: %w", err)
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+	if err := tmp.Chmod(0644); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("set project config permissions: %w", err)
+	}
+	if _, err := tmp.WriteString(marshalProject(p)); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("write project config: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close project config: %w", err)
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		return fmt.Errorf("replace project config: %w", err)
+	}
+	return nil
 }
 
 // Load reads a project config from disk.
@@ -148,6 +176,22 @@ func FindByPath(workspaceRoot, dirPath string) (*Project, error) {
 	for _, p := range projects {
 		if p.Path == dirPath {
 			return p, nil
+		}
+	}
+	return nil, nil
+}
+
+// FindByDomain returns the project owning a primary domain or alias.
+func FindByDomain(workspaceRoot, domain string) (*Project, error) {
+	projects, err := ListAll(workspaceRoot)
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range projects {
+		for _, candidate := range p.AllDomains() {
+			if strings.EqualFold(candidate, strings.TrimSpace(domain)) {
+				return p, nil
+			}
 		}
 	}
 	return nil, nil

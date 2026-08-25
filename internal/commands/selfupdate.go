@@ -26,8 +26,8 @@ func RunSelfUpdate(args []string, currentVersion string) error {
 	flags := flag.NewFlagSet("self-update", flag.ContinueOnError)
 	flags.SetOutput(os.Stdout)
 	lib.SetFlagUsage(flags, "chauf self-update — update the chauf binary", "chauf self-update [--dev] [--dry-run] [--version <tag>]")
-	dev        := flags.Bool("dev", false, "Build from local source repository")
-	dryRun     := flags.Bool("dry-run", false, "Show what would happen without replacing the binary")
+	dev := flags.Bool("dev", false, "Build from local source repository")
+	dryRun := flags.Bool("dry-run", false, "Show what would happen without replacing the binary")
 	reqVersion := flags.String("version", "", "Install a specific release version (e.g. v2.1.0)")
 
 	if err := flags.Parse(args); err != nil {
@@ -165,11 +165,11 @@ func releaseUpdate(currentBin, currentVersion, reqVersion string, dryRun bool) e
 		return nil
 	}
 
-	plat         := currentPlatform()
-	filename     := fmt.Sprintf("chauf_%s_%s.tar.gz", targetVersion, plat)
-	baseURL      := fmt.Sprintf("https://github.com/%s/releases/download/%s", githubRepo, targetVersion)
-	downloadURL  := baseURL + "/" + filename
-	checksumURL  := fmt.Sprintf("%s/chauf_%s_checksums.txt", baseURL, targetVersion)
+	plat := currentPlatform()
+	filename := fmt.Sprintf("chauf_%s_%s.tar.gz", targetVersion, plat)
+	baseURL := fmt.Sprintf("https://github.com/%s/releases/download/%s", githubRepo, targetVersion)
+	downloadURL := baseURL + "/" + filename
+	checksumURL := fmt.Sprintf("%s/chauf_%s_checksums.txt", baseURL, targetVersion)
 
 	if dryRun {
 		lib.Info(fmt.Sprintf("Would download  %s  (%s)", filename, plat))
@@ -232,7 +232,7 @@ func releaseUpdate(currentBin, currentVersion, reqVersion string, dryRun bool) e
 }
 
 func fetchLatestVersion() (string, error) {
-	url  := fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", githubRepo)
+	url := fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", githubRepo)
 	body, err := httpGetString(url)
 	if err != nil {
 		return "", fmt.Errorf("could not reach GitHub: %w", err)

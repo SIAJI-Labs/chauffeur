@@ -13,6 +13,7 @@ import (
 
 	"github.com/siegg/chauffeur/internal/lib"
 	"github.com/siegg/chauffeur/internal/projects"
+	chauftruntime "github.com/siegg/chauffeur/internal/runtime"
 	"github.com/siegg/chauffeur/internal/services"
 	"github.com/siegg/chauffeur/internal/system"
 	"github.com/siegg/chauffeur/internal/workspace"
@@ -65,6 +66,7 @@ func RunDoctor(args []string) error {
 
 	fmt.Println()
 	fmt.Printf("  %s\n", lib.Bold("Chauffeur Doctor"))
+	printRuntime(cfg)
 	fmt.Println()
 
 	var all []checkResult
@@ -75,8 +77,8 @@ func RunDoctor(args []string) error {
 		all = append(all, r...)
 	}
 	if *doPHP {
-		r := doctorPHPDeps()
-		printDoctorSection("PHP Build Libraries", r)
+		r := doctorPHPRuntime(cfg)
+		printDoctorSection("PHP Runtime", r)
 		all = append(all, r...)
 	}
 	if *doSSL {
@@ -152,6 +154,30 @@ func RunDoctor(args []string) error {
 		return fmt.Errorf("doctor found %d issue(s)", failed)
 	}
 	return nil
+}
+
+func doctorPHPRuntime(cfg workspace.Config) []checkResult {
+	if cfg.Runtime.Engine != string(chauftruntime.EnginePodman) {
+		return doctorPHPDeps()
+	}
+	results := []checkResult{}
+	rt := chauftruntime.Podman{Runner: chauftruntime.ExecRunner{}}
+	if err := rt.Preflight(context.Background()); err != nil {
+		return []checkResult{{name: "rootless Podman", status: err.Error(), fix: "chauf config runtime native"}}
+	}
+	for _, version := range chauftruntime.PHPParityTargets() {
+		parity, err := chauftruntime.CheckPHPParity(context.Background(), chauftruntime.ExecRunner{}, version)
+		if err != nil {
+			results = append(results, checkResult{name: "PHP " + version, status: err.Error(), fix: "chauf install php " + version + " --build"})
+			continue
+		}
+		if parity.State == chauftruntime.ParityUnavailable {
+			results = append(results, checkResult{name: "PHP " + version, status: parity.Evidence, fix: "chauf install php " + version + " --build"})
+			continue
+		}
+		results = append(results, checkResult{name: "PHP " + version, ok: parity.State == chauftruntime.ParityVerified, status: parity.Evidence, fix: "chauf install php " + version + " --build"})
+	}
+	return results
 }
 
 // ── check sections ─────────────────────────────────────────────────────────────
@@ -234,7 +260,13 @@ func doctorPHPDeps() []checkResult {
 			continue
 		}
 		ver := strings.TrimSpace(string(out))
-		results = append(results, checkResult{name: name, ok: true, status: lib.Gray(ver)})
+		result := checkResult{name: name, ok: true, status: lib.Gray(ver)}
+		// Keep remediation available to diagnostics even when the dependency is
+		// currently installed; it is unused for healthy command output.
+		if d.display == "libpq" {
+			result.fix = buildInstallCmd(dm, d.pkgs)
+		}
+		results = append(results, result)
 	}
 	return results
 }
@@ -605,7 +637,7 @@ func doctorNetwork(root string, cfg workspace.Config) []checkResult {
 	for _, port := range []int{cfg.Nginx.HTTPPort, cfg.Nginx.HTTPSPort} {
 		label := fmt.Sprintf("port %d", port)
 
-		if nginxSvc.IsRunning() {
+		if cfg.Runtime.Engine != string(chauftruntime.EnginePodman) && nginxSvc.IsRunning() {
 			// PID file confirms our nginx owns this port.
 			results = append(results, checkResult{
 				name: label, ok: true,

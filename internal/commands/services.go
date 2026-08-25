@@ -2,18 +2,21 @@ package commands
 
 import (
 	"bufio"
+	"context"
 	"flag"
 	"fmt"
 	"io"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/siegg/chauffeur/internal/lib"
 	"github.com/siegg/chauffeur/internal/projects"
+	chauftruntime "github.com/siegg/chauffeur/internal/runtime"
 	"github.com/siegg/chauffeur/internal/services"
 	"github.com/siegg/chauffeur/internal/workspace"
 )
@@ -33,13 +36,16 @@ func RunStart(args []string) error {
 	lib.Step("workspace:  " + shortenHome(root))
 
 	cfg := workspace.Load()
+	printRuntimeStep(cfg)
 	lib.Step(fmt.Sprintf("ports:      HTTP %d  HTTPS %d", cfg.Nginx.HTTPPort, cfg.Nginx.HTTPSPort))
-
-	mgr := services.NewManager(root)
-
 	fmt.Println()
 	lib.Info("Starting services...")
 	fmt.Println()
+	if cfg.Runtime.Engine == string(chauftruntime.EnginePodman) {
+		return startPodmanServices(root, cfg)
+	}
+
+	mgr := services.NewManager(root)
 
 	if *projectPath != "" {
 		return startForProject(mgr, root, *projectPath)
@@ -192,10 +198,15 @@ func RunStop(args []string) error {
 
 	root := workspace.Root()
 	mgr := services.NewManager(root)
-
+	cfg := workspace.Load()
+	fmt.Println()
+	printRuntime(cfg)
 	fmt.Println()
 	lib.Info("Stopping services...")
 	fmt.Println()
+	if cfg.Runtime.Engine == string(chauftruntime.EnginePodman) {
+		return stopPodmanServices(root)
+	}
 
 	if *projectPath != "" {
 		return stopForProject(mgr, root, *projectPath)
@@ -212,6 +223,164 @@ func RunStop(args []string) error {
 	lib.Success("All services stopped.")
 	fmt.Println()
 	return nil
+}
+
+func showPodmanStatus(root string, detail bool, projectPath string) error {
+	ctx := context.Background()
+	rt, err := chauftruntime.ForWorkspace(workspace.Load())
+	if err != nil {
+		return err
+	}
+	if projectPath != "" {
+		p, err := projects.FindByPath(root, projectPath)
+		if err != nil {
+			return err
+		}
+		if p == nil {
+			return fmt.Errorf("no project registered at %s", projectPath)
+		}
+		if p.ProjectType == projects.TypeReverseProxy {
+			lib.Info(fmt.Sprintf("%s uses an external proxy runtime", p.Slug))
+			return nil
+		}
+		statuses, err := rt.Status(ctx, chauftruntime.Scope{Version: p.PHPVersion, Project: p.Path, Dedicated: p.FPM.Dedicated})
+		if err != nil {
+			return err
+		}
+		for _, status := range statuses {
+			printPodmanStatus(status, detail)
+		}
+		return nil
+	}
+	all, err := projects.ListAll(root)
+	if err != nil {
+		return err
+	}
+	byName := make(map[string]chauftruntime.ServiceStatus)
+	linked := make(map[string][]string)
+	stale := make(map[string][]string)
+	checked := make(map[string]bool)
+	order := make([]string, 0)
+	for _, p := range all {
+		if p.ProjectType == projects.TypeReverseProxy {
+			continue
+		}
+		scope := chauftruntime.Scope{Version: p.PHPVersion, Project: p.Path, Dedicated: p.FPM.Dedicated}
+		name := chauftruntime.ContainerName(scope)
+		if !containsString(linked[name], p.Slug) {
+			linked[name] = append(linked[name], p.Slug)
+		}
+		if info, statErr := os.Stat(p.Path); statErr != nil || !info.IsDir() {
+			stale[name] = append(stale[name], p.Slug+" (missing path)")
+		}
+		if checked[name] {
+			continue
+		}
+		checked[name] = true
+		statuses, statusErr := rt.Status(ctx, scope)
+		if statusErr != nil {
+			lib.Warn(fmt.Sprintf("php-fpm %s: %s", p.PHPVersion, statusErr))
+			continue
+		}
+		for _, status := range statuses {
+			mergePodmanStatus(byName, linked, &order, status, p.Slug)
+		}
+	}
+	nginx, err := rt.Status(ctx, chauftruntime.Scope{Service: "nginx"})
+	if err != nil {
+		lib.Warn(fmt.Sprintf("nginx: %s", err))
+	} else {
+		for _, status := range nginx {
+			mergePodmanStatus(byName, linked, &order, status, "")
+		}
+	}
+	order = podmanStatusOrderFirst(order, byName, "nginx")
+	if !detail {
+		printStatusTableHeader()
+	}
+	for _, name := range order {
+		status := byName[name]
+		status.Projects = append([]string(nil), linked[name]...)
+		sort.Strings(status.Projects)
+		if len(stale[name]) > 0 {
+			sort.Strings(stale[name])
+			status.Evidence += "; stale projects: " + strings.Join(stale[name], ", ")
+		}
+		printPodmanStatus(status, detail)
+	}
+	return nil
+}
+
+func podmanStatusOrderFirst(order []string, statuses map[string]chauftruntime.ServiceStatus, role string) []string {
+	ordered := make([]string, 0, len(order))
+	for _, name := range order {
+		if statuses[name].Role == role {
+			ordered = append(ordered, name)
+		}
+	}
+	for _, name := range order {
+		if statuses[name].Role != role {
+			ordered = append(ordered, name)
+		}
+	}
+	return ordered
+}
+
+func mergePodmanStatus(byName map[string]chauftruntime.ServiceStatus, linked map[string][]string, order *[]string, status chauftruntime.ServiceStatus, project string) {
+	if _, exists := byName[status.Name]; !exists {
+		*order = append(*order, status.Name)
+		byName[status.Name] = status
+	}
+	if project != "" && !containsString(linked[status.Name], project) {
+		linked[status.Name] = append(linked[status.Name], project)
+	}
+}
+
+func containsString(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
+}
+
+func printPodmanStatus(status chauftruntime.ServiceStatus, detail bool) {
+	if !detail {
+		printPodmanStatusRow(status)
+		return
+	}
+	state := lib.Gray("○ " + status.State)
+	if status.Healthy {
+		state = lib.Green("● running")
+	} else if status.State == "image-missing" {
+		state = lib.Red("✗ image missing")
+	}
+	fmt.Printf("  %-24s %s\n", podmanStatusLabel(status), state)
+	lib.Pair("    Container", status.Container)
+	lib.Pair("    Image", status.Image)
+	lib.Pair("    Evidence", status.Evidence)
+	if len(status.Projects) > 0 {
+		lib.Pair("    Projects", strings.Join(status.Projects, ", "))
+	}
+}
+
+func printPodmanStatusRow(status chauftruntime.ServiceStatus) {
+	label := podmanStatusLabel(status)
+	state := lib.Gray("○ stopped")
+	if status.Healthy {
+		state = lib.Green("● running")
+	} else if status.State == "image-missing" {
+		state = lib.Red("✗ image missing")
+	}
+	fmt.Printf(" %-22s  %-20s  %-8s  %-10s  %s\n", label, state, "-", "-", "-")
+}
+
+func podmanStatusLabel(status chauftruntime.ServiceStatus) string {
+	if status.Label != "" {
+		return status.Label
+	}
+	return status.Name
 }
 
 func stopForProject(mgr *services.Manager, root, path string) error {
@@ -252,6 +421,76 @@ func printStopResult(r services.StopResult) {
 	lib.Info(fmt.Sprintf("  %s  %-22s  stopped", lib.Green("✓"), r.Label))
 }
 
+func startPodmanServices(root string, cfg workspace.Config) error {
+	ctx := context.Background()
+	rt, err := chauftruntime.ForWorkspace(cfg)
+	if err != nil {
+		return err
+	}
+	all, err := projects.ListAll(root)
+	if err != nil {
+		return err
+	}
+	specs := make([]chauftruntime.ProjectSpec, 0, len(all))
+	for _, p := range all {
+		if p.ProjectType == projects.TypeReverseProxy {
+			continue
+		}
+		specs = append(specs, chauftruntime.ProjectSpec{Slug: p.Slug, Path: p.Path, Version: p.PHPVersion, Domains: p.AllDomains(), Dedicated: p.FPM.Dedicated, SSL: p.SSL, CertName: p.Domain})
+	}
+	if len(specs) == 0 {
+		return fmt.Errorf("no PHP project is linked; Podman nginx requires a linked PHP project")
+	}
+	configPath := filepath.Join(root, "nginx", "container.conf")
+	scope, err := chauftruntime.BuildWorkspaceScope(root, configPath, filepath.Join(root, "nginx", "certs"), cfg.Nginx.HTTPPort, cfg.Nginx.HTTPSPort, specs)
+	if err != nil {
+		return err
+	}
+	for _, container := range scope.PHPContainers {
+		lib.Info(fmt.Sprintf("  %s  %s", lib.Gray("·"), chauftruntime.ContainerName(container.Scope)))
+	}
+	if err := rt.EnsureWorkspace(ctx, scope); err != nil {
+		return err
+	}
+	lib.Success("All services running.")
+	return nil
+}
+
+func stopPodmanServices(root string) error {
+	ctx := context.Background()
+	rt, err := chauftruntime.ForWorkspace(workspace.Load())
+	if err != nil {
+		return err
+	}
+	all, err := projects.ListAll(root)
+	if err != nil {
+		return err
+	}
+	seen := make(map[string]bool)
+	if err := rt.Stop(ctx, chauftruntime.Scope{Service: "nginx"}); err != nil {
+		lib.Warn(err.Error())
+	}
+	for _, p := range all {
+		if p.ProjectType == projects.TypeReverseProxy {
+			continue
+		}
+		name := chauftruntime.FPMContainerName(p.PHPVersion)
+		if p.FPM.Dedicated {
+			name = chauftruntime.DedicatedContainerName(p.Slug)
+		}
+		if seen[name] {
+			continue
+		}
+		seen[name] = true
+		scope := chauftruntime.Scope{Version: p.PHPVersion, Project: p.Path, Dedicated: p.FPM.Dedicated}
+		if err := rt.Stop(ctx, scope); err != nil {
+			lib.Warn(err.Error())
+		}
+	}
+	lib.Success("All services stopped.")
+	return nil
+}
+
 // ── chauf restart ─────────────────────────────────────────────────────────────
 
 func RunRestart(args []string) error {
@@ -265,11 +504,16 @@ func RunRestart(args []string) error {
 
 	root := workspace.Root()
 	mgr := services.NewManager(root)
+	cfg := workspace.Load()
 
 	// chauf restart [nginx|php|fpm [version]]
 	target := flags.Arg(0)
 
 	fmt.Println()
+	printRuntime(cfg)
+	if cfg.Runtime.Engine == string(chauftruntime.EnginePodman) {
+		return restartPodmanServices(root, target, flags.Arg(1), *projectPath)
+	}
 
 	switch strings.ToLower(target) {
 	case "nginx":
@@ -352,6 +596,78 @@ func RunRestart(args []string) error {
 	return nil
 }
 
+func restartPodmanServices(root, target, version, projectPath string) error {
+	ctx := context.Background()
+	lib.Info("Reloading services...")
+	fmt.Println()
+	rt, err := chauftruntime.ForWorkspace(workspace.Load())
+	if err != nil {
+		return err
+	}
+	if projectPath != "" {
+		p, err := projects.FindByPath(root, projectPath)
+		if err != nil {
+			return err
+		}
+		if p == nil {
+			return fmt.Errorf("no project registered at %s", projectPath)
+		}
+		name := chauftruntime.FPMContainerName(p.PHPVersion)
+		if p.FPM.Dedicated {
+			name = chauftruntime.DedicatedContainerName(p.Slug)
+		}
+		if err := rt.Restart(ctx, chauftruntime.Scope{Version: p.PHPVersion, Project: p.Path, Dedicated: p.FPM.Dedicated}); err != nil {
+			return err
+		}
+		lib.Success(fmt.Sprintf("%s restarted", name))
+		return nil
+	}
+	switch strings.ToLower(target) {
+	case "nginx":
+		if err := rt.Restart(ctx, chauftruntime.Scope{Service: "nginx"}); err != nil {
+			return err
+		}
+		lib.Success("nginx reloaded")
+	case "php", "fpm":
+		if version == "" {
+			version = workspace.Load().PHP.DefaultVersion
+		}
+		if err := rt.Restart(ctx, chauftruntime.Scope{Version: version}); err != nil {
+			return err
+		}
+		lib.Success(fmt.Sprintf("php-fpm %s reloaded", version))
+	case "":
+		if err := rt.Restart(ctx, chauftruntime.Scope{Service: "nginx"}); err != nil {
+			lib.Warn(err.Error())
+		}
+		all, err := projects.ListAll(root)
+		if err != nil {
+			return err
+		}
+		seen := make(map[string]bool)
+		for _, p := range all {
+			if p.ProjectType == projects.TypeReverseProxy {
+				continue
+			}
+			name := chauftruntime.FPMContainerName(p.PHPVersion)
+			if p.FPM.Dedicated {
+				name = chauftruntime.DedicatedContainerName(p.Slug)
+			}
+			if seen[name] {
+				continue
+			}
+			seen[name] = true
+			if err := rt.Restart(ctx, chauftruntime.Scope{Version: p.PHPVersion, Project: p.Path, Dedicated: p.FPM.Dedicated}); err != nil {
+				return err
+			}
+		}
+		lib.Success("All services reloaded.")
+	default:
+		return fmt.Errorf("unknown restart target %q", target)
+	}
+	return nil
+}
+
 func restartForProject(mgr *services.Manager, root, path string) error {
 	p, err := projects.FindByPath(root, path)
 	if err != nil {
@@ -390,8 +706,14 @@ func RunStatus(args []string) error {
 
 	root := workspace.Root()
 	mgr := services.NewManager(root)
+	cfg := workspace.Load()
 
 	fmt.Println()
+	printRuntime(cfg)
+	fmt.Println()
+	if cfg.Runtime.Engine == string(chauftruntime.EnginePodman) {
+		return showPodmanStatus(root, *detail, *projectPath)
+	}
 
 	if *projectPath != "" {
 		return statusForProject(mgr, root, *projectPath)
@@ -416,10 +738,7 @@ func RunStatus(args []string) error {
 
 	// Tabular output
 	const lblW = 22
-	header := fmt.Sprintf(" %-*s  %-12s  %-8s  %-10s  %s",
-		lblW, "Service", "Status", "PID", "Uptime", "Memory")
-	sep := strings.Repeat("─", len(header))
-	fmt.Printf(" %s\n%s\n", lib.Bold(header[1:]), sep)
+	printStatusTableHeader()
 
 	printStatusRow(lblW, "nginx", nginx.IsRunning(), nginx.PID(), nginx.Uptime(), nginx.MemoryMB())
 	for _, fpm := range fpms {
@@ -444,6 +763,14 @@ func RunStatus(args []string) error {
 
 	fmt.Println()
 	return nil
+}
+
+func printStatusTableHeader() {
+	const lblW = 22
+	header := fmt.Sprintf(" %-*s  %-12s  %-8s  %-10s  %s",
+		lblW, "Service", "Status", "PID", "Uptime", "Memory")
+	sep := strings.Repeat("─", len(header))
+	fmt.Printf(" %s\n%s\n", lib.Bold(header[1:]), sep)
 }
 
 func printStatusRow(lblW int, label string, running bool, pid int, uptime time.Duration, memMB int) {
@@ -553,6 +880,37 @@ func RunLogs(args []string) error {
 	root := workspace.Root()
 	target := flags.Arg(0)  // nginx | access | php | php <version>
 	version := flags.Arg(1) // only used when target == "php"
+	cfg := workspace.Load()
+	fmt.Println()
+	printRuntime(cfg)
+	fmt.Println()
+	if cfg.Runtime.Engine == string(chauftruntime.EnginePodman) {
+		rt, err := chauftruntime.ForWorkspace(cfg)
+		if err != nil {
+			return err
+		}
+		if target == "php" || target == "fpm" {
+			if version == "" {
+				version = workspace.Load().PHP.DefaultVersion
+			}
+			logs, err := rt.Logs(context.Background(), chauftruntime.Scope{Version: version}, chauftruntime.LogOptions{Follow: *follow, Lines: *lines})
+			if err != nil {
+				return err
+			}
+			fmt.Printf("  %s\n\n", lib.Gray("→ PHP-FPM container logs"))
+			fmt.Print(logs)
+			return nil
+		}
+		if target == "" || target == "nginx" || target == "error" || target == "access" {
+			logs, err := rt.Logs(context.Background(), chauftruntime.Scope{Service: "nginx"}, chauftruntime.LogOptions{Follow: *follow, Lines: *lines})
+			if err != nil {
+				return err
+			}
+			fmt.Printf("  %s\n\n", lib.Gray("→ nginx container logs"))
+			fmt.Print(logs)
+			return nil
+		}
+	}
 
 	var logPath string
 
