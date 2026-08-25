@@ -3,10 +3,12 @@ package commands
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/siegg/chauffeur/internal/installers"
 	"github.com/siegg/chauffeur/internal/lib"
+	chauftruntime "github.com/siegg/chauffeur/internal/runtime"
 	"github.com/siegg/chauffeur/internal/workspace"
 )
 
@@ -17,6 +19,8 @@ func RunConfig(args []string) error {
 	}
 
 	switch strings.ToLower(args[0]) {
+	case "runtime":
+		return configRuntime(args[1:])
 	case "php":
 		return configPHP(args[1:])
 	case "nginx":
@@ -37,6 +41,7 @@ func configHelp() {
 	fmt.Println()
 	fmt.Printf("  %s\n", lib.Bold("Usage:"))
 	fmt.Println("    chauf config php [version] [key] [value]")
+	fmt.Println("    chauf config runtime [native|podman]")
 	fmt.Println("    chauf config nginx [key] [value]")
 	fmt.Println()
 	fmt.Printf("  %s\n", lib.Bold("Examples:"))
@@ -49,8 +54,28 @@ func configHelp() {
 	fmt.Println()
 }
 
+func configRuntime(args []string) error {
+	cfg := workspace.Load()
+	if len(args) == 0 {
+		fmt.Println()
+		lib.Pair("Runtime engine", cfg.Runtime.Engine)
+		fmt.Println()
+		return nil
+	}
+	if len(args) != 1 {
+		return fmt.Errorf("usage: chauf config runtime [native|podman]")
+	}
+	if err := workspace.SetRuntimeEngine(strings.ToLower(args[0])); err != nil {
+		return err
+	}
+	fmt.Printf("  %s runtime.engine = %s\n", lib.Green("✓"), strings.ToLower(args[0]))
+	return nil
+}
+
 func configPHP(args []string) error {
 	cfg := workspace.Load()
+	printRuntime(cfg)
+	fmt.Println()
 
 	if len(args) == 0 {
 		// List all PHP versions with configs
@@ -60,8 +85,16 @@ func configPHP(args []string) error {
 	version := args[0]
 	if _, ok := cfg.PHP.Versions[version]; !ok {
 		// Check if PHP version is installed
-		root := workspace.Root()
-		installed := installers.ListInstalledPHP(root)
+		var installed []string
+		if cfg.Runtime.Engine == string(chauftruntime.EnginePodman) {
+			for _, supported := range installers.SupportedPHPVersions {
+				if isInstalledPHPVersion(supported) {
+					installed = append(installed, supported)
+				}
+			}
+		} else {
+			installed = installers.ListInstalledPHP(workspace.Root())
+		}
 		found := false
 		for _, v := range installed {
 			if v == version {
@@ -132,9 +165,13 @@ func configPHP(args []string) error {
 	}
 
 	// Regenerate limits.ini
-	inst, err := installers.NewPHPInstaller(version, installers.BuildOpts{})
-	if err == nil {
-		inst.WritePHPConfig(phpCfg)
+	if cfg.Runtime.Engine != string(chauftruntime.EnginePodman) {
+		inst, err := installers.NewPHPInstaller(version, installers.BuildOpts{})
+		if err == nil {
+			inst.WritePHPConfig(phpCfg)
+		}
+	} else {
+		lib.Info(lib.Gray("PHP settings were saved for the Podman runtime; rebuild the image to bake them into a new image."))
 	}
 
 	fmt.Printf("  %s %s.%s = %s\n", lib.Green("✓"), version, key, value)
@@ -194,6 +231,8 @@ func configPHPShow(version string, cfg workspace.PHPVersionConfig) error {
 
 func configNginx(args []string) error {
 	cfg := workspace.Load()
+	printRuntime(cfg)
+	fmt.Println()
 
 	if len(args) == 0 {
 		return configNginxShow(cfg)
@@ -207,7 +246,7 @@ func configNginx(args []string) error {
 	value := args[1]
 
 	// Validate key
-	validKeys := []string{"upload_max_size"}
+	validKeys := []string{"http_port", "https_port", "upload_max_size"}
 	valid := false
 	for _, k := range validKeys {
 		if k == key {
@@ -217,6 +256,12 @@ func configNginx(args []string) error {
 	}
 	if !valid {
 		return fmt.Errorf("invalid key %q — valid keys: %s", key, strings.Join(validKeys, ", "))
+	}
+	if key == "http_port" || key == "https_port" {
+		port, err := strconv.Atoi(value)
+		if err != nil || port < 1 || port > 65535 {
+			return fmt.Errorf("%s must be a port between 1 and 65535", key)
+		}
 	}
 
 	// Save to chauffeur.yaml
@@ -238,6 +283,8 @@ func configNginxShow(cfg workspace.Config) error {
 	fmt.Println()
 	fmt.Printf("  %s\n", lib.Bold("nginx"))
 	fmt.Println()
+	lib.Pair("http_port", strconv.Itoa(cfg.Nginx.HTTPPort))
+	lib.Pair("https_port", strconv.Itoa(cfg.Nginx.HTTPSPort))
 	if cfg.Nginx.UploadMaxSize != "" {
 		lib.Pair("upload_max_size", cfg.Nginx.UploadMaxSize)
 		fmt.Printf("  %s\n", lib.Gray("(override — empty value to reset and follow PHP)"))

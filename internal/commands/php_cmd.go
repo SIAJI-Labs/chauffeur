@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
@@ -12,12 +13,20 @@ import (
 	"github.com/siegg/chauffeur/internal/installers"
 	"github.com/siegg/chauffeur/internal/lib"
 	"github.com/siegg/chauffeur/internal/projects"
+	"github.com/siegg/chauffeur/internal/runtime"
 	"github.com/siegg/chauffeur/internal/workspace"
 )
 
 // isInstalledPHPVersion checks if a version string matches an installed PHP.
 func isInstalledPHPVersion(version string) bool {
+	if mm := installers.MajorMinor(version); mm != "" {
+		version = mm
+	}
 	root := workspace.Root()
+	if workspace.Load().Runtime.Engine == string(runtime.EnginePodman) {
+		result, err := (runtime.ExecRunner{}).Run(context.Background(), "image", "exists", runtime.PHPImage(version))
+		return err == nil && result.ExitCode == 0
+	}
 	installed := installers.ListInstalledPHP(root)
 	for _, v := range installed {
 		if v == version {
@@ -51,6 +60,9 @@ func looksLikePHPVersion(s string) bool {
 // (for composer commands) or directly via PHP binary.
 func runPHPExtended(version string, args []string) error {
 	root := workspace.Root()
+	if workspace.Load().Runtime.Engine == string(runtime.EnginePodman) {
+		return runPHPInPodman(version, args)
+	}
 
 	// Verify PHP is installed
 	phpBin := filepath.Join(root, "php", version, "bin", "php")
@@ -99,6 +111,69 @@ func runPHPExtended(version string, args []string) error {
 	return syscall.Exec(execPath, execArgs, env)
 }
 
+func runPHPInPodman(version string, args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("Usage: chauf php <version> <command> [args...]")
+	}
+	command := args
+	switch args[0] {
+	case "composer":
+		command = append([]string{"composer"}, args[1:]...)
+	case "php":
+		command = append([]string{"php"}, args[1:]...)
+	case "php-fpm":
+		command = append([]string{"php-fpm"}, args[1:]...)
+	default:
+		command = append([]string{"php"}, args...)
+	}
+	ctx := context.Background()
+	executor, err := runtime.ForWorkspace(workspace.Load())
+	if err != nil {
+		return err
+	}
+	cwd := mustWorkingDirectory()
+	scope := runtime.Scope{Workspace: workspace.Root(), Version: version}
+	workdir := "/workspace"
+	if project, findErr := projects.FindByPath(workspace.Root(), cwd); findErr == nil && project != nil {
+		scope.Project = project.Path
+		scope.Dedicated = project.FPM.Dedicated
+		workdir = "/workspace/" + project.Slug
+	}
+
+	// A workspace start already mounts all linked projects into the shared
+	// container. Reuse that container instead of trying to add the CLI cwd as a
+	// conflicting single-project mount.
+	statuses, statusErr := executor.Status(ctx, scope)
+	if statusErr != nil || len(statuses) == 0 || statuses[0].State != "running" {
+		if err := executor.EnsureProject(ctx, scope, runtime.PHPImage(version), map[string]string{"/workspace": cwd}); err != nil {
+			return err
+		}
+	}
+	result, err := executor.Exec(ctx, scope, command, runtime.ExecOptions{
+		Dir:    workdir,
+		Stdout: os.Stdout,
+		Stderr: os.Stderr,
+	})
+	if err != nil {
+		if result.ExitCode >= 0 {
+			return fmt.Errorf("runtime command exited with status %d: %w", result.ExitCode, err)
+		}
+		return err
+	}
+	if result.ExitCode != 0 {
+		return fmt.Errorf("runtime command exited with status %d", result.ExitCode)
+	}
+	return nil
+}
+
+func mustWorkingDirectory() string {
+	dir, err := os.Getwd()
+	if err != nil {
+		return "."
+	}
+	return dir
+}
+
 func RunPHP(args []string) error {
 	if len(args) == 0 {
 		return phpHelp()
@@ -110,7 +185,7 @@ func RunPHP(args []string) error {
 		if len(args) == 1 {
 			return fmt.Errorf("Usage: chauf php <version> <command> [args...]")
 		}
-		return runPHPExtended(args[0], args[1:])
+		return runPHPExtended(installers.MajorMinor(args[0]), args[1:])
 	}
 
 	// If first arg looks like a PHP version but isn't installed, show specific error
@@ -150,7 +225,16 @@ func phpList(args []string) error {
 
 	root := workspace.Root()
 	cfg := workspace.Load()
-	installed := installers.ListInstalledPHP(root)
+	installed := make([]string, 0)
+	if cfg.Runtime.Engine == string(runtime.EnginePodman) {
+		for _, version := range installers.SupportedPHPVersions {
+			if isInstalledPHPVersion(version) {
+				installed = append(installed, version)
+			}
+		}
+	} else {
+		installed = installers.ListInstalledPHP(root)
+	}
 
 	fmt.Println()
 	if len(installed) == 0 {
@@ -168,8 +252,11 @@ func phpList(args []string) error {
 	fmt.Println()
 
 	for _, mm := range installed {
-		inst, _ := installers.NewPHPInstaller(mm, installers.BuildOpts{})
-		ver := inst.InstalledVersion()
+		ver := "Podman image"
+		if cfg.Runtime.Engine != string(runtime.EnginePodman) {
+			inst, _ := installers.NewPHPInstaller(mm, installers.BuildOpts{})
+			ver = inst.InstalledVersion()
+		}
 		marker := "  "
 		label := mm
 		if mm == cfg.PHP.DefaultVersion {
@@ -205,13 +292,21 @@ func phpUse(args []string) error {
 	if mm == "" {
 		return fmt.Errorf("invalid PHP version: %q", version)
 	}
+	if workspace.Load().Runtime.Engine == string(runtime.EnginePodman) && !isInstalledPHPVersion(mm) {
+		return fmt.Errorf("PHP %s Podman image is unavailable — run: chauf install php %s", mm, mm)
+	}
 
 	root := workspace.Root()
-	inst, _ := installers.NewPHPInstaller(mm, installers.BuildOpts{})
-	if !inst.IsInstalled() {
-		lib.Warn(fmt.Sprintf("PHP %s is not installed.", mm))
+	cfg := workspace.Load()
+	if !isInstalledPHPVersion(mm) {
+		lib.Warn(fmt.Sprintf("PHP %s is not installed for the selected runtime.", mm))
 		lib.Info(lib.Gray("Install it with:  chauf install php " + mm))
 		return nil
+	}
+	installedVersion := "Podman image"
+	if cfg.Runtime.Engine != string(runtime.EnginePodman) {
+		inst, _ := installers.NewPHPInstaller(mm, installers.BuildOpts{})
+		installedVersion = inst.InstalledVersion()
 	}
 
 	if err := workspace.SetDefaultPHP(mm); err != nil {
@@ -219,12 +314,12 @@ func phpUse(args []string) error {
 	}
 
 	fmt.Println()
-	lib.Success(fmt.Sprintf("Default PHP set to %s  (%s)", mm, inst.InstalledVersion()))
-	lib.Info(lib.Gray("The PHP shim will now use PHP " + mm + " for all projects."))
+	lib.Success(fmt.Sprintf("Default PHP set to %s  (%s)", mm, installedVersion))
+	lib.Info(lib.Gray("The selected runtime will now use PHP " + mm + " for all projects."))
 
 	// If php-fpm for this version is not running, remind the user to start it.
 	pidFile := root + "/php/" + mm + "/runtime/php-fpm/php-fpm.pid"
-	if pid := readPID(pidFile); pid == 0 || !processRunning(pid) {
+	if cfg.Runtime.Engine != string(runtime.EnginePodman) && (readPID(pidFile) == 0 || !processRunning(readPID(pidFile))) {
 		fmt.Println()
 		lib.Info(lib.Gray("Start services:  chauf start"))
 	}
@@ -272,14 +367,20 @@ func phpIsolate(args []string) error {
 	if err == nil && p != nil {
 		prevVersion = p.PHPVersion
 		p.PHPVersion = mm
-		if err := projects.WriteNginxConfig(p, root, cfg.Nginx.HTTPPort, cfg.Nginx.HTTPSPort); err != nil {
-			lib.Warn("Could not regenerate nginx config: " + err.Error())
-		}
-		if err := projects.Save(p, root); err != nil {
-			lib.Warn("Could not update project config: " + err.Error())
-		}
-		if projects.IsNginxRunning(root) {
-			_ = projects.ReloadNginx(root)
+		if cfg.Runtime.Engine == string(runtime.EnginePodman) {
+			if _, applyErr := applyLinkProject(p, root, cfg); applyErr != nil {
+				return applyErr
+			}
+		} else {
+			if err := projects.WriteNginxConfig(p, root, cfg.Nginx.HTTPPort, cfg.Nginx.HTTPSPort); err != nil {
+				lib.Warn("Could not regenerate nginx config: " + err.Error())
+			}
+			if err := projects.Save(p, root); err != nil {
+				lib.Warn("Could not update project config: " + err.Error())
+			}
+			if projects.IsNginxRunning(root) {
+				_ = projects.ReloadNginx(root)
+			}
 		}
 	}
 

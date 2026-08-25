@@ -34,7 +34,7 @@ func RunClean(args []string) error {
 // ── shared flags ───────────────────────────────────────────────────────────────
 
 type cleanOpts struct {
-	dryRun   bool
+	dryRun    bool
 	olderThan time.Duration
 }
 

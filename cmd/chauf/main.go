@@ -142,6 +142,10 @@ func main() {
 			os.Exit(0) // -h / --help: usage already printed, exit cleanly
 		}
 		lib.Error(err.Error())
+		var exitCoder interface{ ExitCode() int }
+		if errors.As(err, &exitCoder) && exitCoder.ExitCode() > 0 {
+			os.Exit(exitCoder.ExitCode())
+		}
 		os.Exit(1)
 	}
 }

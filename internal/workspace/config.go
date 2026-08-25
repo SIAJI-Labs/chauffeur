@@ -12,7 +12,10 @@ import (
 // Config mirrors chauffeur.yaml.
 type Config struct {
 	Workspace string
-	Nginx     struct {
+	Runtime   struct {
+		Engine string
+	}
+	Nginx struct {
 		HTTPPort      int
 		HTTPSPort     int
 		UploadMaxSize string // override: if empty, nginx follows PHP post_max_size
@@ -46,6 +49,7 @@ type PHPVersionConfig struct {
 func DefaultConfig(root string) Config {
 	var c Config
 	c.Workspace = root
+	c.Runtime.Engine = "native"
 	c.Nginx.HTTPPort = 8080
 	c.Nginx.HTTPSPort = 8443
 	c.PHP.DefaultVersion = "8.3"
@@ -104,6 +108,10 @@ func Load() Config {
 		switch section + "." + key {
 		case ".workspace":
 			c.Workspace = val
+		case "runtime.engine":
+			if val == "native" || val == "podman" {
+				c.Runtime.Engine = val
+			}
 		case "nginx.http_port":
 			if v, err := strconv.Atoi(val); err == nil {
 				c.Nginx.HTTPPort = v
@@ -212,6 +220,82 @@ func SetDefaultPHP(version string) error {
 	return os.WriteFile(configPath, []byte(strings.Join(lines, "\n")), 0644)
 }
 
+// SetRuntimeEngine updates runtime.engine in chauffeur.yaml.
+func SetRuntimeEngine(engine string) error {
+	if engine != "native" && engine != "podman" {
+		return fmt.Errorf("unsupported runtime engine %q", engine)
+	}
+	root := Root()
+	configPath := filepath.Join(root, "config", "chauffeur.yaml")
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return fmt.Errorf("read config: %w", err)
+	}
+	lines := strings.Split(string(data), "\n")
+	found := false
+	inRuntime := false
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "runtime:" {
+			inRuntime = true
+			continue
+		}
+		if inRuntime && !strings.HasPrefix(line, " ") && trimmed != "" {
+			inRuntime = false
+		}
+		if inRuntime && strings.HasPrefix(trimmed, "engine:") {
+			lines[i] = "  engine: " + engine
+			found = true
+			break
+		}
+	}
+	if !found {
+		for i, line := range lines {
+			if strings.TrimSpace(line) == "runtime:" {
+				lines = append(lines[:i+1], append([]string{"  engine: " + engine}, lines[i+1:]...)...)
+				found = true
+				break
+			}
+		}
+	}
+	if !found {
+		// Older configurations predate the runtime section. Append the new
+		// section instead of requiring users to rewrite their workspace config.
+		content := strings.TrimRight(strings.Join(lines, "\n"), "\n")
+		if content != "" {
+			content += "\n"
+		}
+		content += "runtime:\n  engine: " + engine + "\n"
+		return writeConfigAtomically(configPath, []byte(content))
+	}
+	return writeConfigAtomically(configPath, []byte(strings.Join(lines, "\n")))
+}
+
+func writeConfigAtomically(path string, data []byte) error {
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, ".chauffeur-config-*")
+	if err != nil {
+		return fmt.Errorf("create config temp file: %w", err)
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+	if err := tmp.Chmod(0644); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("set config permissions: %w", err)
+	}
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("write config: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close config: %w", err)
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		return fmt.Errorf("replace config: %w", err)
+	}
+	return nil
+}
+
 // SavePHPVersionSetting updates a single PHP version setting in chauffeur.yaml.
 // version: PHP version like "8.3"
 // key: setting name like "upload_max_filesize"
@@ -270,13 +354,14 @@ func SaveNginxSetting(key, value string) error {
 	}
 
 	lines := strings.Split(string(data), "\n")
-	keyPattern := fmt.Sprintf("nginx.%s:", key)
-	valueLine := fmt.Sprintf("  nginx.%s: \"%s\"", key, value)
+	keyPattern := fmt.Sprintf("%s:", key)
+	legacyKeyPattern := fmt.Sprintf("nginx.%s:", key)
+	valueLine := fmt.Sprintf("  %s: \"%s\"", key, value)
 
 	found := false
 	for i, line := range lines {
 		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, keyPattern) {
+		if strings.HasPrefix(trimmed, keyPattern) || strings.HasPrefix(trimmed, legacyKeyPattern) {
 			lines[i] = valueLine
 			found = true
 			break
@@ -304,6 +389,8 @@ func SaveNginxSetting(key, value string) error {
 // DefaultConfigYAML returns the default chauffeur.yaml content for the given workspace root.
 func DefaultConfigYAML(root string) string {
 	return fmt.Sprintf(`workspace: %s
+runtime:
+  engine: native
 nginx:
   http_port: 8080
   https_port: 8443

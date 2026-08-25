@@ -4,15 +4,15 @@ import "testing"
 
 func TestComputeSelectorViewport(t *testing.T) {
 	tests := []struct {
-		name          string
-		totalRows     int
-		activeRow     int
+		name           string
+		totalRows      int
+		activeRow      int
 		terminalHeight int
-		reservedLines int
-		wantStart     int
-		wantEnd       int
-		wantShowAbove bool
-		wantShowBelow bool
+		reservedLines  int
+		wantStart      int
+		wantEnd        int
+		wantShowAbove  bool
+		wantShowBelow  bool
 	}{
 		{
 			name:           "zero rows returns empty viewport",

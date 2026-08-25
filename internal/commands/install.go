@@ -2,6 +2,7 @@ package commands
 
 import (
 	"bufio"
+	"context"
 	"flag"
 	"fmt"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"github.com/charmbracelet/bubbletea"
 	"github.com/siegg/chauffeur/internal/installers"
 	"github.com/siegg/chauffeur/internal/lib"
+	chauftruntime "github.com/siegg/chauffeur/internal/runtime"
 	"github.com/siegg/chauffeur/internal/tui"
 	"github.com/siegg/chauffeur/internal/workspace"
 )
@@ -17,10 +19,11 @@ import (
 func RunInstall(args []string) error {
 	flags := flag.NewFlagSet("install", flag.ContinueOnError)
 	flags.SetOutput(os.Stdout)
-	lib.SetFlagUsage(flags, "chauf install — install nginx, PHP, or Composer from source", "chauf install <nginx|php <version>|composer> [--force] [--no-cache]")
+	lib.SetFlagUsage(flags, "chauf install — install nginx, PHP, or Composer from source", "chauf install <nginx|php <version>|composer> [--force] [--build] [--no-cache]")
 	force := flags.Bool("force", false, "Reinstall even if already present")
 	noCache := flags.Bool("no-cache", false, "Skip download cache")
 	verbose := flags.Bool("verbose", false, "Stream build output to terminal")
+	buildPodman := flags.Bool("build", false, "Build the selected Podman image locally")
 	flags.BoolVar(verbose, "v", false, "Stream build output to terminal")
 
 	// Separate flag args from positional args so flags can appear anywhere,
@@ -38,6 +41,8 @@ func RunInstall(args []string) error {
 		fmt.Fprintf(os.Stderr, "  chauf install composer\n")
 		return fmt.Errorf("no service specified")
 	}
+	printRuntime(workspace.Load())
+	fmt.Println()
 
 	opts := installers.BuildOpts{
 		Force:   *force,
@@ -47,6 +52,9 @@ func RunInstall(args []string) error {
 
 	switch strings.ToLower(positionals[0]) {
 	case "nginx":
+		if workspace.Load().Runtime.Engine == string(chauftruntime.EnginePodman) {
+			return fmt.Errorf("nginx is managed by the Podman image; pull %s explicitly", chauftruntime.NginxImage)
+		}
 		return installNginx(opts)
 	case "php":
 		version := ""
@@ -59,12 +67,53 @@ func RunInstall(args []string) error {
 				return nil // user cancelled or all installed
 			}
 		}
+		if workspace.Load().Runtime.Engine == string(chauftruntime.EnginePodman) {
+			return installPodmanPHP(version, *buildPodman, *verbose)
+		}
 		return installPHP(version, opts)
 	case "composer":
+		if workspace.Load().Runtime.Engine == string(chauftruntime.EnginePodman) {
+			return fmt.Errorf("Composer is included in the Podman PHP image; install or rebuild a PHP image instead")
+		}
 		return installComposer(opts)
 	default:
 		return fmt.Errorf("unknown service %q — available: nginx, php, composer", positionals[0])
 	}
+}
+
+func installPodmanPHP(version string, build, verbose bool) error {
+	mm := installers.MajorMinor(version)
+	if !containsSupportedPHP(mm) {
+		return fmt.Errorf("unsupported PHP version %s for Podman image preparation", mm)
+	}
+	step := startStep(fmt.Sprintf("PHP %s Podman image", mm), verbose)
+	runner := chauftruntime.ExecRunner{}
+	var err error
+	if build {
+		err = chauftruntime.BuildPHP(context.Background(), runner, mm)
+	} else {
+		err = chauftruntime.PullPHP(context.Background(), runner, mm)
+	}
+	if err != nil {
+		step.fail(err.Error())
+		return err
+	}
+	metadata, err := chauftruntime.InspectImage(context.Background(), runner, chauftruntime.PHPImage(mm))
+	if err != nil {
+		step.fail(err.Error())
+		return err
+	}
+	step.success(metadata.Digest)
+	return nil
+}
+
+func containsSupportedPHP(version string) bool {
+	for _, supported := range installers.SupportedPHPVersions {
+		if supported == version {
+			return true
+		}
+	}
+	return false
 }
 
 // splitArgs separates flag arguments (starting with -) from positional arguments.
@@ -280,14 +329,15 @@ func installComposer(opts installers.BuildOpts) error {
 
 // phpSelectModel is a bubbletea model for selecting a PHP version with installed versions marked/disabled.
 type phpSelectModel struct {
-	items     []string // display items (may include " (installed)" suffix)
-	cursor    int      // cursor index into selectable (non-installed) items
-	done      bool
-	aborted   bool
-	title     string
-	installed map[string]bool // set of installed version strings
-	width     int
-	height    int
+	items          []string // display items (may include " (installed)" suffix)
+	cursor         int      // cursor index into selectable (non-installed) items
+	done           bool
+	aborted        bool
+	title          string
+	installedLabel string
+	installed      map[string]bool // set of installed version strings
+	width          int
+	height         int
 }
 
 func (m phpSelectModel) Init() tea.Cmd {
@@ -417,7 +467,11 @@ func (m phpSelectModel) View() string {
 		installed := m.installed[item]
 
 		if installed {
-			lines = append(lines, fmt.Sprintf("  %s %s", lib.Gray("  "), lib.Gray(item+" (installed)")))
+			label := m.installedLabel
+			if label == "" {
+				label = "installed"
+			}
+			lines = append(lines, fmt.Sprintf("  %s %s", lib.Gray("  "), lib.Gray(item+" ("+label+")")))
 		} else {
 			if selectableIdx == m.cursor {
 				cursor = tui.Cursor(true)
@@ -451,9 +505,9 @@ func interactiveSelectPHPVersion(versions []string, title string) string {
 		return ""
 	}
 
-	installedSet := make(map[string]bool)
-	for _, v := range installers.ListInstalledPHP(workspace.Root()) {
-		installedSet[v] = true
+	installedSet := installedPHPForRuntime(versions, workspace.Load().Runtime.Engine)
+	if workspace.Load().Runtime.Engine == string(chauftruntime.EnginePodman) {
+		title += " (Podman images)"
 	}
 
 	// If all are installed, fall back to simple list
@@ -476,10 +530,14 @@ func interactiveSelectPHPVersion(versions []string, title string) string {
 	}
 
 	model := phpSelectModel{
-		items:     versions,
-		cursor:    0,
-		title:     title,
-		installed: installedSet,
+		items:          versions,
+		cursor:         0,
+		title:          title,
+		installedLabel: "installed",
+		installed:      installedSet,
+	}
+	if workspace.Load().Runtime.Engine == string(chauftruntime.EnginePodman) {
+		model.installedLabel = "Podman image"
 	}
 
 	p := tea.NewProgram(model)
@@ -500,6 +558,27 @@ func interactiveSelectPHPVersion(versions []string, title string) string {
 	}
 
 	return ""
+}
+
+func installedPHPForRuntime(versions []string, engine string) map[string]bool {
+	return installedPHPForRuntimeWithRunner(versions, engine, chauftruntime.ExecRunner{})
+}
+
+func installedPHPForRuntimeWithRunner(versions []string, engine string, runner chauftruntime.CommandRunner) map[string]bool {
+	installed := make(map[string]bool)
+	if engine != string(chauftruntime.EnginePodman) {
+		for _, version := range installers.ListInstalledPHP(workspace.Root()) {
+			installed[version] = true
+		}
+		return installed
+	}
+	for _, version := range versions {
+		result, err := runner.Run(context.Background(), "image", "exists", chauftruntime.PHPImage(version))
+		if err == nil && result.ExitCode == 0 {
+			installed[version] = true
+		}
+	}
+	return installed
 }
 
 // interactiveSelectPHPSimple is the fallback text-based PHP version selector.

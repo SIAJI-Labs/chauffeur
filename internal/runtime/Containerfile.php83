@@ -1,0 +1,30 @@
+FROM docker.io/library/php:8.3-fpm-bookworm
+
+ARG PHP_VERSION=8.3
+
+LABEL com.siegg.chauffeur.php.version="8.3" \
+      com.siegg.chauffeur.php.base="php:8.3-fpm-bookworm" \
+      com.siegg.chauffeur.php.extensions="bcmath,gd,mysqli,pdo_mysql,pdo_pgsql,pgsql,zip" \
+      com.siegg.chauffeur.recipe="php83-v2"
+
+# Composer is part of the PHP runtime so project commands do not fall back to
+# a host installation with a different PHP version.
+COPY --from=docker.io/library/composer:2 /usr/bin/composer /usr/bin/composer
+
+# Keep build dependencies in the recipe so extension availability does not
+# depend on the host toolchain.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        libfreetype6-dev libjpeg62-turbo-dev libpng-dev libpq-dev \
+        libzip-dev libgmp-dev \
+    && docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-install bcmath gd mysqli pdo_mysql pdo_pgsql pgsql zip \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN groupadd --gid 1000 chauf \
+    && useradd --uid 1000 --gid 1000 --create-home --shell /usr/sbin/nologin chauf
+
+COPY php-fpm.conf /usr/local/etc/php-fpm.d/zz-chauffeur.conf
+
+USER chauf
+WORKDIR /workspace

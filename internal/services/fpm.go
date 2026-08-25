@@ -13,6 +13,7 @@ import (
 // FPMService manages a single PHP-FPM pool (shared or dedicated).
 type FPMService struct {
 	label      string // display label e.g. "8.3 (shared)" or "my-app (dedicated)"
+	version    string
 	binaryPath string
 	configPath string
 	pidPath    string
@@ -24,6 +25,7 @@ func NewSharedFPM(root, version string) *FPMService {
 	phpDir := filepath.Join(root, "php", version)
 	return &FPMService{
 		label:      version + " (shared)",
+		version:    version,
 		binaryPath: filepath.Join(phpDir, "sbin", "php-fpm"),
 		configPath: filepath.Join(phpDir, "etc", "php-fpm.conf"),
 		pidPath:    filepath.Join(phpDir, "runtime", "php-fpm", "php-fpm.pid"),
@@ -46,6 +48,9 @@ func NewDedicatedFPM(root, slug, phpVersion, sockPath string) *FPMService {
 
 // Label returns the human-readable service name for display.
 func (f *FPMService) Label() string { return f.label }
+
+// Version returns the PHP version for shared pools, or an empty string for dedicated pools.
+func (f *FPMService) Version() string { return f.version }
 
 // SockPath returns the unix socket path for this FPM pool.
 func (f *FPMService) SockPath() string { return f.sockPath }

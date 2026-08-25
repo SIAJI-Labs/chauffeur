@@ -93,6 +93,11 @@ func StartUnit(unit string) error {
 	return userctl("start", unit)
 }
 
+// StopUnit runs systemctl --user stop <unit> without disabling auto-start.
+func StopUnit(unit string) error {
+	return userctl("stop", unit)
+}
+
 // DisableUnit runs systemctl --user disable --now <unit>.
 func DisableUnit(unit string) error {
 	return userctl("disable", "--now", unit)

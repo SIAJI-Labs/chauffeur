@@ -11,6 +11,7 @@ import (
 
 	"github.com/siegg/chauffeur/internal/lib"
 	"github.com/siegg/chauffeur/internal/projects"
+	chauftruntime "github.com/siegg/chauffeur/internal/runtime"
 	"github.com/siegg/chauffeur/internal/workspace"
 )
 
@@ -38,56 +39,63 @@ func RunInfo(args []string) error {
 	fmt.Println()
 	lib.Pair("Workspace", short(root))
 	lib.Pair("Config", short(filepath.Join(root, "config", "chauffeur.yaml")))
+	printRuntime(cfg)
 	fmt.Println()
 
 	// ── Services ───────────────────────────────────────────────────────────────
 
 	fmt.Printf("  %s\n", lib.Bold("Services"))
-
-	// nginx
-	nginxPID := filepath.Join(root, "nginx", "logs", "nginx.pid")
-	nginxRunning := pidFileRunning(nginxPID)
-	nginxStatus := serviceStatus(nginxRunning)
-	if *detail {
-		lib.Pair("  nginx", fmt.Sprintf("%s    %d / %d    %s",
-			nginxStatus, cfg.Nginx.HTTPPort, cfg.Nginx.HTTPSPort,
-			lib.Gray(filepath.Join(root, "nginx", "sbin", "nginx"))))
-	} else {
-		lib.Pair("  nginx", fmt.Sprintf("%s    %d / %d",
-			nginxStatus, cfg.Nginx.HTTPPort, cfg.Nginx.HTTPSPort))
-	}
-
-	// PHP-FPM per installed version
 	phpVersions := installedPHPVersions(root)
-	usedPHPVersions := phpVersionsInUse(root)
-	for _, ver := range phpVersions {
-		fpmPID := filepath.Join(root, "php", ver, "runtime", "php-fpm", "php-fpm.pid")
-		running := pidFileRunning(fpmPID)
-		status := serviceStatus(running)
-		label := fmt.Sprintf("  php-fpm %s", ver)
+	if cfg.Runtime.Engine == string(chauftruntime.EnginePodman) {
+		if err := showPodmanStatus(root, *detail, ""); err != nil {
+			return err
+		}
+	} else {
 
-		var tags []string
-		if !usedPHPVersions[ver] {
-			tags = append(tags, lib.Gray("(no projects)"))
-		}
-		if ver == cfg.PHP.DefaultVersion {
-			tags = append(tags, lib.Gray("(default)"))
-		}
-		suffix := ""
-		if len(tags) > 0 {
-			suffix = "  " + strings.Join(tags, " ")
-		}
-
+		// nginx
+		nginxPID := filepath.Join(root, "nginx", "logs", "nginx.pid")
+		nginxRunning := pidFileRunning(nginxPID)
+		nginxStatus := serviceStatus(nginxRunning)
 		if *detail {
-			lib.Pair(label, fmt.Sprintf("%s    shared pool%s    %s",
-				status, suffix,
-				lib.Gray(filepath.Join(root, "php", ver, "sbin", "php-fpm"))))
+			lib.Pair("  nginx", fmt.Sprintf("%s    %d / %d    %s",
+				nginxStatus, cfg.Nginx.HTTPPort, cfg.Nginx.HTTPSPort,
+				lib.Gray(filepath.Join(root, "nginx", "sbin", "nginx"))))
 		} else {
-			lib.Pair(label, fmt.Sprintf("%s    shared pool%s", status, suffix))
+			lib.Pair("  nginx", fmt.Sprintf("%s    %d / %d",
+				nginxStatus, cfg.Nginx.HTTPPort, cfg.Nginx.HTTPSPort))
 		}
-	}
-	if len(phpVersions) == 0 {
-		lib.Pair("  php-fpm", lib.Gray("none installed"))
+
+		// PHP-FPM per installed version
+		usedPHPVersions := phpVersionsInUse(root)
+		for _, ver := range phpVersions {
+			fpmPID := filepath.Join(root, "php", ver, "runtime", "php-fpm", "php-fpm.pid")
+			running := pidFileRunning(fpmPID)
+			status := serviceStatus(running)
+			label := fmt.Sprintf("  php-fpm %s", ver)
+
+			var tags []string
+			if !usedPHPVersions[ver] {
+				tags = append(tags, lib.Gray("(no projects)"))
+			}
+			if ver == cfg.PHP.DefaultVersion {
+				tags = append(tags, lib.Gray("(default)"))
+			}
+			suffix := ""
+			if len(tags) > 0 {
+				suffix = "  " + strings.Join(tags, " ")
+			}
+
+			if *detail {
+				lib.Pair(label, fmt.Sprintf("%s    shared pool%s    %s",
+					status, suffix,
+					lib.Gray(filepath.Join(root, "php", ver, "sbin", "php-fpm"))))
+			} else {
+				lib.Pair(label, fmt.Sprintf("%s    shared pool%s", status, suffix))
+			}
+		}
+		if len(phpVersions) == 0 {
+			lib.Pair("  php-fpm", lib.Gray("none installed"))
+		}
 	}
 	fmt.Println()
 
@@ -126,6 +134,14 @@ func RunInfo(args []string) error {
 	// ── PHP Versions ───────────────────────────────────────────────────────────
 
 	fmt.Printf("  %s\n", lib.Bold("PHP versions"))
+	if cfg.Runtime.Engine == string(chauftruntime.EnginePodman) {
+		phpVersions = nil
+		for _, ver := range chauftruntime.PHPParityTargets() {
+			if isInstalledPHPVersion(ver) {
+				phpVersions = append(phpVersions, ver)
+			}
+		}
+	}
 
 	if len(phpVersions) == 0 {
 		fmt.Printf("  %s\n", lib.Gray("None installed. Run: chauf install php 8.3"))
@@ -133,6 +149,9 @@ func RunInfo(args []string) error {
 		for _, ver := range phpVersions {
 			label := "  " + ver
 			path := filepath.Join(root, "php", ver)
+			if cfg.Runtime.Engine == string(chauftruntime.EnginePodman) {
+				path = chauftruntime.PHPImage(ver)
+			}
 			if ver == cfg.PHP.DefaultVersion {
 				lib.Pair(label, fmt.Sprintf("%s  %s", short(path), lib.Cyan("(default)")))
 			} else {
@@ -205,5 +224,3 @@ func installedPHPVersions(root string) []string {
 	}
 	return versions
 }
-
-

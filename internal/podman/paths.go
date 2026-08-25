@@ -3,6 +3,8 @@ package podman
 import (
 	"os"
 	"path/filepath"
+
+	"github.com/siegg/chauffeur/internal/workspace"
 )
 
 const (
@@ -21,8 +23,7 @@ const (
 
 // Root returns the podman root directory path (~/.chauffeur/podman).
 func Root() string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, PodmanRoot)
+	return filepath.Join(workspace.Root(), "podman")
 }
 
 // ConfigPath returns the path to the config file for a given container name.
