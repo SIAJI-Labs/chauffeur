@@ -609,7 +609,13 @@ fi
 RUNTIME=$(grep 'engine:' "$CONFIG" 2>/dev/null | head -1 | sed 's/.*engine:[[:space:]]*//' | tr -d '"')
 if [[ "$RUNTIME" == "podman" ]]; then
     CONTAINER="chauf-php${PHP_VER//./}-fpm"
+    IMAGE="ghcr.io/siegg/chauffeur-php:${PHP_VER}-fpm"
+    HOST_USER="$(id -u):$(id -g)"
+    if [[ -z "$PROJECT_WORKDIR" ]]; then
+        exec podman run --rm --userns keep-id --user "$HOST_USER" --volume "$PWD:/workspace:Z" --workdir /workspace "$IMAGE" php "$@"
+    fi
     EXEC_ARGS=(exec)
+    EXEC_ARGS+=(--user "$HOST_USER")
     if [[ -n "$PROJECT_WORKDIR" ]]; then
         EXEC_ARGS+=(--workdir "$PROJECT_WORKDIR")
     fi
@@ -660,7 +666,13 @@ if [[ "$RUNTIME" == "podman" ]]; then
         exit 1
     fi
     CONTAINER="chauf-php${PHP_VER//./}-fpm"
+    IMAGE="ghcr.io/siegg/chauffeur-php:${PHP_VER}-fpm"
+    HOST_USER="$(id -u):$(id -g)"
+    if [[ -z "$PROJECT_WORKDIR" ]]; then
+        exec podman run --rm --userns keep-id --user "$HOST_USER" --volume "$PWD:/workspace:Z" --workdir /workspace "$IMAGE" composer "$@"
+    fi
     EXEC_ARGS=(exec)
+    EXEC_ARGS+=(--user "$HOST_USER")
     if [[ -n "$PROJECT_WORKDIR" ]]; then
         EXEC_ARGS+=(--workdir "$PROJECT_WORKDIR")
     fi
