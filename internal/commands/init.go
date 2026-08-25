@@ -612,10 +612,17 @@ if [[ "$RUNTIME" == "podman" ]]; then
     IMAGE="ghcr.io/siegg/chauffeur-php:${PHP_VER}-fpm"
     HOST_USER="$(id -u):$(id -g)"
     if [[ -z "$PROJECT_WORKDIR" ]]; then
-        exec podman run --rm --userns keep-id --user "$HOST_USER" --volume "$PWD:/workspace:Z" --workdir /workspace "$IMAGE" php "$@"
+        RUN_ARGS=(run --rm --userns keep-id --user "$HOST_USER" --volume "$PWD:/workspace:Z" --workdir /workspace)
+        if [[ -t 0 && -t 1 ]]; then
+            RUN_ARGS+=(--interactive --tty)
+        fi
+        exec podman "${RUN_ARGS[@]}" "$IMAGE" php "$@"
     fi
     EXEC_ARGS=(exec)
     EXEC_ARGS+=(--user "$HOST_USER")
+    if [[ -t 0 && -t 1 ]]; then
+        EXEC_ARGS+=(--interactive --tty)
+    fi
     if [[ -n "$PROJECT_WORKDIR" ]]; then
         EXEC_ARGS+=(--workdir "$PROJECT_WORKDIR")
     fi
@@ -669,10 +676,17 @@ if [[ "$RUNTIME" == "podman" ]]; then
     IMAGE="ghcr.io/siegg/chauffeur-php:${PHP_VER}-fpm"
     HOST_USER="$(id -u):$(id -g)"
     if [[ -z "$PROJECT_WORKDIR" ]]; then
-        exec podman run --rm --userns keep-id --user "$HOST_USER" --volume "$PWD:/workspace:Z" --workdir /workspace "$IMAGE" composer "$@"
+        RUN_ARGS=(run --rm --userns keep-id --user "$HOST_USER" --volume "$PWD:/workspace:Z" --workdir /workspace)
+        if [[ -t 0 && -t 1 ]]; then
+            RUN_ARGS+=(--interactive --tty)
+        fi
+        exec podman "${RUN_ARGS[@]}" "$IMAGE" composer "$@"
     fi
     EXEC_ARGS=(exec)
     EXEC_ARGS+=(--user "$HOST_USER")
+    if [[ -t 0 && -t 1 ]]; then
+        EXEC_ARGS+=(--interactive --tty)
+    fi
     if [[ -n "$PROJECT_WORKDIR" ]]; then
         EXEC_ARGS+=(--workdir "$PROJECT_WORKDIR")
     fi
