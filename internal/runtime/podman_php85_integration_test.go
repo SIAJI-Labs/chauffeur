@@ -74,7 +74,7 @@ func runPHPParityFixture(t *testing.T, version string, port int) {
 		_, _ = runner.Run(ctx, "container", "rm", "-f", "chauf-nginx")
 		_, _ = runner.Run(ctx, "container", "rm", "-f", FPMContainerName(version))
 	})
-	client := &http.Client{Timeout: 5 * time.Second}
+	client := &http.Client{Timeout: 5 * time.Second, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}
 	var response *http.Response
 	for attempt := 0; attempt < 20; attempt++ {
 		request, requestErr := http.NewRequest(http.MethodGet, fmt.Sprintf("http://127.0.0.1:%d/", port), nil)
@@ -92,8 +92,8 @@ func runPHPParityFixture(t *testing.T, version string, port int) {
 	}
 	defer response.Body.Close()
 	body, err := io.ReadAll(response.Body)
-	if err != nil || string(body) != "php"+version+"-ok" {
-		t.Fatalf("status=%d body=%q err=%v", response.StatusCode, body, err)
+	if err != nil || response.StatusCode != http.StatusMovedPermanently || string(body) == "php"+version+"-ok" {
+		t.Fatalf("HTTP status=%d body=%q err=%v", response.StatusCode, body, err)
 	}
 	secureClient := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}} // fixture certificate is intentionally self-signed
 	secureRequest, err := http.NewRequest(http.MethodGet, fmt.Sprintf("https://127.0.0.1:%d/", port+1000), nil)

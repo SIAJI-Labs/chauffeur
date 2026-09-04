@@ -3,9 +3,9 @@ FROM docker.io/library/php:8.3-fpm-bookworm
 ARG PHP_VERSION=8.3
 
 LABEL com.siegg.chauffeur.php.version="8.3" \
-      com.siegg.chauffeur.php.base="php:8.3-fpm-bookworm" \
-      com.siegg.chauffeur.php.extensions="bcmath,gd,mysqli,pdo_mysql,pdo_pgsql,pgsql,zip" \
-      com.siegg.chauffeur.recipe="php83-v2"
+       com.siegg.chauffeur.php.base="php:8.3-fpm-bookworm" \
+       com.siegg.chauffeur.php.extensions="bcmath,gd,mysqli,pdo_mysql,pdo_pgsql,pgsql,zip,webp" \
+       com.siegg.chauffeur.recipe="php83-v3"
 
 # Composer is part of the PHP runtime so project commands do not fall back to
 # a host installation with a different PHP version.
@@ -15,9 +15,9 @@ COPY --from=docker.io/library/composer:2 /usr/bin/composer /usr/bin/composer
 # depend on the host toolchain.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        libfreetype6-dev libjpeg62-turbo-dev libpng-dev libpq-dev \
-        libzip-dev libgmp-dev \
-    && docker-php-ext-configure gd --with-freetype --with-jpeg \
+         libfreetype6-dev libjpeg62-turbo-dev libpng-dev libwebp-dev libpq-dev \
+         libzip-dev libgmp-dev \
+     && docker-php-ext-configure gd --with-freetype --with-jpeg --with-webp \
     && docker-php-ext-install bcmath gd mysqli pdo_mysql pdo_pgsql pgsql zip \
     && rm -rf /var/lib/apt/lists/*
 

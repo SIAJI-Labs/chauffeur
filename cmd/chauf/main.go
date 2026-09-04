@@ -122,8 +122,10 @@ func main() {
 
 	// ── Podman ────────────────────────────────────────────────────────────────
 
+	case "podman-db":
+		err = commands.RunPodmanDB(args[1:])
 	case "podman":
-		err = commands.RunPodman(args[1:])
+		err = commands.RunPodmanLegacy(args[1:])
 
 	// ── Web UI ───────────────────────────────────────────────────────────────
 
@@ -288,13 +290,13 @@ func printCommands() {
 		{
 			"Podman",
 			[]entry{
-				{"podman create", "Create a database container (mysql|postgres|maria|mongo|redis)"},
-				{"podman start", "Start a container (or 'all')"},
-				{"podman stop", "Stop a container (or 'all')"},
-				{"podman status", "Show container status"},
-				{"podman list", "List all managed containers"},
-				{"podman remove", "Remove a container"},
-				{"podman console", "Attach to container for CLI access"},
+				{"podman-db create", "Create a database container (mysql|postgres|maria|mongo|redis)"},
+				{"podman-db start", "Start a database container (or 'all')"},
+				{"podman-db stop", "Stop a database container (or 'all')"},
+				{"podman-db status", "Show database container status"},
+				{"podman-db list", "List all managed database containers"},
+				{"podman-db remove", "Remove a database container"},
+				{"podman-db console", "Attach to a database container"},
 			},
 		},
 		{

@@ -136,9 +136,11 @@ func runPHPInPodman(version string, args []string) error {
 	workdir := "/workspace"
 	if project, findErr := projects.FindByPath(workspace.Root(), cwd); findErr == nil && project != nil {
 		scope.Project = project.Path
+		scope.Slug = project.Slug
 		scope.Dedicated = project.FPM.Dedicated
 		workdir = "/workspace/" + project.Slug
 	}
+	databaseEnv := podmanDatabaseEnv(scope.Project)
 
 	// A workspace start already mounts all linked projects into the shared
 	// container. Reuse that container instead of trying to add the CLI cwd as a
@@ -151,6 +153,7 @@ func runPHPInPodman(version string, args []string) error {
 	}
 	result, err := executor.Exec(ctx, scope, command, runtime.ExecOptions{
 		Dir:    workdir,
+		Env:    databaseEnv,
 		Stdout: os.Stdout,
 		Stderr: os.Stderr,
 	})
@@ -162,6 +165,28 @@ func runPHPInPodman(version string, args []string) error {
 	}
 	if result.ExitCode != 0 {
 		return fmt.Errorf("runtime command exited with status %d", result.ExitCode)
+	}
+	return nil
+}
+
+func podmanDatabaseEnv(projectRoot string) []string {
+	if projectRoot == "" {
+		return nil
+	}
+	data, err := os.ReadFile(filepath.Join(projectRoot, ".env"))
+	if err != nil {
+		return nil
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "DB_HOST=") {
+			continue
+		}
+		host := strings.Trim(strings.TrimPrefix(line, "DB_HOST="), `"'`)
+		if host == "127.0.0.1" || host == "localhost" {
+			return []string{"DB_HOST=host.containers.internal"}
+		}
+		break
 	}
 	return nil
 }

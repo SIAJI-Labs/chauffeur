@@ -3,6 +3,7 @@ package commands_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/siegg/chauffeur/internal/commands"
@@ -50,6 +51,24 @@ func TestRunInit_CreatesStructure(t *testing.T) {
 	for _, f := range expectedFiles {
 		if _, err := os.Stat(filepath.Join(dir, f)); err != nil {
 			t.Errorf("expected file %q to exist", f)
+		}
+	}
+}
+
+func TestRunInit_PodmanShimsRouteLoopbackDatabaseToHost(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("CHAUFFEUR_HOME", dir)
+
+	if err := commands.RunInit([]string{"--quiet"}); err != nil {
+		t.Fatalf("RunInit: %v", err)
+	}
+	for _, shim := range []string{"bin/shims/php", "bin/shims/composer"} {
+		content, err := os.ReadFile(filepath.Join(dir, shim))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(content), "DB_HOST=host.containers.internal") {
+			t.Errorf("%s does not include Podman database host override", shim)
 		}
 	}
 }

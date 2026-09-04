@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 )
@@ -10,6 +11,8 @@ type NginxRoute struct {
 	ServerName   string
 	DocumentRoot string
 	Upstream     string
+	ProxyPort    int
+	DatabaseHost string
 	SSL          bool
 	CertName     string
 }
@@ -26,6 +29,8 @@ type ProjectSpec struct {
 	SSL          bool
 	DocumentRoot string
 	CertName     string
+	ProjectType  string
+	ProxyPort    int
 }
 
 // BuildWorkspaceScope resolves stable container names, workspace-local mount
@@ -39,21 +44,35 @@ func BuildWorkspaceScope(workspace, configPath, certificateDir string, httpPort,
 	roots := make(map[string]string)
 	routes := make([]NginxRoute, 0, len(projects))
 	for _, project := range projects {
-		if project.Path == "" || project.Slug == "" || project.Version == "" || len(project.Domains) == 0 {
+		if project.Path == "" || project.Slug == "" || len(project.Domains) == 0 || (project.ProjectType != "reverse-proxy" && project.Version == "") {
 			return WorkspaceScope{}, fmt.Errorf("invalid runtime project scope for %q", project.Slug)
+		}
+		if project.ProjectType == "reverse-proxy" {
+			proxyPort := project.ProxyPort
+			if proxyPort == 0 {
+				proxyPort = 3000
+			}
+			if proxyPort < 1 || proxyPort > 65535 {
+				return WorkspaceScope{}, fmt.Errorf("invalid reverse proxy port for %q", project.Slug)
+			}
+			routes = append(routes, NginxRoute{ServerName: strings.Join(project.Domains, " "), Upstream: "host.containers.internal", ProxyPort: proxyPort, SSL: project.SSL, CertName: project.CertName})
+			continue
 		}
 		name := FPMContainerName(project.Version)
 		mountPath := "/workspace/" + project.Slug
 		if project.Dedicated {
 			name = DedicatedContainerName(project.Slug)
-			mountPath = "/workspace"
+			// Every project gets a stable, collision-free path. Dedicated
+			// containers still mount only their own project, while nginx can
+			// safely aggregate several dedicated projects in one workspace.
+			mountPath = "/workspace/" + project.Slug
 		}
 		index, exists := containerIndex[name]
 		if !exists {
 			index = len(containers)
 			containerIndex[name] = index
 			containers = append(containers, PHPContainerScope{
-				Scope: Scope{Workspace: workspace, Project: project.Path, Version: project.Version, Dedicated: project.Dedicated},
+				Scope: Scope{Workspace: workspace, Project: project.Path, Slug: project.Slug, Version: project.Version, Dedicated: project.Dedicated},
 				Image: PHPImage(project.Version), Roots: make(map[string]string),
 			})
 		}
@@ -65,9 +84,32 @@ func BuildWorkspaceScope(workspace, configPath, certificateDir string, httpPort,
 				documentRoot = filepath.Join(mountPath, relative)
 			}
 		}
-		routes = append(routes, NginxRoute{ServerName: strings.Join(project.Domains, " "), DocumentRoot: documentRoot, Upstream: name, SSL: project.SSL, CertName: project.CertName})
+		databaseHost := ""
+		if host, ok := loopbackDatabaseHost(project.Path); ok {
+			databaseHost = host
+		}
+		routes = append(routes, NginxRoute{ServerName: strings.Join(project.Domains, " "), DocumentRoot: documentRoot, Upstream: name, DatabaseHost: databaseHost, SSL: project.SSL, CertName: project.CertName})
 	}
 	return WorkspaceScope{Workspace: workspace, ConfigPath: configPath, CertificateDir: certificateDir, HTTPPort: httpPort, HTTPSPort: httpsPort, Roots: roots, PHPContainers: containers, Routes: routes}, nil
+}
+
+func loopbackDatabaseHost(projectPath string) (string, bool) {
+	data, err := os.ReadFile(filepath.Join(projectPath, ".env"))
+	if err != nil {
+		return "", false
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "DB_HOST=") {
+			continue
+		}
+		host := strings.Trim(strings.TrimPrefix(line, "DB_HOST="), `"'`)
+		if host == "127.0.0.1" || host == "localhost" {
+			return "host.containers.internal", true
+		}
+		break
+	}
+	return "", false
 }
 
 // RenderNginxPHPConfig returns the minimal container-local route used by the
@@ -94,20 +136,40 @@ func RenderNginxPHPConfigForRoutesWithHTTPS(routes []NginxRoute, httpPort, https
 	}
 	var b strings.Builder
 	for _, route := range routes {
-		if route.DocumentRoot == "" || !filepath.IsAbs(route.DocumentRoot) || route.ServerName == "" || route.Upstream == "" {
+		if route.ServerName == "" || route.Upstream == "" {
 			return "", fmt.Errorf("invalid nginx route")
+		}
+		if route.ProxyPort == 0 && (route.DocumentRoot == "" || !filepath.IsAbs(route.DocumentRoot)) {
+			return "", fmt.Errorf("invalid nginx route")
+		}
+		if route.ProxyPort != 0 && (route.ProxyPort < 1 || route.ProxyPort > 65535) {
+			return "", fmt.Errorf("invalid reverse proxy port")
 		}
 		if route.SSL && (httpsPort == 0 || route.CertName == "") {
 			return "", fmt.Errorf("SSL route %s is missing HTTPS port or certificate", route.ServerName)
 		}
-		listen := fmt.Sprintf("    listen %d;\n", httpPort)
-		ssl := ""
-		if route.SSL {
-			listen += fmt.Sprintf("    listen %d ssl;\n", httpsPort)
-			ssl = fmt.Sprintf("    ssl_certificate /etc/nginx/certs/%s.crt;\n    ssl_certificate_key /etc/nginx/certs/%s.key;\n", route.CertName, route.CertName)
-		}
-		fmt.Fprintf(&b, `server {
- %s
+		renderServer := func(listen, ssl string) {
+			if route.ProxyPort != 0 {
+				fmt.Fprintf(&b, `server {
+  %s
+    server_name %s;
+%s
+    location / {
+        proxy_pass http://%s:%d;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}
+`, listen, route.ServerName, ssl, route.Upstream, route.ProxyPort)
+				return
+			}
+			fmt.Fprintf(&b, `server {
+  %s
     server_name %s;
     root %s;
 %s
@@ -119,13 +181,35 @@ func RenderNginxPHPConfigForRoutesWithHTTPS(routes []NginxRoute, httpPort, https
 
     location ~ \.php$ {
         include fastcgi_params;
+%s
         fastcgi_param SCRIPT_FILENAME %s$fastcgi_script_name;
         fastcgi_pass %s:9000;
     }
+ }
+
+`, listen, route.ServerName, route.DocumentRoot, ssl, fastcgiDatabaseParam(route.DatabaseHost), route.DocumentRoot, route.Upstream)
+		}
+		if route.SSL {
+			fmt.Fprintf(&b, `server {
+    listen %d;
+    server_name %s;
+    return 301 https://$host:%d$request_uri;
 }
-`, listen, route.ServerName, route.DocumentRoot, ssl, route.DocumentRoot, route.Upstream)
+
+`, httpPort, route.ServerName, httpsPort)
+			renderServer(fmt.Sprintf("    listen %d ssl;", httpsPort), fmt.Sprintf("    ssl_certificate /etc/nginx/certs/%s.crt;\n    ssl_certificate_key /etc/nginx/certs/%s.key;", route.CertName, route.CertName))
+		} else {
+			renderServer(fmt.Sprintf("    listen %d;", httpPort), "")
+		}
 	}
 	return b.String(), nil
+}
+
+func fastcgiDatabaseParam(host string) string {
+	if host == "" {
+		return ""
+	}
+	return "        fastcgi_param DB_HOST " + host + ";"
 }
 
 func legacyNginxPHPConfig(documentRoot, serverName, upstream string, listenPort int) (string, error) {

@@ -744,14 +744,35 @@ func RunUnlink(args []string) error {
 	if err := projects.RemoveNginxConfig(p, root); err != nil {
 		lib.Warn("Could not remove sites-available config: " + err.Error())
 	}
+	if cfg.Runtime.Engine == string(chauftruntime.EnginePodman) {
+		rt, err := chauftruntime.ForWorkspace(cfg)
+		if err != nil {
+			return err
+		}
+		if err := rt.RemoveProject(context.Background(), chauftruntime.Scope{Project: p.Slug, Version: p.PHPVersion, Dedicated: p.FPM.Dedicated}); err != nil {
+			return fmt.Errorf("remove project runtime: %w", err)
+		}
+	}
 
 	// Remove project dir
 	if err := projects.Delete(root, p.Slug); err != nil {
 		return fmt.Errorf("remove project config: %w", err)
 	}
 
-	// Reload nginx
-	if cfg.Runtime.Engine != string(chauftruntime.EnginePodman) && projects.IsNginxRunning(root) {
+	// Reload nginx or reconcile the Podman workspace after removing the route.
+	if cfg.Runtime.Engine == string(chauftruntime.EnginePodman) {
+		if remaining, err := projects.ListAll(root); err != nil {
+			return err
+		} else if len(remaining) == 0 {
+			if err := stopPodmanServices(root); err != nil {
+				return fmt.Errorf("stop Podman workspace: %w", err)
+			}
+		} else {
+			if err := startPodmanServices(root, cfg); err != nil {
+				return fmt.Errorf("refresh Podman workspace: %w", err)
+			}
+		}
+	} else if projects.IsNginxRunning(root) {
 		if err := projects.ReloadNginx(root); err != nil {
 			return fmt.Errorf("reload nginx: %w", err)
 		}
@@ -1104,9 +1125,6 @@ func applyLinkProject(p *projects.Project, root string, cfg workspace.Config) (p
 				if err := writeDedicatedFPMConfig(p, root); err != nil {
 					return fmt.Errorf("write dedicated FPM config: %w", err)
 				}
-			}
-			if p.ProjectType == projects.TypeReverseProxy {
-				return nil
 			}
 			rt, err := chauftruntime.ForWorkspace(cfg)
 			if err != nil {

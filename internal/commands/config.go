@@ -9,6 +9,7 @@ import (
 	"github.com/siegg/chauffeur/internal/installers"
 	"github.com/siegg/chauffeur/internal/lib"
 	chauftruntime "github.com/siegg/chauffeur/internal/runtime"
+	"github.com/siegg/chauffeur/internal/system"
 	"github.com/siegg/chauffeur/internal/workspace"
 )
 
@@ -65,10 +66,28 @@ func configRuntime(args []string) error {
 	if len(args) != 1 {
 		return fmt.Errorf("usage: chauf config runtime [native|podman]")
 	}
-	if err := workspace.SetRuntimeEngine(strings.ToLower(args[0])); err != nil {
+	engine := strings.ToLower(args[0])
+	previousEngine := cfg.Runtime.Engine
+	if err := workspace.SetRuntimeEngine(engine); err != nil {
 		return err
 	}
-	fmt.Printf("  %s runtime.engine = %s\n", lib.Green("✓"), strings.ToLower(args[0]))
+	fmt.Printf("  %s runtime.engine = %s\n", lib.Green("✓"), engine)
+	if previousEngine != engine {
+		// Runtime selection is an ownership boundary. Remove enabled units for
+		// the old engine now, while preserving its installed artifacts and
+		// containers so the user can switch back safely.
+		if previousEngine == string(chauftruntime.EngineNative) && engine == string(chauftruntime.EnginePodman) {
+			migrateNativeAutostartToPodman()
+		} else if previousEngine == string(chauftruntime.EnginePodman) && engine == string(chauftruntime.EngineNative) {
+			disablePodmanAutostart()
+		}
+	}
+	if engine == string(chauftruntime.EnginePodman) && system.IsUnitEnabled("chauffeur-nginx.service") {
+		lib.Warn("native nginx auto-start is still enabled; run `chauf autostart enable` to migrate it to Podman or `chauf autostart disable`")
+	}
+	if engine == string(chauftruntime.EngineNative) && system.IsUnitEnabled(system.PodmanNginxUnit()) {
+		lib.Warn("Podman auto-start is still enabled; run `chauf autostart disable` before starting native services")
+	}
 	return nil
 }
 

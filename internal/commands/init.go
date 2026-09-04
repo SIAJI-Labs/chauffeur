@@ -576,6 +576,8 @@ PROJECTS_DIR="$CHAUF_HOME/projects"
 # 1. Explicit env override (e.g. CHAUFFEUR_PHP_VERSION=8.3 php artisan ...)
 PHP_VER="${CHAUFFEUR_PHP_VERSION:-}"
 PROJECT_WORKDIR=""
+PROJECT_DEDICATED="false"
+PROJECT_ROOT="$PWD"
 
 # 2. Scan project configs for one whose path matches CWD or a parent.
 #    PHP version is stored in ~/.chauffeur/projects/<slug>/config.yaml — no dotfile in project.
@@ -588,6 +590,8 @@ if [[ -z "$PHP_VER" && -d "$PROJECTS_DIR" ]]; then
         # Match if CWD is the project dir or any subdirectory of it
         if [[ "$CWD" == "$proj_path" || "$CWD" == "$proj_path/"* ]]; then
             PHP_VER=$(grep '^php_version:' "$cfg" 2>/dev/null | head -1 | sed 's/^php_version:[[:space:]]*//' | tr -d '"')
+            PROJECT_DEDICATED=$(grep -A2 '^fpm:' "$cfg" 2>/dev/null | grep 'dedicated:' | sed 's/.*dedicated:[[:space:]]*//' | tr -d '"')
+            PROJECT_ROOT="$proj_path"
             PROJECT_WORKDIR="/workspace/$(basename "$(dirname "$cfg")")"
             break
         fi
@@ -608,11 +612,22 @@ fi
 # routing the command through the matching PHP-FPM container.
 RUNTIME=$(grep 'engine:' "$CONFIG" 2>/dev/null | head -1 | sed 's/.*engine:[[:space:]]*//' | tr -d '"')
 if [[ "$RUNTIME" == "podman" ]]; then
+    DB_HOST_OVERRIDE=""
+    if [[ -f "$PROJECT_ROOT/.env" ]]; then
+        DB_HOST=$(grep '^DB_HOST=' "$PROJECT_ROOT/.env" 2>/dev/null | head -1 | sed 's/^DB_HOST=//' | tr -d '"' | tr -d "'" | tr -d ' ')
+        if [[ "$DB_HOST" == "127.0.0.1" || "$DB_HOST" == "localhost" ]]; then
+            DB_HOST_OVERRIDE="DB_HOST=host.containers.internal"
+        fi
+    fi
     CONTAINER="chauf-php${PHP_VER//./}-fpm"
+    if [[ "$PROJECT_DEDICATED" == "true" ]]; then
+        CONTAINER="chauf-cfpm$(basename "$(dirname "$cfg")")"
+    fi
     IMAGE="ghcr.io/siegg/chauffeur-php:${PHP_VER}-fpm"
     HOST_USER="$(id -u):$(id -g)"
     if [[ -z "$PROJECT_WORKDIR" ]]; then
         RUN_ARGS=(run --rm --userns keep-id --user "$HOST_USER" --volume "$PWD:/workspace:Z" --workdir /workspace)
+        if [[ -n "$DB_HOST_OVERRIDE" ]]; then RUN_ARGS+=(--env "$DB_HOST_OVERRIDE"); fi
         if [[ -t 0 && -t 1 ]]; then
             RUN_ARGS+=(--interactive --tty)
         fi
@@ -626,6 +641,7 @@ if [[ "$RUNTIME" == "podman" ]]; then
     if [[ -n "$PROJECT_WORKDIR" ]]; then
         EXEC_ARGS+=(--workdir "$PROJECT_WORKDIR")
     fi
+    if [[ -n "$DB_HOST_OVERRIDE" ]]; then EXEC_ARGS+=(--env "$DB_HOST_OVERRIDE"); fi
     exec podman "${EXEC_ARGS[@]}" "$CONTAINER" php "$@"
 fi
 
@@ -649,6 +665,8 @@ COMPOSER_PHAR="$CHAUF_HOME/composer/composer.phar"
 
 PHP_VER="${CHAUFFEUR_PHP_VERSION:-}"
 PROJECT_WORKDIR=""
+PROJECT_DEDICATED="false"
+PROJECT_ROOT="$PWD"
 if [[ -z "$PHP_VER" && -d "$PROJECTS_DIR" ]]; then
     CWD="$PWD"
     for cfg in "$PROJECTS_DIR"/*/config.yaml; do
@@ -657,6 +675,8 @@ if [[ -z "$PHP_VER" && -d "$PROJECTS_DIR" ]]; then
         [[ -n "$proj_path" ]] || continue
         if [[ "$CWD" == "$proj_path" || "$CWD" == "$proj_path/"* ]]; then
             PHP_VER=$(grep '^php_version:' "$cfg" 2>/dev/null | head -1 | sed 's/^php_version:[[:space:]]*//' | tr -d '"')
+            PROJECT_DEDICATED=$(grep -A2 '^fpm:' "$cfg" 2>/dev/null | grep 'dedicated:' | sed 's/.*dedicated:[[:space:]]*//' | tr -d '"')
+            PROJECT_ROOT="$proj_path"
             PROJECT_WORKDIR="/workspace/$(basename "$(dirname "$cfg")")"
             break
         fi
@@ -672,11 +692,22 @@ if [[ "$RUNTIME" == "podman" ]]; then
         echo "chauf: no PHP version configured. Run: chauf php use <version>" >&2
         exit 1
     fi
+    DB_HOST_OVERRIDE=""
+    if [[ -f "$PROJECT_ROOT/.env" ]]; then
+        DB_HOST=$(grep '^DB_HOST=' "$PROJECT_ROOT/.env" 2>/dev/null | head -1 | sed 's/^DB_HOST=//' | tr -d '"' | tr -d "'" | tr -d ' ')
+        if [[ "$DB_HOST" == "127.0.0.1" || "$DB_HOST" == "localhost" ]]; then
+            DB_HOST_OVERRIDE="DB_HOST=host.containers.internal"
+        fi
+    fi
     CONTAINER="chauf-php${PHP_VER//./}-fpm"
+    if [[ "$PROJECT_DEDICATED" == "true" ]]; then
+        CONTAINER="chauf-cfpm$(basename "$(dirname "$cfg")")"
+    fi
     IMAGE="ghcr.io/siegg/chauffeur-php:${PHP_VER}-fpm"
     HOST_USER="$(id -u):$(id -g)"
     if [[ -z "$PROJECT_WORKDIR" ]]; then
         RUN_ARGS=(run --rm --userns keep-id --user "$HOST_USER" --volume "$PWD:/workspace:Z" --workdir /workspace)
+        if [[ -n "$DB_HOST_OVERRIDE" ]]; then RUN_ARGS+=(--env "$DB_HOST_OVERRIDE"); fi
         if [[ -t 0 && -t 1 ]]; then
             RUN_ARGS+=(--interactive --tty)
         fi
@@ -690,6 +721,7 @@ if [[ "$RUNTIME" == "podman" ]]; then
     if [[ -n "$PROJECT_WORKDIR" ]]; then
         EXEC_ARGS+=(--workdir "$PROJECT_WORKDIR")
     fi
+    if [[ -n "$DB_HOST_OVERRIDE" ]]; then EXEC_ARGS+=(--env "$DB_HOST_OVERRIDE"); fi
     exec podman "${EXEC_ARGS[@]}" "$CONTAINER" composer "$@"
 fi
 

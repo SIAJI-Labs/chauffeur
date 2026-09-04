@@ -70,6 +70,9 @@ func RunDoctor(args []string) error {
 	fmt.Println()
 
 	var all []checkResult
+	runtimeChecks := doctorRuntimeOwnership(root, cfg)
+	printDoctorSection("Runtime Ownership", runtimeChecks)
+	all = append(all, runtimeChecks...)
 
 	if *doDeps {
 		r := doctorSystemDeps()
@@ -154,6 +157,25 @@ func RunDoctor(args []string) error {
 		return fmt.Errorf("doctor found %d issue(s)", failed)
 	}
 	return nil
+}
+
+func doctorRuntimeOwnership(root string, cfg workspace.Config) []checkResult {
+	results := []checkResult{}
+	nativeEnabled := system.IsUnitEnabled("chauffeur-nginx.service")
+	podmanEnabled := system.IsUnitEnabled(system.PodmanNginxUnit())
+	if cfg.Runtime.Engine == string(chauftruntime.EnginePodman) && nativeEnabled {
+		results = append(results, checkResult{name: "runtime ownership", ok: false, status: "Podman selected but native nginx auto-start is enabled", fix: "chauf autostart enable"})
+	} else if cfg.Runtime.Engine == string(chauftruntime.EngineNative) && podmanEnabled {
+		results = append(results, checkResult{name: "runtime ownership", ok: false, status: "native selected but Podman nginx auto-start is enabled", fix: "chauf autostart disable"})
+	} else {
+		results = append(results, checkResult{name: "runtime ownership", ok: true, status: cfg.Runtime.Engine + " has no conflicting nginx unit"})
+	}
+	home, _ := os.UserHomeDir()
+	defaultRoot := filepath.Join(home, ".chauffeur")
+	if filepath.Clean(root) != filepath.Clean(defaultRoot) && (nativeEnabled || podmanEnabled) {
+		results = append(results, checkResult{name: "autostart workspace", ok: false, warn: true, status: fmt.Sprintf("units use %s, but CLI workspace is %s", defaultRoot, root), fix: "disable legacy auto-start units and recreate them for this workspace"})
+	}
+	return results
 }
 
 func doctorPHPRuntime(cfg workspace.Config) []checkResult {

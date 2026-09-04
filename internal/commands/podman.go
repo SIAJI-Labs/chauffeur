@@ -20,8 +20,8 @@ import (
 	"github.com/siegg/chauffeur/internal/workspace"
 )
 
-// RunPodman dispatches to the appropriate podman subcommand.
-func RunPodman(args []string) error {
+// RunPodmanDB dispatches the database/cache container command.
+func RunPodmanDB(args []string) error {
 	if len(args) == 0 {
 		return runPodmanHelp(args)
 	}
@@ -56,13 +56,23 @@ func RunPodman(args []string) error {
 	}
 }
 
-// ── chauf podman help ──────────────────────────────────────────────────────────
+// RunPodmanLegacy preserves the original command name for existing scripts.
+// Database state and container names are intentionally shared with podman-db.
+func RunPodmanLegacy(args []string) error {
+	lib.Warn("chauf podman is deprecated; use chauf podman-db")
+	return RunPodmanDB(args)
+}
+
+// RunPodman is retained for internal callers compiled against the old API.
+func RunPodman(args []string) error { return RunPodmanDB(args) }
+
+// ── chauf podman-db help ───────────────────────────────────────────────────────
 
 func runPodmanHelp(args []string) error {
 	flags := flag.NewFlagSet("podman help", flag.ContinueOnError)
 	flags.SetOutput(os.Stdout)
-	lib.SetFlagUsage(flags, "chauf podman — manage shared database containers via Podman",
-		"chauf podman <create|start|stop|status|list|remove|console|backup|restore> [args]")
+	lib.SetFlagUsage(flags, "chauf podman-db — manage shared database containers via Podman",
+		"chauf podman-db <create|start|stop|status|list|remove|console|backup|restore> [args]")
 
 	fmt.Println()
 	fmt.Printf("  %s\n", lib.Bold("Podman database containers"))
@@ -81,7 +91,7 @@ func runPodmanHelp(args []string) error {
 	fmt.Printf("    %-16s  %s\n", "backup", lib.Gray("Backup a container to file"))
 	fmt.Printf("    %-16s  %s\n", "restore", lib.Gray("Restore a container from backup"))
 	fmt.Println()
-	fmt.Printf("  %s\n", lib.Gray(`Run "chauf podman <command> --help" for detailed usage.`))
+	fmt.Printf("  %s\n", lib.Gray(`Run "chauf podman-db <command> --help" for detailed usage.`))
 	fmt.Println()
 	return nil
 }
@@ -91,8 +101,8 @@ func runPodmanHelp(args []string) error {
 func runPodmanCreate(args []string) error {
 	flags := flag.NewFlagSet("podman create", flag.ContinueOnError)
 	flags.SetOutput(os.Stdout)
-	lib.SetFlagUsage(flags, "chauf podman create — create a database container",
-		"chauf podman create [mysql|postgres|maria|mongo|redis] [--name <container-name>] [--user <user>] [--pass <pass>] [--port <port>] [--volume <path>]")
+	lib.SetFlagUsage(flags, "chauf podman-db create — create a database container",
+		"chauf podman-db create [mysql|postgres|maria|mongo|redis] [--name <container-name>] [--user <user>] [--pass <pass>] [--port <port>] [--volume <path>]")
 
 	nameFlag := flags.String("name", "", "Container name (default: chauf-<engine>)")
 	userFlag := flags.String("user", "", "Database username (auto-generated if not set)")
@@ -333,8 +343,8 @@ func runPodmanCreate(args []string) error {
 func runPodmanStart(args []string) error {
 	flags := flag.NewFlagSet("podman start", flag.ContinueOnError)
 	flags.SetOutput(os.Stdout)
-	lib.SetFlagUsage(flags, "chauf podman start — start a container",
-		"chauf podman start [container-name|engine|all]")
+	lib.SetFlagUsage(flags, "chauf podman-db start — start a container",
+		"chauf podman-db start [container-name|engine|all]")
 
 	if err := flags.Parse(args); err != nil {
 		return err
@@ -430,8 +440,8 @@ func runPodmanStart(args []string) error {
 func runPodmanStop(args []string) error {
 	flags := flag.NewFlagSet("podman stop", flag.ContinueOnError)
 	flags.SetOutput(os.Stdout)
-	lib.SetFlagUsage(flags, "chauf podman stop — stop a container",
-		"chauf podman stop [container-name|engine|all] [--time <seconds>]")
+	lib.SetFlagUsage(flags, "chauf podman-db stop — stop a container",
+		"chauf podman-db stop [container-name|engine|all] [--time <seconds>]")
 
 	timeout := flags.Int("time", 10, "Seconds to wait before killing the container")
 
@@ -549,8 +559,8 @@ func runPodmanStop(args []string) error {
 func runPodmanStatus(args []string) error {
 	flags := flag.NewFlagSet("podman status", flag.ContinueOnError)
 	flags.SetOutput(os.Stdout)
-	lib.SetFlagUsage(flags, "chauf podman status — show container status",
-		"chauf podman status [container-name|engine|all]")
+	lib.SetFlagUsage(flags, "chauf podman-db status — show container status",
+		"chauf podman-db status [container-name|engine|all]")
 
 	if err := flags.Parse(args); err != nil {
 		return err
@@ -646,8 +656,8 @@ func runPodmanStatus(args []string) error {
 func runPodmanList(args []string) error {
 	flags := flag.NewFlagSet("podman list", flag.ContinueOnError)
 	flags.SetOutput(os.Stdout)
-	lib.SetFlagUsage(flags, "chauf podman list — list all managed containers",
-		"chauf podman list")
+	lib.SetFlagUsage(flags, "chauf podman-db list — list all managed containers",
+		"chauf podman-db list")
 
 	if err := flags.Parse(args); err != nil {
 		return err
@@ -674,7 +684,7 @@ func runPodmanList(args []string) error {
 		fmt.Println()
 		lib.Info("No database containers configured.")
 		fmt.Println()
-		lib.Info(lib.Gray("Create one with:  chauf podman create <engine>"))
+		lib.Info(lib.Gray("Create one with:  chauf podman-db create <engine>"))
 		fmt.Println()
 		return nil
 	}
@@ -735,8 +745,8 @@ func runPodmanList(args []string) error {
 func runPodmanRemove(args []string) error {
 	flags := flag.NewFlagSet("podman remove", flag.ContinueOnError)
 	flags.SetOutput(os.Stdout)
-	lib.SetFlagUsage(flags, "chauf podman remove — remove a container",
-		"chauf podman remove [container-name|engine] [--force] [--yes]")
+	lib.SetFlagUsage(flags, "chauf podman-db remove — remove a container",
+		"chauf podman-db remove [container-name|engine] [--force] [--yes]")
 
 	forceFlag := flags.Bool("force", false, "Force remove running container")
 	yesFlag := flags.Bool("yes", false, "Skip confirmation prompt")
@@ -923,8 +933,8 @@ func runPodmanRemove(args []string) error {
 func runPodmanConsole(args []string) error {
 	flags := flag.NewFlagSet("podman console", flag.ContinueOnError)
 	flags.SetOutput(os.Stdout)
-	lib.SetFlagUsage(flags, "chauf podman console — attach to container for CLI access",
-		"chauf podman console <name>")
+	lib.SetFlagUsage(flags, "chauf podman-db console — attach to container for CLI access",
+		"chauf podman-db console <name>")
 
 	if err := flags.Parse(args); err != nil {
 		return err
@@ -966,7 +976,7 @@ func runPodmanConsole(args []string) error {
 	}
 	if !running {
 		lib.Error(fmt.Sprintf("Container %s is not running", engine))
-		lib.Info("Start it with:  chauf podman start " + engine)
+		lib.Info("Start it with:  chauf podman-db start " + engine)
 		return nil
 	}
 
@@ -1002,8 +1012,8 @@ func runPodmanConsole(args []string) error {
 func runPodmanImport(args []string) error {
 	flags := flag.NewFlagSet("podman import", flag.ContinueOnError)
 	flags.SetOutput(os.Stdout)
-	lib.SetFlagUsage(flags, "chauf podman import — adopt an existing container",
-		"chauf podman import <engine> --name <container-name> [--user <user>] [--pass <pass>] [--port <port>]")
+	lib.SetFlagUsage(flags, "chauf podman-db import — adopt an existing container",
+		"chauf podman-db import <engine> --name <container-name> [--user <user>] [--pass <pass>] [--port <port>]")
 
 	nameFlag := flags.String("name", "", "Existing container name (required)")
 	userFlag := flags.String("user", "", "Database username (auto-detected if not set)")

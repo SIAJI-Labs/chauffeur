@@ -6,6 +6,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/siegg/chauffeur/internal/workspace"
 )
 
 const (
@@ -47,7 +49,7 @@ WantedBy=default.target
 func FPMTemplateUnitContent() string {
 	return `[Unit]
 Description=Chauffeur PHP-FPM (%i)
-After=chauffeur-nginx.service
+Before=chauffeur-nginx.service
 
 [Service]
 Type=forking
@@ -68,14 +70,66 @@ func FPMInstanceUnit(version string) string {
 	return fmt.Sprintf("chauffeur-php-fpm@%s.service", version)
 }
 
+// PodmanNginxUnitContent returns a user unit for the already-reconciled nginx
+// container. Reconciliation remains owned by chauf start; systemd only starts
+// and stops the selected runtime's resources.
+func PodmanNginxUnitContent(fpmUnits []string) string {
+	return PodmanNginxUnitContentForRoot("/usr", fpmUnits)
+}
+
+// PodmanNginxUnitContentForRoot uses the workspace's installed chauf binary as
+// the reconciliation boundary. This prevents systemd from starting stale
+// containers without applying the current project graph and nginx config.
+func PodmanNginxUnitContentForRoot(root string, fpmUnits []string) string {
+	var b strings.Builder
+	b.WriteString("[Unit]\nDescription=Chauffeur Podman nginx\nAfter=network-online.target")
+	for _, unit := range fpmUnits {
+		fmt.Fprintf(&b, "\nAfter=%s\nRequires=%s", unit, unit)
+	}
+	chauf := filepath.Join(root, "bin", "chauf")
+	b.WriteString("\n\n[Service]\nType=oneshot\nRemainAfterExit=yes\nExecStart=" + chauf + " start\nExecStop=" + chauf + " stop\n\n[Install]\nWantedBy=default.target\n")
+	return b.String()
+}
+
+func PodmanFPMUnitContent(container string) string {
+	return fmt.Sprintf(`[Unit]
+Description=Chauffeur Podman PHP-FPM (%s)
+After=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/podman start %s
+ExecStop=/usr/bin/podman stop %s
+
+[Install]
+WantedBy=default.target
+`, container, container, container)
+}
+
+func PodmanNginxUnit() string               { return "chauffeur-podman-nginx.service" }
+func PodmanFPMUnit(container string) string { return "chauffeur-podman-fpm-" + container + ".service" }
+
+func WritePodmanUnit(name, content string) error { return writeUnit(name, content) }
+
 // WriteNginxUnit writes the nginx systemd user unit file.
 func WriteNginxUnit() error {
-	return writeUnit(nginxUnit, NginxUnitContent())
+	return writeUnit(nginxUnit, NginxUnitContentForRoot(workspace.Root()))
 }
 
 // WriteFPMTemplateUnit writes the PHP-FPM template systemd user unit file.
 func WriteFPMTemplateUnit() error {
-	return writeUnit(fpmTemplateUnit, FPMTemplateUnitContent())
+	return writeUnit(fpmTemplateUnit, FPMTemplateUnitContentForRoot(workspace.Root()))
+}
+
+func NginxUnitContentForRoot(root string) string {
+	root = filepath.Clean(root)
+	return strings.ReplaceAll(NginxUnitContent(), "%h/.chauffeur", root)
+}
+
+func FPMTemplateUnitContentForRoot(root string) string {
+	root = filepath.Clean(root)
+	return strings.ReplaceAll(FPMTemplateUnitContent(), "%h/.chauffeur", root)
 }
 
 // UserDaemonReload runs systemctl --user daemon-reload.
