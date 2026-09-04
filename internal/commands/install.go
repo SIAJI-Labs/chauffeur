@@ -19,11 +19,11 @@ import (
 func RunInstall(args []string) error {
 	flags := flag.NewFlagSet("install", flag.ContinueOnError)
 	flags.SetOutput(os.Stdout)
-	lib.SetFlagUsage(flags, "chauf install — install nginx, PHP, or Composer from source", "chauf install <nginx|php <version>|composer> [--force] [--build] [--no-cache]")
+	lib.SetFlagUsage(flags, "chauf install — install services or build PHP images", "chauf install <nginx|php <version>|composer> [--force] [--build] [--no-cache]")
 	force := flags.Bool("force", false, "Reinstall even if already present")
 	noCache := flags.Bool("no-cache", false, "Skip download cache")
 	verbose := flags.Bool("verbose", false, "Stream build output to terminal")
-	buildPodman := flags.Bool("build", false, "Build the selected Podman image locally")
+	buildPodman := flags.Bool("build", false, "Build the selected PHP image locally")
 	flags.BoolVar(verbose, "v", false, "Stream build output to terminal")
 
 	// Separate flag args from positional args so flags can appear anywhere,
@@ -86,13 +86,19 @@ func installPodmanPHP(version string, build, verbose bool) error {
 	if !containsSupportedPHP(mm) {
 		return fmt.Errorf("unsupported PHP version %s for Podman image preparation", mm)
 	}
-	step := startStep(fmt.Sprintf("PHP %s Podman image", mm), verbose)
+	step := startStep(fmt.Sprintf("PHP %s image", mm), verbose)
 	runner := chauftruntime.ExecRunner{}
 	var err error
 	if build {
 		err = chauftruntime.BuildPHP(context.Background(), runner, mm)
 	} else {
 		err = chauftruntime.PullPHP(context.Background(), runner, mm)
+		// The hosted image is optional. If it is unavailable, build the image
+		// locally from the official PHP base image instead.
+		if err != nil && isUnavailablePHPRegistry(err) {
+			lib.Warn(fmt.Sprintf("PHP %s image is unavailable; building from the official PHP image", mm))
+			err = chauftruntime.BuildPHP(context.Background(), runner, mm)
+		}
 	}
 	if err != nil {
 		step.fail(err.Error())
@@ -105,6 +111,14 @@ func installPodmanPHP(version string, build, verbose bool) error {
 	}
 	step.success(metadata.Digest)
 	return nil
+}
+
+func isUnavailablePHPRegistry(err error) bool {
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "403 forbidden") ||
+		strings.Contains(message, "unauthorized") ||
+		strings.Contains(message, "manifest unknown") ||
+		strings.Contains(message, "name unknown")
 }
 
 func containsSupportedPHP(version string) bool {
@@ -507,7 +521,7 @@ func interactiveSelectPHPVersion(versions []string, title string) string {
 
 	installedSet := installedPHPForRuntime(versions, workspace.Load().Runtime.Engine)
 	if workspace.Load().Runtime.Engine == string(chauftruntime.EnginePodman) {
-		title += " (Podman images)"
+		title += " (container images)"
 	}
 
 	// If all are installed, fall back to simple list
@@ -537,7 +551,7 @@ func interactiveSelectPHPVersion(versions []string, title string) string {
 		installed:      installedSet,
 	}
 	if workspace.Load().Runtime.Engine == string(chauftruntime.EnginePodman) {
-		model.installedLabel = "Podman image"
+		model.installedLabel = "installed"
 	}
 
 	p := tea.NewProgram(model)

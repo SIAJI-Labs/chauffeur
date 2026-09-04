@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os/exec"
 	"strings"
 )
@@ -27,6 +28,20 @@ func (e *RunnerError) Unwrap() error { return e.Err }
 // ExecRunner is the production Podman command backend. It is intentionally
 // small so tests can replace it with a recording fake.
 type ExecRunner struct{}
+
+// Stream runs a long-lived command without buffering its output. It is used
+// by follow-mode logs so callers see lines as Podman emits them.
+func (ExecRunner) Stream(ctx context.Context, stdout, stderr io.Writer, args ...string) error {
+	cmd := exec.CommandContext(ctx, "podman", args...)
+	cmd.Stdout, cmd.Stderr = stdout, stderr
+	if err := cmd.Run(); err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		return &RunnerError{Kind: FailureCommand, Err: fmt.Errorf("podman %s: %w", strings.Join(args, " "), err)}
+	}
+	return nil
+}
 
 func (ExecRunner) Run(ctx context.Context, args ...string) (CommandResult, error) {
 	cmd := exec.CommandContext(ctx, "podman", args...)

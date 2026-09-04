@@ -11,7 +11,7 @@ import (
 func ForWorkspace(cfg workspace.Config) (Runtime, error) {
 	switch Engine(cfg.Runtime.Engine) {
 	case "", EngineNative:
-		return Native{}, nil
+		return Native{Root: workspace.Root()}, nil
 	case EnginePodman:
 		return Podman{Runner: ExecRunner{}}, nil
 	default:

@@ -106,14 +106,17 @@ func TestEnsurePHPContainerStartsExistingContainer(t *testing.T) {
 	if err := r.EnsurePHPContainer(context.Background(), Scope{Version: "8.3"}, PHP83Image, "/tmp/project"); err != nil {
 		t.Fatal(err)
 	}
-	if len(runner.args) != 9 {
-		t.Fatalf("calls = %#v, want preflight, existence, inspect, and start checks", runner.args)
+	if len(runner.args) != 10 {
+		t.Fatalf("calls = %#v, want preflight, existence, inspect, and FPM readiness checks", runner.args)
 	}
 	if runner.args[7][0] != "container" || runner.args[7][1] != "start" {
 		t.Fatalf("container start args = %#v", runner.args[7])
 	}
 	if runner.args[8][0] != "container" || runner.args[8][1] != "exec" {
 		t.Fatalf("PHP readiness args = %#v", runner.args[8])
+	}
+	if runner.args[9][0] != "container" || runner.args[9][1] != "exec" || runner.args[9][4] != "-r" {
+		t.Fatalf("FPM listener probe args = %#v", runner.args[9])
 	}
 }
 
@@ -122,7 +125,10 @@ type existingPHPRunner struct{ args [][]string }
 func (r *existingPHPRunner) Run(_ context.Context, args ...string) (CommandResult, error) {
 	r.args = append(r.args, args)
 	if len(args) >= 2 && args[0] == "container" && args[1] == "inspect" {
-		return CommandResult{Stdout: `[{"State":{"Status":"exited"},"Config":{"Labels":{"com.siegg.chauffeur.role":"php-fpm","com.siegg.chauffeur.php.version":"8.3","com.siegg.chauffeur.scope":"shared"}},"Mounts":[{"Source":"/tmp/project","Destination":"/workspace","RW":true}]}]`}, nil
+		if len(args) >= 4 && args[3] == "{{.State.Status}}" {
+			return CommandResult{Stdout: "running"}, nil
+		}
+		return CommandResult{Stdout: `[{"State":{"Status":"exited"},"Image":"sha256:test","Config":{"Labels":{"com.siegg.chauffeur.role":"php-fpm","com.siegg.chauffeur.php.version":"8.3","com.siegg.chauffeur.scope":"shared","com.siegg.chauffeur.userns":"keep-id"}},"Mounts":[{"Source":"/tmp/project","Destination":"/workspace","RW":true}]}]`}, nil
 	}
 	if len(args) >= 2 && args[0] == "image" && args[1] == "inspect" {
 		return CommandResult{Stdout: `[{"Id":"sha256:test","Architecture":"amd64"}]`}, nil

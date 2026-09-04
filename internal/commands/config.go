@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"strconv"
@@ -9,6 +10,7 @@ import (
 	"github.com/siegg/chauffeur/internal/installers"
 	"github.com/siegg/chauffeur/internal/lib"
 	chauftruntime "github.com/siegg/chauffeur/internal/runtime"
+	"github.com/siegg/chauffeur/internal/system"
 	"github.com/siegg/chauffeur/internal/workspace"
 )
 
@@ -65,11 +67,87 @@ func configRuntime(args []string) error {
 	if len(args) != 1 {
 		return fmt.Errorf("usage: chauf config runtime [native|podman]")
 	}
-	if err := workspace.SetRuntimeEngine(strings.ToLower(args[0])); err != nil {
+	engine := strings.ToLower(args[0])
+	previousEngine := cfg.Runtime.Engine
+	if previousEngine != engine {
+		if err := stopRunningRuntimeServices(cfg); err != nil {
+			return fmt.Errorf("stop %s services before changing runtime: %w", previousEngine, err)
+		}
+	}
+	if err := workspace.SetRuntimeEngine(engine); err != nil {
 		return err
 	}
-	fmt.Printf("  %s runtime.engine = %s\n", lib.Green("✓"), strings.ToLower(args[0]))
+	fmt.Printf("  %s runtime.engine = %s\n", lib.Green("✓"), engine)
+	if previousEngine != engine {
+		// Runtime selection is an ownership boundary. Remove enabled units for
+		// the old engine now, while preserving its installed artifacts and
+		// containers so the user can switch back safely.
+		if previousEngine == string(chauftruntime.EngineNative) && engine == string(chauftruntime.EnginePodman) {
+			if err := migrateNativeAutostartToPodman(); err != nil {
+				_ = workspace.SetRuntimeEngine(previousEngine)
+				return fmt.Errorf("migrate auto-start to Podman: %w", err)
+			}
+		} else if previousEngine == string(chauftruntime.EnginePodman) && engine == string(chauftruntime.EngineNative) {
+			if err := disablePodmanAutostart(); err != nil {
+				_ = workspace.SetRuntimeEngine(previousEngine)
+				return fmt.Errorf("disable Podman auto-start: %w", err)
+			}
+		}
+	}
+	if engine == string(chauftruntime.EnginePodman) && system.IsUnitEnabled("chauffeur-nginx.service") {
+		lib.Warn("native nginx auto-start is still enabled; run `chauf autostart enable` to migrate it to Podman or `chauf autostart disable`")
+	}
+	if engine == string(chauftruntime.EngineNative) && system.IsUnitEnabled(system.PodmanNginxUnit()) {
+		lib.Warn("Podman auto-start is still enabled; run `chauf autostart disable` before starting native services")
+	}
 	return nil
+}
+
+// stopRunningRuntimeServices makes runtime changes an explicit ownership
+// handoff. Inspect status first so stopped or absent services are left alone;
+// only running services are stopped before the config is changed.
+func stopRunningRuntimeServices(cfg workspace.Config) error {
+	rt, err := chauftruntime.ForWorkspace(cfg)
+	if err != nil {
+		return err
+	}
+	scopes, err := runtimeServiceScopes(workspace.Root())
+	if err != nil {
+		return err
+	}
+	scopes = append(scopes, chauftruntime.Scope{Service: "nginx"})
+	ctx := context.Background()
+	for _, scope := range scopes {
+		statuses, statusErr := rt.Status(ctx, scope)
+		if statusErr != nil {
+			return fmt.Errorf("check %s status: %w", scopeLabel(scope), statusErr)
+		}
+		running := false
+		for _, status := range statuses {
+			if status.Healthy || status.State == "running" {
+				running = true
+				break
+			}
+		}
+		if !running {
+			continue
+		}
+		if err := rt.Stop(ctx, scope); err != nil {
+			return fmt.Errorf("stop %s: %w", scopeLabel(scope), err)
+		}
+		lib.Info(lib.Gray("stopped " + scopeLabel(scope)))
+	}
+	return nil
+}
+
+func scopeLabel(scope chauftruntime.Scope) string {
+	if scope.Service != "" {
+		return scope.Service
+	}
+	if scope.Version != "" {
+		return "php-fpm " + scope.Version
+	}
+	return "runtime service"
 }
 
 func configPHP(args []string) error {

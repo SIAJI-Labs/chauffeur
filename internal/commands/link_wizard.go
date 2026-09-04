@@ -559,10 +559,12 @@ func (m linkWizardModel) View() string {
 		for j, item := range m.groups[i] {
 			focused := active && j == m.cursor
 			cursor := tui.Cursor(focused)
+			selected := tui.Checkbox(m.optionSelected(i, item), focused)
+			displayItem := m.optionDisplay(i, item)
 			if focused {
-				fmt.Fprintf(&b, "  %s %s\n", cursor, lib.Green(item))
+				fmt.Fprintf(&b, "  %s %s %s\n", cursor, selected, lib.Green(displayItem))
 			} else {
-				fmt.Fprintf(&b, "  %s %s\n", cursor, lib.Gray(item))
+				fmt.Fprintf(&b, "  %s %s %s\n", cursor, selected, lib.Gray(displayItem))
 			}
 		}
 		b.WriteString("\n")
@@ -593,4 +595,50 @@ func (m linkWizardModel) View() string {
 	}
 	fmt.Fprintf(&b, "  %s\n", tui.Footer("enter next · space toggle · esc cancel · ? help"))
 	return b.String()
+}
+
+// optionSelected keeps the wizard's committed value visible while the cursor
+// moves through later sections. For the current section, the cursor represents
+// the pending default until the user confirms it.
+func (m linkWizardModel) optionSelected(page int, item string) bool {
+	if page >= len(m.labels) || page >= len(m.groups) {
+		return false
+	}
+	if page == m.page {
+		return m.cursor == indexOf(m.groups[page], item)
+	}
+	switch m.labels[page] {
+	case "PHP version":
+		return m.result.php != "" && strings.HasPrefix(item, m.result.php)
+	case "Primary domain":
+		return m.result.domain == item
+	case "Aliases":
+		if item == "No aliases" {
+			return len(m.result.aliases) == 0
+		}
+		return len(m.result.aliases) > 0
+	case "SSL":
+		return (item == "HTTPS") == m.result.secure
+	case "FPM mode":
+		return (item == "dedicated FPM") == m.result.dedicated
+	case "Reverse proxy port":
+		return strconv.Itoa(m.result.proxyPort) == item
+	}
+	return false
+}
+
+func indexOf(items []string, value string) int {
+	for i, item := range items {
+		if item == value {
+			return i
+		}
+	}
+	return -1
+}
+
+func (m linkWizardModel) optionDisplay(page int, item string) string {
+	if page < len(m.labels) && m.labels[page] == "Aliases" && item == "Custom aliases" && len(m.result.aliases) > 0 {
+		return item + " (" + strings.Join(m.result.aliases, ", ") + ")"
+	}
+	return item
 }

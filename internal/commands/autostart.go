@@ -1,11 +1,13 @@
 package commands
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
 
 	"github.com/siegg/chauffeur/internal/lib"
+	chauftruntime "github.com/siegg/chauffeur/internal/runtime"
 	"github.com/siegg/chauffeur/internal/system"
 	"github.com/siegg/chauffeur/internal/workspace"
 )
@@ -52,6 +54,12 @@ func autostartHelp() error {
 
 func autostartEnable(args []string) error {
 	fmt.Println()
+	if workspace.Load().Runtime.Engine == string(chauftruntime.EnginePodman) {
+		return enablePodmanAutostart()
+	}
+	if err := disableUnitsForOtherRuntimes(false); err != nil {
+		return err
+	}
 
 	switch {
 	case len(args) == 0:
@@ -90,6 +98,67 @@ func autostartEnable(args []string) error {
 		fmt.Println()
 	}
 
+	return nil
+}
+
+func enablePodmanAutostart() error {
+	root := workspace.Root()
+	// Engine switching must not leave native units owning the same ports.
+	if err := stopNativeRuntimeForPodman(root); err != nil {
+		return err
+	}
+	if err := disableUnitsForOtherRuntimes(true); err != nil {
+		return err
+	}
+	// Do not create per-container boot units: containers may not exist until
+	// reconciliation creates them. The single nginx unit invokes `chauf start`,
+	// which creates/readies FPM before nginx and owns the complete transaction.
+	fpmUnits := []string{}
+	nginxUnit := system.PodmanNginxUnit()
+	if err := system.WritePodmanUnit(nginxUnit, system.PodmanNginxUnitContentForRoot(root, fpmUnits)); err != nil {
+		return err
+	}
+	if err := system.UserDaemonReload(); err != nil {
+		return err
+	}
+	if err := system.EnableUnit(nginxUnit); err != nil {
+		return err
+	}
+	if err := system.StartUnit(nginxUnit); err != nil {
+		return err
+	}
+	lib.Success("Podman services auto-start enabled")
+	return nil
+}
+
+// stopNativeRuntimeForPodman also handles native processes started manually
+// (and therefore not visible as active systemd units) before Podman claims the
+// shared HTTP/HTTPS ports.
+func stopNativeRuntimeForPodman(root string) error {
+	native := chauftruntime.Native{Root: root}
+	if err := native.Stop(context.Background(), chauftruntime.Scope{Service: "nginx"}); err != nil {
+		return fmt.Errorf("stop native nginx before enabling Podman auto-start: %w", err)
+	}
+	scopes, err := runtimeServiceScopes(root)
+	if err != nil {
+		return fmt.Errorf("discover native PHP-FPM services before enabling Podman auto-start: %w", err)
+	}
+	for _, scope := range scopes {
+		if err := native.Stop(context.Background(), scope); err != nil {
+			return fmt.Errorf("stop native PHP-FPM %s before enabling Podman auto-start: %w", scope.Version, err)
+		}
+	}
+	return nil
+}
+
+func migrateNativeAutostartToPodman() error {
+	if system.IsUnitEnabled("chauffeur-nginx.service") {
+		lib.Warn("migrating auto-start ownership from native to Podman")
+	}
+	if err := disableUnitsForOtherRuntimes(true); err != nil {
+		return err
+	}
+	lib.Info(lib.Gray("Native installations are preserved. Run `chauf autostart enable` to enable Podman auto-start."))
 	return nil
 }
 
@@ -145,15 +214,22 @@ func enableFPM(version string) error {
 
 func autostartDisable(args []string) error {
 	fmt.Println()
+	if workspace.Load().Runtime.Engine == string(chauftruntime.EnginePodman) {
+		return disablePodmanAutostart()
+	}
 
 	switch {
 	case len(args) == 0:
 		// Disable everything
-		root := autostartRoot()
-		for _, ver := range installedPHPVersions(root) {
-			disableFPM(ver)
+		units, err := system.ListChauffeurUnits()
+		if err != nil {
+			return fmt.Errorf("discover Chauffeur systemd units: %w", err)
 		}
-		disableNginx()
+		for _, unit := range units {
+			if err := system.DisableUnit(unit); err != nil {
+				lib.Warn(unit + ": " + err.Error())
+			}
+		}
 
 	case args[0] == "nginx":
 		disableNginx()
@@ -169,6 +245,31 @@ func autostartDisable(args []string) error {
 	}
 
 	fmt.Println()
+	return nil
+}
+
+func disablePodmanAutostart() error {
+	if err := disableUnitsForOtherRuntimes(false); err != nil {
+		return err
+	}
+	lib.Success("Podman services auto-start disabled")
+	return nil
+}
+
+func disableUnitsForOtherRuntimes(keepPodman bool) error {
+	units, err := system.ListChauffeurUnits()
+	if err != nil {
+		return fmt.Errorf("discover Chauffeur systemd units: %w", err)
+	}
+	for _, unit := range units {
+		isPodman := strings.HasPrefix(unit, "chauffeur-podman-")
+		if isPodman == keepPodman {
+			continue
+		}
+		if err := system.DisableUnit(unit); err != nil {
+			return fmt.Errorf("disable %s: %w", unit, err)
+		}
+	}
 	return nil
 }
 
@@ -200,11 +301,18 @@ func autostartStatus() error {
 	sep := strings.Repeat("─", len(header))
 	fmt.Printf(" %s\n%s\n", lib.Bold(header[1:]), sep)
 
-	printAutostartRow(lblW, "nginx", "chauffeur-nginx.service")
+	cfg := workspace.Load()
+	if cfg.Runtime.Engine == string(chauftruntime.EnginePodman) {
+		printAutostartRow(lblW, "services (podman)", system.PodmanNginxUnit())
+	} else {
+		printAutostartRow(lblW, "nginx", "chauffeur-nginx.service")
+	}
 
 	root := autostartRoot()
-	for _, ver := range installedPHPVersions(root) {
-		printAutostartRow(lblW, "php-fpm "+ver, system.FPMInstanceUnit(ver))
+	if cfg.Runtime.Engine != string(chauftruntime.EnginePodman) {
+		for _, ver := range installedPHPVersions(root) {
+			printAutostartRow(lblW, "php-fpm "+ver, system.FPMInstanceUnit(ver))
+		}
 	}
 
 	fmt.Println()

@@ -41,73 +41,121 @@ func RunStart(args []string) error {
 	fmt.Println()
 	lib.Info("Starting services...")
 	fmt.Println()
-	if cfg.Runtime.Engine == string(chauftruntime.EnginePodman) {
-		return startPodmanServices(root, cfg)
-	}
-
-	mgr := services.NewManager(root)
-
 	if *projectPath != "" {
-		return startForProject(mgr, root, *projectPath)
+		return startRuntimeProject(root, cfg, *projectPath)
 	}
+	return startRuntimeServices(root, cfg)
 
-	// Verbose: show what will be started and in what order.
-	if lib.Verbose {
-		fpms, err := mgr.AllFPM()
-		if err == nil {
-			lib.Step(fmt.Sprintf("start order: %d FPM pool(s) → nginx", len(fpms)))
-			for _, fpm := range fpms {
-				lib.Step("php-fpm " + fpm.Label())
-				lib.Step("  binary:  " + shortenHome(fpm.BinaryPath()))
-				lib.Step("  config:  " + shortenHome(fpm.ConfigPath()))
-				lib.Step("  socket:  " + shortenHome(fpm.SockPath()))
-			}
-			nginx := mgr.Nginx()
-			lib.Step("nginx")
-			lib.Step("  binary:  " + shortenHome(nginx.BinaryPath()))
-			lib.Step("  config:  " + shortenHome(nginx.ConfigPath()))
-		}
-		fmt.Println()
-	}
+}
 
-	results, err := mgr.StartAll()
-	for _, r := range results {
-		printStartResult(r)
-	}
-	fmt.Println()
+func startRuntimeServices(root string, cfg workspace.Config) error {
+	ctx := context.Background()
+	rt, err := chauftruntime.ForWorkspace(cfg)
 	if err != nil {
 		return err
 	}
-
-	anyFailed := false
-	for _, r := range results {
-		if r.Err != nil {
-			anyFailed = true
-			break
+	if podmanRuntime, ok := rt.(chauftruntime.Podman); ok {
+		if err := podmanRuntime.EnsureReady(ctx); err != nil {
+			return err
+		}
+		// Auto-start must reconcile the declared workspace before issuing
+		// container start operations. A login can occur after containers were
+		// removed or after a runtime switch, so Start alone cannot assume that
+		// every PHP-FPM/nginx container still exists.
+		inventory, scopeErr := buildRuntimeWorkspaceScope(root, cfg)
+		if scopeErr != nil {
+			return fmt.Errorf("prepare Podman workspace for start: %w", scopeErr)
+		}
+		if err := podmanRuntime.EnsureWorkspace(ctx, inventory); err != nil {
+			return fmt.Errorf("reconcile Podman workspace before start: %w", err)
 		}
 	}
-	if anyFailed {
-		return fmt.Errorf("one or more services failed to start")
+	// Start is a service operation. It must not revalidate project mounts,
+	// certificates, images, or proxy targets; those belong to link/apply.
+	serviceScopes, err := runtimeServiceScopes(root)
+	if err != nil {
+		return err
 	}
-
+	operationScopes := make([]chauftruntime.Scope, 0, len(serviceScopes)+1)
+	operationScopes = append(operationScopes, serviceScopes...)
+	operationScopes = append(operationScopes, chauftruntime.Scope{Service: "nginx"})
+	operation := chauftruntime.ExecuteOperation(ctx, rt, "start", operationScopes)
+	for _, service := range operation.Services {
+		if service.Err != nil {
+			lib.Error(fmt.Sprintf("  %-22s  %s", service.Service.Label, service.Err))
+			continue
+		}
+		printStartStatus(service.Service)
+	}
+	if operation.Err != nil {
+		return fmt.Errorf("one or more services failed to start: %w", operation.Err)
+	}
 	lib.Success("All services running.")
+	return nil
+}
 
-	// Print active domains
-	all, _ := projects.ListAll(root)
-	if len(all) > 0 {
-		fmt.Println()
-		for _, p := range all {
-			scheme := "http"
-			port := cfg.Nginx.HTTPPort
-			if p.SSL {
-				scheme = "https"
-				port = cfg.Nginx.HTTPSPort
-			}
-			lib.Info(fmt.Sprintf("  %s://%s:%d", scheme, p.Domain, port))
+// runtimeServiceScopes resolves only lifecycle identities. Stop must not fail
+// because an application path, certificate, or reverse-proxy target is stale.
+func runtimeServiceScopes(root string) ([]chauftruntime.Scope, error) {
+	all, err := projects.ListAll(root)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]chauftruntime.Scope, 0)
+	seen := map[string]bool{}
+	for _, p := range all {
+		if p.ProjectType == projects.TypeReverseProxy {
+			continue
 		}
+		scope := chauftruntime.Scope{Version: p.PHPVersion, Project: p.Path, Slug: p.Slug, Dedicated: p.FPM.Dedicated}
+		name := chauftruntime.ContainerName(scope)
+		if !seen[name] {
+			seen[name] = true
+			result = append(result, scope)
+		}
+	}
+	return result, nil
+}
+
+func startRuntimeProject(root string, cfg workspace.Config, path string) error {
+	p, err := projects.FindByPath(root, path)
+	if err != nil {
+		return err
+	}
+	if p == nil {
+		return fmt.Errorf("no project registered at %s", path)
+	}
+	if cfg.Runtime.Engine == string(chauftruntime.EnginePodman) {
+		return startPodmanProject(root, cfg, path)
+	}
+	return startForProject(services.NewManager(root), root, p.Path)
+}
+
+func runtimeServiceLabel(scope chauftruntime.Scope) string {
+	if scope.Service == "nginx" {
+		return "nginx"
+	}
+	label := "php-fpm " + scope.Version
+	if scope.Dedicated {
+		return label + " (dedicated)"
+	}
+	return label + " (shared)"
+}
+
+func printRuntimeURLs(root string, cfg workspace.Config) {
+	all, _ := projects.ListAll(root)
+	if len(all) == 0 {
+		return
 	}
 	fmt.Println()
-	return nil
+	for _, p := range all {
+		scheme, port := "http", cfg.Nginx.HTTPPort
+		if p.SSL {
+			scheme, port = "https", cfg.Nginx.HTTPSPort
+		}
+		lib.Info(fmt.Sprintf("  %s://%s:%d", scheme, p.Domain, port))
+	}
+	fmt.Println()
 }
 
 func startForProject(mgr *services.Manager, root, path string) error {
@@ -197,31 +245,103 @@ func RunStop(args []string) error {
 	}
 
 	root := workspace.Root()
-	mgr := services.NewManager(root)
 	cfg := workspace.Load()
 	fmt.Println()
 	printRuntime(cfg)
 	fmt.Println()
 	lib.Info("Stopping services...")
 	fmt.Println()
-	if cfg.Runtime.Engine == string(chauftruntime.EnginePodman) {
-		return stopPodmanServices(root)
-	}
-
 	if *projectPath != "" {
-		return stopForProject(mgr, root, *projectPath)
+		return stopRuntimeProject(root, *projectPath)
 	}
+	return stopRuntimeServices(root, cfg)
 
-	results, err := mgr.StopAll()
-	for _, r := range results {
-		printStopResult(r)
-	}
-	fmt.Println()
+}
+
+func stopRuntimeServices(root string, cfg workspace.Config) error {
+	ctx := context.Background()
+	rt, err := chauftruntime.ForWorkspace(cfg)
 	if err != nil {
 		return err
 	}
+	serviceScopes, err := runtimeServiceScopes(root)
+	if err != nil {
+		return err
+	}
+	operationScopes := []chauftruntime.Scope{{Service: "nginx"}}
+	operationScopes = append(operationScopes, serviceScopes...)
+	operation := chauftruntime.ExecuteOperation(ctx, rt, "stop", operationScopes)
+	for _, service := range operation.Services {
+		if service.Err != nil {
+			lib.Error(fmt.Sprintf("  %-22s  %s", service.Service.Label, service.Err))
+			continue
+		}
+		lib.Info(fmt.Sprintf("  %s  %-22s  stopped", lib.Green("✓"), service.Service.Label))
+	}
+	if operation.Err != nil {
+		return fmt.Errorf("one or more services failed to stop: %w", operation.Err)
+	}
 	lib.Success("All services stopped.")
-	fmt.Println()
+	return nil
+}
+
+func stopRuntimeProject(root, path string) error {
+	p, err := projects.FindByPath(root, path)
+	if err != nil {
+		return err
+	}
+	if p == nil {
+		return fmt.Errorf("no project registered at %s", path)
+	}
+	if workspace.Load().Runtime.Engine == string(chauftruntime.EnginePodman) {
+		return stopPodmanProject(root, path)
+	}
+	return stopForProject(services.NewManager(root), root, p.Path)
+}
+
+func startPodmanProject(root string, cfg workspace.Config, path string) error {
+	p, err := projects.FindByPath(root, path)
+	if err != nil {
+		return err
+	}
+	if p == nil {
+		return fmt.Errorf("no project registered at %s", path)
+	}
+	if p.ProjectType == projects.TypeReverseProxy {
+		// The proxy is served by the workspace nginx; reconcile all routes so
+		// this project's endpoint is validated without dropping other routes.
+		return startPodmanServices(root, cfg)
+	}
+	if !p.FPM.Dedicated {
+		lib.Info(fmt.Sprintf("Project %s uses shared FPM; starting its pool affects other projects.", p.Slug))
+	}
+	return startPodmanServices(root, cfg)
+}
+
+func stopPodmanProject(root, path string) error {
+	p, err := projects.FindByPath(root, path)
+	if err != nil {
+		return err
+	}
+	if p == nil {
+		return fmt.Errorf("no project registered at %s", path)
+	}
+	if p.ProjectType == projects.TypeReverseProxy {
+		lib.Info(fmt.Sprintf("Project %s uses the shared nginx proxy; stopping it would affect other projects.", p.Slug))
+		return nil
+	}
+	if !p.FPM.Dedicated {
+		lib.Info(fmt.Sprintf("Project %s uses shared FPM — stopping it would affect other projects.", p.Slug))
+		return nil
+	}
+	rt, err := chauftruntime.ForWorkspace(workspace.Load())
+	if err != nil {
+		return err
+	}
+	if err := rt.Stop(context.Background(), chauftruntime.Scope{Version: p.PHPVersion, Project: p.Path, Slug: p.Slug, Dedicated: true}); err != nil {
+		return err
+	}
+	lib.Info(fmt.Sprintf("  %s  php-fpm %s (dedicated)  stopped", lib.Green("✓"), p.PHPVersion))
 	return nil
 }
 
@@ -265,7 +385,7 @@ func showPodmanStatus(root string, detail bool, projectPath string) error {
 		if p.ProjectType == projects.TypeReverseProxy {
 			continue
 		}
-		scope := chauftruntime.Scope{Version: p.PHPVersion, Project: p.Path, Dedicated: p.FPM.Dedicated}
+		scope := chauftruntime.Scope{Version: p.PHPVersion, Project: p.Path, Slug: p.Slug, Dedicated: p.FPM.Dedicated}
 		name := chauftruntime.ContainerName(scope)
 		if !containsString(linked[name], p.Slug) {
 			linked[name] = append(linked[name], p.Slug)
@@ -295,9 +415,7 @@ func showPodmanStatus(root string, detail bool, projectPath string) error {
 		}
 	}
 	order = podmanStatusOrderFirst(order, byName, "nginx")
-	if !detail {
-		printStatusTableHeader()
-	}
+	rows := make([]chauftruntime.ServiceStatus, 0, len(order))
 	for _, name := range order {
 		status := byName[name]
 		status.Projects = append([]string(nil), linked[name]...)
@@ -306,7 +424,14 @@ func showPodmanStatus(root string, detail bool, projectPath string) error {
 			sort.Strings(stale[name])
 			status.Evidence += "; stale projects: " + strings.Join(stale[name], ", ")
 		}
-		printPodmanStatus(status, detail)
+		if detail {
+			printPodmanStatus(status, true)
+		} else {
+			rows = append(rows, status)
+		}
+	}
+	if !detail {
+		printUnifiedStatusTable(rows)
 	}
 	return nil
 }
@@ -366,14 +491,11 @@ func printPodmanStatus(status chauftruntime.ServiceStatus, detail bool) {
 }
 
 func printPodmanStatusRow(status chauftruntime.ServiceStatus) {
-	label := podmanStatusLabel(status)
-	state := lib.Gray("○ stopped")
-	if status.Healthy {
-		state = lib.Green("● running")
-	} else if status.State == "image-missing" {
-		state = lib.Red("✗ image missing")
+	if status.State == "image-missing" {
+		fmt.Printf(" %-22s  %-20s  %-8s  %-10s  %s\n", podmanStatusLabel(status), lib.Red("✗ image missing"), "-", "-", "-")
+		return
 	}
-	fmt.Printf(" %-22s  %-20s  %-8s  %-10s  %s\n", label, state, "-", "-", "-")
+	printStatusRow(22, podmanStatusLabel(status), status.Healthy, status.PID, status.Uptime, status.MemoryMB)
 }
 
 func podmanStatusLabel(status chauftruntime.ServiceStatus) string {
@@ -422,78 +544,135 @@ func printStopResult(r services.StopResult) {
 }
 
 func startPodmanServices(root string, cfg workspace.Config) error {
+	return startRuntimeServices(root, cfg)
+}
+
+func printStartStatus(status chauftruntime.ServiceStatus) {
+	label := status.Label
+	if label == "" {
+		label = status.Name
+	}
+	if status.Healthy {
+		pid := "-"
+		if status.PID > 0 {
+			pid = fmt.Sprintf("pid %d", status.PID)
+		}
+		lib.Info(fmt.Sprintf("  %s  %-22s  %s", lib.Green("✓"), label, pid))
+		return
+	}
+	lib.Error(fmt.Sprintf("  %-22s  %s", label, status.Evidence))
+}
+
+func buildPodmanWorkspaceScope(root string, cfg workspace.Config) (chauftruntime.WorkspaceScope, error) {
+	all, err := projects.ListAll(root)
+	if err != nil {
+		return chauftruntime.WorkspaceScope{}, err
+	}
+	specs := make([]chauftruntime.ProjectSpec, 0, len(all))
+	for _, p := range all {
+		specs = append(specs, chauftruntime.ProjectSpec{Slug: p.Slug, Path: p.Path, Version: p.PHPVersion, ProjectType: string(p.ProjectType), ProxyPort: p.ProxyPort, Domains: p.AllDomains(), Dedicated: p.FPM.Dedicated, SSL: p.SSL, DocumentRoot: projects.DocumentRoot(p.Path, p.ProjectType), CertName: p.Domain})
+	}
+	if len(specs) == 0 {
+		return chauftruntime.WorkspaceScope{}, fmt.Errorf("no project is linked")
+	}
+	return chauftruntime.BuildWorkspaceScope(root, filepath.Join(root, "nginx", "container.conf"), filepath.Join(root, "nginx", "certs"), cfg.Nginx.HTTPPort, cfg.Nginx.HTTPSPort, specs)
+}
+
+func stopPodmanServices(root string) error {
+	return stopRuntimeServices(root, workspace.Load())
+}
+
+// ── chauf restart ─────────────────────────────────────────────────────────────
+
+// RunRestart uses the same runtime-neutral inventory and adapter as start/stop.
+func RunRestart(args []string) error {
+	flags := flag.NewFlagSet("restart", flag.ContinueOnError)
+	flags.SetOutput(os.Stdout)
+	lib.SetFlagUsage(flags, "chauf restart — reload services without downtime", "chauf restart [nginx|php <version>] [--project <path>]")
+	projectPath := flags.String("project", "", "Restart dedicated FPM for a specific project")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	root, cfg := workspace.Root(), workspace.Load()
+	fmt.Println()
+	printRuntime(cfg)
+	return restartRuntimeServices(root, cfg, flags.Arg(0), flags.Arg(1), *projectPath)
+}
+
+func restartRuntimeServices(root string, cfg workspace.Config, target, version, projectPath string) error {
 	ctx := context.Background()
 	rt, err := chauftruntime.ForWorkspace(cfg)
 	if err != nil {
 		return err
 	}
-	all, err := projects.ListAll(root)
-	if err != nil {
-		return err
-	}
-	specs := make([]chauftruntime.ProjectSpec, 0, len(all))
-	for _, p := range all {
+	var scopes []chauftruntime.Scope
+	if projectPath != "" {
+		p, findErr := projects.FindByPath(root, projectPath)
+		if findErr != nil {
+			return findErr
+		}
+		if p == nil {
+			return fmt.Errorf("no project registered at %s", projectPath)
+		}
 		if p.ProjectType == projects.TypeReverseProxy {
+			scopes = []chauftruntime.Scope{{Service: "nginx"}}
+		} else {
+			scopes = []chauftruntime.Scope{{Version: p.PHPVersion, Project: p.Path, Slug: p.Slug, Dedicated: p.FPM.Dedicated}}
+		}
+	} else {
+		switch strings.ToLower(target) {
+		case "nginx":
+			scopes = []chauftruntime.Scope{{Service: "nginx"}}
+		case "php", "fpm":
+			if version == "" {
+				version = cfg.PHP.DefaultVersion
+			}
+			scopes = []chauftruntime.Scope{{Version: version}}
+		case "":
+			inventory, scopeErr := buildRuntimeWorkspaceScope(root, cfg)
+			if scopeErr != nil {
+				return scopeErr
+			}
+			for _, service := range inventory.PHPContainers {
+				scopes = append(scopes, service.Scope)
+			}
+			scopes = append(scopes, chauftruntime.Scope{Service: "nginx"})
+		default:
+			return fmt.Errorf("unknown restart target %q — use: nginx, php, fpm, or --project", target)
+		}
+	}
+	lib.Info("Reloading services...")
+	fmt.Println()
+	operation := chauftruntime.ExecuteOperation(ctx, rt, "restart", scopes)
+	for _, service := range operation.Services {
+		if service.Err != nil {
+			lib.Error(fmt.Sprintf("  %-22s  %s", service.Service.Label, service.Err))
 			continue
 		}
-		specs = append(specs, chauftruntime.ProjectSpec{Slug: p.Slug, Path: p.Path, Version: p.PHPVersion, Domains: p.AllDomains(), Dedicated: p.FPM.Dedicated, SSL: p.SSL, CertName: p.Domain})
+		printStartStatus(service.Service)
 	}
-	if len(specs) == 0 {
-		return fmt.Errorf("no PHP project is linked; Podman nginx requires a linked PHP project")
+	if operation.Err != nil {
+		return fmt.Errorf("one or more services failed to reload: %w", operation.Err)
 	}
-	configPath := filepath.Join(root, "nginx", "container.conf")
-	scope, err := chauftruntime.BuildWorkspaceScope(root, configPath, filepath.Join(root, "nginx", "certs"), cfg.Nginx.HTTPPort, cfg.Nginx.HTTPSPort, specs)
-	if err != nil {
-		return err
-	}
-	for _, container := range scope.PHPContainers {
-		lib.Info(fmt.Sprintf("  %s  %s", lib.Gray("·"), chauftruntime.ContainerName(container.Scope)))
-	}
-	if err := rt.EnsureWorkspace(ctx, scope); err != nil {
-		return err
-	}
-	lib.Success("All services running.")
+	lib.Success("All services reloaded.")
 	return nil
 }
 
-func stopPodmanServices(root string) error {
-	ctx := context.Background()
-	rt, err := chauftruntime.ForWorkspace(workspace.Load())
-	if err != nil {
-		return err
+func buildRuntimeWorkspaceScope(root string, cfg workspace.Config) (chauftruntime.WorkspaceScope, error) {
+	scope, err := buildPodmanWorkspaceScope(root, cfg)
+	if err == nil || cfg.Runtime.Engine == string(chauftruntime.EnginePodman) {
+		return scope, err
 	}
-	all, err := projects.ListAll(root)
-	if err != nil {
-		return err
+	// Native nginx has historically been usable before the first project is
+	// linked. Keep that behavior while Podman continues to require a project
+	// graph for reconciliation.
+	if strings.Contains(err.Error(), "no project is linked") {
+		return chauftruntime.WorkspaceScope{Workspace: root, ConfigPath: filepath.Join(root, "nginx", "container.conf"), HTTPPort: cfg.Nginx.HTTPPort, HTTPSPort: cfg.Nginx.HTTPSPort}, nil
 	}
-	seen := make(map[string]bool)
-	if err := rt.Stop(ctx, chauftruntime.Scope{Service: "nginx"}); err != nil {
-		lib.Warn(err.Error())
-	}
-	for _, p := range all {
-		if p.ProjectType == projects.TypeReverseProxy {
-			continue
-		}
-		name := chauftruntime.FPMContainerName(p.PHPVersion)
-		if p.FPM.Dedicated {
-			name = chauftruntime.DedicatedContainerName(p.Slug)
-		}
-		if seen[name] {
-			continue
-		}
-		seen[name] = true
-		scope := chauftruntime.Scope{Version: p.PHPVersion, Project: p.Path, Dedicated: p.FPM.Dedicated}
-		if err := rt.Stop(ctx, scope); err != nil {
-			lib.Warn(err.Error())
-		}
-	}
-	lib.Success("All services stopped.")
-	return nil
+	return scope, err
 }
 
-// ── chauf restart ─────────────────────────────────────────────────────────────
-
-func RunRestart(args []string) error {
+func legacyRunRestart(args []string) error {
 	flags := flag.NewFlagSet("restart", flag.ContinueOnError)
 	flags.SetOutput(os.Stdout)
 	lib.SetFlagUsage(flags, "chauf restart — reload services without downtime", "chauf restart [nginx|php <version>] [--project <path>]")
@@ -616,7 +795,7 @@ func restartPodmanServices(root, target, version, projectPath string) error {
 		if p.FPM.Dedicated {
 			name = chauftruntime.DedicatedContainerName(p.Slug)
 		}
-		if err := rt.Restart(ctx, chauftruntime.Scope{Version: p.PHPVersion, Project: p.Path, Dedicated: p.FPM.Dedicated}); err != nil {
+		if err := rt.Restart(ctx, chauftruntime.Scope{Version: p.PHPVersion, Project: p.Path, Slug: p.Slug, Dedicated: p.FPM.Dedicated}); err != nil {
 			return err
 		}
 		lib.Success(fmt.Sprintf("%s restarted", name))
@@ -657,7 +836,7 @@ func restartPodmanServices(root, target, version, projectPath string) error {
 				continue
 			}
 			seen[name] = true
-			if err := rt.Restart(ctx, chauftruntime.Scope{Version: p.PHPVersion, Project: p.Path, Dedicated: p.FPM.Dedicated}); err != nil {
+			if err := rt.Restart(ctx, chauftruntime.Scope{Version: p.PHPVersion, Project: p.Path, Slug: p.Slug, Dedicated: p.FPM.Dedicated}); err != nil {
 				return err
 			}
 		}
@@ -711,12 +890,11 @@ func RunStatus(args []string) error {
 	fmt.Println()
 	printRuntime(cfg)
 	fmt.Println()
-	if cfg.Runtime.Engine == string(chauftruntime.EnginePodman) {
-		return showPodmanStatus(root, *detail, *projectPath)
-	}
-
 	if *projectPath != "" {
-		return statusForProject(mgr, root, *projectPath)
+		return statusRuntimeProject(root, cfg, *projectPath, *detail)
+	}
+	if cfg.Runtime.Engine == string(chauftruntime.EnginePodman) {
+		return showPodmanStatus(root, *detail, "")
 	}
 
 	nginx := mgr.Nginx()
@@ -736,14 +914,13 @@ func RunStatus(args []string) error {
 		return nil
 	}
 
-	// Tabular output
-	const lblW = 22
-	printStatusTableHeader()
-
-	printStatusRow(lblW, "nginx", nginx.IsRunning(), nginx.PID(), nginx.Uptime(), nginx.MemoryMB())
+	// The native adapter supplies the same status shape used by Podman. Keep
+	// rendering in one place so runtime changes do not change the table.
+	statuses := []chauftruntime.ServiceStatus{{Name: "nginx", Label: "nginx", Role: "nginx", State: nativeServiceState(nginx.IsRunning()), Healthy: nginx.IsRunning(), PID: nginx.PID(), Uptime: nginx.Uptime(), MemoryMB: nginx.MemoryMB()}}
 	for _, fpm := range fpms {
-		printStatusRow(lblW, "php-fpm "+fpm.Label(), fpm.IsRunning(), fpm.PID(), fpm.Uptime(), fpm.MemoryMB())
+		statuses = append(statuses, chauftruntime.ServiceStatus{Name: fpm.Label(), Label: "php-fpm " + fpm.Label(), Role: "php-fpm", State: nativeServiceState(fpm.IsRunning()), Healthy: fpm.IsRunning(), PID: fpm.PID(), Uptime: fpm.Uptime(), MemoryMB: fpm.MemoryMB()})
 	}
+	printUnifiedStatusTable(statuses)
 
 	// Also show installed-but-unused PHP versions as stopped
 	installed := installedPHPVersions(root)
@@ -757,12 +934,101 @@ func RunStatus(args []string) error {
 	}
 	for _, ver := range installed {
 		if !usedVersions[ver] {
-			printStatusRow(lblW, "php-fpm "+ver+" (unused)", false, 0, 0, 0)
+			printStatusRow(22, "php-fpm "+ver+" (unused)", false, 0, 0, 0)
 		}
 	}
 
 	fmt.Println()
 	return nil
+}
+
+func statusRuntimeProject(root string, cfg workspace.Config, path string, detail bool) error {
+	p, err := projects.FindByPath(root, path)
+	if err != nil {
+		return err
+	}
+	if p == nil {
+		return fmt.Errorf("no project registered at %s", path)
+	}
+	rt, err := chauftruntime.ForWorkspace(cfg)
+	if err != nil {
+		return err
+	}
+	scopes := []chauftruntime.Scope{{Service: "nginx"}}
+	if p.ProjectType != projects.TypeReverseProxy {
+		scopes = append(scopes, chauftruntime.Scope{Version: p.PHPVersion, Project: p.Path, Slug: p.Slug, Dedicated: p.FPM.Dedicated})
+	}
+	statuses := make([]chauftruntime.ServiceStatus, 0, len(scopes))
+	for _, scope := range scopes {
+		rows, statusErr := rt.Status(context.Background(), scope)
+		if statusErr != nil {
+			return statusErr
+		}
+		statuses = append(statuses, rows...)
+	}
+	lib.Info(fmt.Sprintf("  %s  (%s project)", lib.Bold(p.Slug), string(p.ProjectType)))
+	fmt.Println()
+	if detail {
+		for _, status := range statuses {
+			printUnifiedStatusDetail(status)
+		}
+	} else {
+		printUnifiedStatusTable(statuses)
+	}
+	return nil
+}
+
+func printUnifiedStatusDetail(status chauftruntime.ServiceStatus) {
+	label := status.Label
+	if label == "" {
+		label = status.Name
+	}
+	fmt.Printf("  %s\n  %s\n", lib.Bold(label), strings.Repeat("─", 44))
+	if status.Healthy {
+		lib.Pair("  Status", lib.Green("● running"))
+	} else {
+		lib.Pair("  Status", lib.Gray("○ "+status.State))
+	}
+	if status.PID > 0 {
+		lib.Pair("  PID", fmt.Sprintf("%d", status.PID))
+	}
+	if status.Uptime > 0 {
+		lib.Pair("  Uptime", services.FormatUptime(status.Uptime))
+	}
+	if status.MemoryMB > 0 {
+		lib.Pair("  Memory", fmt.Sprintf("%d MB", status.MemoryMB))
+	}
+	if status.Container != "" {
+		lib.Pair("  Container", status.Container)
+	}
+	if status.Image != "" {
+		lib.Pair("  Image", status.Image)
+	}
+	if status.Network != "" {
+		lib.Pair("  Network", status.Network)
+	}
+	if status.Evidence != "" {
+		lib.Pair("  Evidence", status.Evidence)
+	}
+	fmt.Println()
+}
+
+func nativeServiceState(running bool) string {
+	if running {
+		return "running"
+	}
+	return "stopped"
+}
+
+func printUnifiedStatusTable(statuses []chauftruntime.ServiceStatus) {
+	printStatusTableHeader()
+	for _, status := range statuses {
+		if status.State == "image-missing" {
+			fmt.Printf(" %-22s  %-20s  %-8s  %-10s  %s\n", status.Label, lib.Red("✗ image missing"), "-", "-", "-")
+			continue
+		}
+		printStatusRow(22, status.Label, status.Healthy, status.PID, status.Uptime, status.MemoryMB)
+	}
 }
 
 func printStatusTableHeader() {
@@ -876,6 +1142,8 @@ func RunLogs(args []string) error {
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
 
 	root := workspace.Root()
 	target := flags.Arg(0)  // nginx | access | php | php <version>
@@ -889,11 +1157,43 @@ func RunLogs(args []string) error {
 		if err != nil {
 			return err
 		}
+		var projectScope *chauftruntime.Scope
+		if *projectPath != "" {
+			p, findErr := projects.FindByPath(root, *projectPath)
+			if findErr != nil {
+				return findErr
+			}
+			if p == nil {
+				return fmt.Errorf("no project registered at %s", *projectPath)
+			}
+			if p.ProjectType == projects.TypeReverseProxy || target == "" || target == "nginx" || target == "access" || target == "error" {
+				projectScope = &chauftruntime.Scope{Service: "nginx"}
+			} else {
+				projectScope = &chauftruntime.Scope{Version: p.PHPVersion, Project: p.Path, Slug: p.Slug, Dedicated: p.FPM.Dedicated}
+			}
+		}
 		if target == "php" || target == "fpm" {
 			if version == "" {
 				version = workspace.Load().PHP.DefaultVersion
 			}
-			logs, err := rt.Logs(context.Background(), chauftruntime.Scope{Version: version}, chauftruntime.LogOptions{Follow: *follow, Lines: *lines})
+			opts := chauftruntime.LogOptions{Follow: *follow, Lines: *lines}
+			if *follow {
+				if streamer, ok := rt.(interface {
+					StreamLogs(context.Context, chauftruntime.Scope, chauftruntime.LogOptions, io.Writer, io.Writer) error
+				}); ok {
+					fmt.Printf("  %s\n\n", lib.Gray("→ PHP-FPM container logs"))
+					scope := chauftruntime.Scope{Version: version}
+					if projectScope != nil {
+						scope = *projectScope
+					}
+					return streamer.StreamLogs(ctx, scope, opts, os.Stdout, os.Stderr)
+				}
+			}
+			scope := chauftruntime.Scope{Version: version}
+			if projectScope != nil {
+				scope = *projectScope
+			}
+			logs, err := rt.Logs(ctx, scope, opts)
 			if err != nil {
 				return err
 			}
@@ -902,7 +1202,21 @@ func RunLogs(args []string) error {
 			return nil
 		}
 		if target == "" || target == "nginx" || target == "error" || target == "access" {
-			logs, err := rt.Logs(context.Background(), chauftruntime.Scope{Service: "nginx"}, chauftruntime.LogOptions{Follow: *follow, Lines: *lines})
+			opts := chauftruntime.LogOptions{Follow: *follow, Lines: *lines}
+			if *follow {
+				if streamer, ok := rt.(interface {
+					StreamLogs(context.Context, chauftruntime.Scope, chauftruntime.LogOptions, io.Writer, io.Writer) error
+				}); ok {
+					fmt.Printf("  %s\n\n", lib.Gray("→ nginx container logs"))
+					scope := chauftruntime.Scope{Service: "nginx"}
+					return streamer.StreamLogs(ctx, scope, opts, os.Stdout, os.Stderr)
+				}
+			}
+			scope := chauftruntime.Scope{Service: "nginx"}
+			if projectScope != nil {
+				scope = *projectScope
+			}
+			logs, err := rt.Logs(ctx, scope, opts)
 			if err != nil {
 				return err
 			}

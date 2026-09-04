@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/siegg/chauffeur/internal/installers"
 	"github.com/siegg/chauffeur/internal/lib"
 	"github.com/siegg/chauffeur/internal/projects"
 	chauftruntime "github.com/siegg/chauffeur/internal/runtime"
@@ -70,6 +71,9 @@ func RunDoctor(args []string) error {
 	fmt.Println()
 
 	var all []checkResult
+	runtimeChecks := doctorRuntimeOwnership(root, cfg)
+	printDoctorSection("Runtime Ownership", runtimeChecks)
+	all = append(all, runtimeChecks...)
 
 	if *doDeps {
 		r := doctorSystemDeps()
@@ -156,9 +160,29 @@ func RunDoctor(args []string) error {
 	return nil
 }
 
+func doctorRuntimeOwnership(root string, cfg workspace.Config) []checkResult {
+	results := []checkResult{}
+	nativeEnabled := system.IsUnitEnabled("chauffeur-nginx.service")
+	podmanEnabled := system.IsUnitEnabled(system.PodmanNginxUnit())
+	if cfg.Runtime.Engine == string(chauftruntime.EnginePodman) && nativeEnabled {
+		results = append(results, checkResult{name: "runtime ownership", ok: false, status: "Podman selected but native nginx auto-start is enabled", fix: "chauf autostart enable"})
+	} else if cfg.Runtime.Engine == string(chauftruntime.EngineNative) && podmanEnabled {
+		results = append(results, checkResult{name: "runtime ownership", ok: false, status: "native selected but Podman nginx auto-start is enabled", fix: "chauf autostart disable"})
+	} else {
+		results = append(results, checkResult{name: "runtime ownership", ok: true, status: cfg.Runtime.Engine + " has no conflicting nginx unit"})
+	}
+	home, _ := os.UserHomeDir()
+	defaultRoot := filepath.Join(home, ".chauffeur")
+	if filepath.Clean(root) != filepath.Clean(defaultRoot) && (nativeEnabled || podmanEnabled) {
+		results = append(results, checkResult{name: "autostart workspace", ok: false, warn: true, status: fmt.Sprintf("units use %s, but CLI workspace is %s", defaultRoot, root), fix: "disable legacy auto-start units and recreate them for this workspace"})
+	}
+	return results
+}
+
 func doctorPHPRuntime(cfg workspace.Config) []checkResult {
 	if cfg.Runtime.Engine != string(chauftruntime.EnginePodman) {
-		return doctorPHPDeps()
+		results := doctorPHPDeps()
+		return append(results, doctorNativeImagick(workspace.Root())...)
 	}
 	results := []checkResult{}
 	rt := chauftruntime.Podman{Runner: chauftruntime.ExecRunner{}}
@@ -176,6 +200,35 @@ func doctorPHPRuntime(cfg workspace.Config) []checkResult {
 			continue
 		}
 		results = append(results, checkResult{name: "PHP " + version, ok: parity.State == chauftruntime.ParityVerified, status: parity.Evidence, fix: "chauf install php " + version + " --build"})
+	}
+	return results
+}
+
+func doctorNativeImagick(root string) []checkResult {
+	var results []checkResult
+	for _, version := range installers.ListInstalledPHP(root) {
+		etcDir := filepath.Join(root, "php", version, "etc")
+		iniPath := filepath.Join(etcDir, "conf.d", "imagick.ini")
+		if _, err := os.Stat(iniPath); err != nil {
+			continue
+		}
+		phpBin := filepath.Join(root, "php", version, "bin", "php")
+		cmd := exec.Command(phpBin, "-c", etcDir, "-r", "if (!extension_loaded('imagick')) { exit(1); }")
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			status := strings.TrimSpace(string(output))
+			if status == "" {
+				status = "module could not be loaded"
+			}
+			results = append(results, checkResult{
+				name:   "PHP " + version + " imagick",
+				warn:   true,
+				status: status,
+				fix:    "chauf install php " + version + " --force",
+			})
+			continue
+		}
+		results = append(results, checkResult{name: "PHP " + version + " imagick", ok: true, status: "loadable"})
 	}
 	return results
 }

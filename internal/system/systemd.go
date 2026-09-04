@@ -6,6 +6,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/siegg/chauffeur/internal/workspace"
 )
 
 const (
@@ -47,7 +49,7 @@ WantedBy=default.target
 func FPMTemplateUnitContent() string {
 	return `[Unit]
 Description=Chauffeur PHP-FPM (%i)
-After=chauffeur-nginx.service
+Before=chauffeur-nginx.service
 
 [Service]
 Type=forking
@@ -68,14 +70,83 @@ func FPMInstanceUnit(version string) string {
 	return fmt.Sprintf("chauffeur-php-fpm@%s.service", version)
 }
 
+// PodmanNginxUnitContent returns a user unit for the already-reconciled nginx
+// container. Reconciliation remains owned by chauf start; systemd only starts
+// and stops the selected runtime's resources.
+func PodmanNginxUnitContent(fpmUnits []string) string {
+	return PodmanNginxUnitContentForRoot("/usr", fpmUnits)
+}
+
+// PodmanNginxUnitContentForRoot uses the workspace's installed chauf binary as
+// the reconciliation boundary. This prevents systemd from starting stale
+// containers without applying the current project graph and nginx config.
+func PodmanNginxUnitContentForRoot(root string, fpmUnits []string) string {
+	var b strings.Builder
+	b.WriteString("[Unit]\nDescription=Chauffeur Podman nginx\nAfter=network-online.target")
+	for _, unit := range fpmUnits {
+		fmt.Fprintf(&b, "\nAfter=%s\nRequires=%s", unit, unit)
+	}
+	chauf := ChaufExecutable(root)
+	b.WriteString("\n\n[Service]\nType=oneshot\nRemainAfterExit=yes\nExecStart=" + chauf + " start\nExecStop=" + chauf + " stop\n\n[Install]\nWantedBy=default.target\n")
+	return b.String()
+}
+
+// ChaufExecutable returns an executable path suitable for a user systemd
+// unit. The workspace does not normally contain the Chauffeur binary, so use
+// the running installation when the workspace-local path is absent.
+func ChaufExecutable(root string) string {
+	candidate := filepath.Join(root, "bin", "chauf")
+	if info, err := os.Stat(candidate); err == nil && info.Mode().Perm()&0111 != 0 {
+		return candidate
+	}
+	if executable, err := os.Executable(); err == nil {
+		if resolved, resolveErr := filepath.EvalSymlinks(executable); resolveErr == nil {
+			return resolved
+		}
+		return executable
+	}
+	return "chauf"
+}
+
+func PodmanFPMUnitContent(container string) string {
+	return fmt.Sprintf(`[Unit]
+Description=Chauffeur Podman PHP-FPM (%s)
+After=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/podman start %s
+ExecStop=/usr/bin/podman stop %s
+
+[Install]
+WantedBy=default.target
+`, container, container, container)
+}
+
+func PodmanNginxUnit() string               { return "chauffeur-podman-nginx.service" }
+func PodmanFPMUnit(container string) string { return "chauffeur-podman-fpm-" + container + ".service" }
+
+func WritePodmanUnit(name, content string) error { return writeUnit(name, content) }
+
 // WriteNginxUnit writes the nginx systemd user unit file.
 func WriteNginxUnit() error {
-	return writeUnit(nginxUnit, NginxUnitContent())
+	return writeUnit(nginxUnit, NginxUnitContentForRoot(workspace.Root()))
 }
 
 // WriteFPMTemplateUnit writes the PHP-FPM template systemd user unit file.
 func WriteFPMTemplateUnit() error {
-	return writeUnit(fpmTemplateUnit, FPMTemplateUnitContent())
+	return writeUnit(fpmTemplateUnit, FPMTemplateUnitContentForRoot(workspace.Root()))
+}
+
+func NginxUnitContentForRoot(root string) string {
+	root = filepath.Clean(root)
+	return strings.ReplaceAll(NginxUnitContent(), "%h/.chauffeur", root)
+}
+
+func FPMTemplateUnitContentForRoot(root string) string {
+	root = filepath.Clean(root)
+	return strings.ReplaceAll(FPMTemplateUnitContent(), "%h/.chauffeur", root)
 }
 
 // UserDaemonReload runs systemctl --user daemon-reload.
@@ -113,6 +184,26 @@ func IsUnitActive(unit string) bool {
 func IsUnitEnabled(unit string) bool {
 	out, err := exec.Command("systemctl", "--user", "is-enabled", unit).Output()
 	return err == nil && strings.TrimSpace(string(out)) == "enabled"
+}
+
+// ListChauffeurUnits discovers current and stale Chauffeur units without
+// relying on installed PHP versions or registered projects.
+func ListChauffeurUnits() ([]string, error) {
+	out, err := exec.Command("systemctl", "--user", "list-unit-files", "--no-legend", "--plain").Output()
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{}
+	var units []string
+	for _, line := range strings.Split(string(out), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 0 || !strings.HasPrefix(fields[0], "chauffeur-") || !strings.HasSuffix(fields[0], ".service") || strings.HasSuffix(fields[0], "@.service") || seen[fields[0]] {
+			continue
+		}
+		seen[fields[0]] = true
+		units = append(units, fields[0])
+	}
+	return units, nil
 }
 
 // IsLingeringEnabled returns true if systemd lingering is active for the
