@@ -18,6 +18,7 @@ import (
 	"github.com/siegg/chauffeur/internal/projects"
 	chauftruntime "github.com/siegg/chauffeur/internal/runtime"
 	"github.com/siegg/chauffeur/internal/services"
+	"github.com/siegg/chauffeur/internal/system"
 	"github.com/siegg/chauffeur/internal/workspace"
 )
 
@@ -256,6 +257,29 @@ func RunStop(args []string) error {
 	}
 	return stopRuntimeServices(root, cfg)
 
+}
+
+func printAutostartSummary(engine string) {
+	units, err := system.ListChauffeurUnits()
+	enabled := false
+	if err == nil {
+		for _, unit := range units {
+			podmanUnit := strings.HasPrefix(unit, "chauffeur-podman-")
+			if (engine == string(chauftruntime.EnginePodman)) != podmanUnit {
+				continue
+			}
+			if system.IsUnitEnabled(unit) {
+				enabled = true
+				break
+			}
+		}
+	}
+	if enabled {
+		lib.Pair("Auto-start", lib.Green("enabled"))
+		return
+	}
+	lib.Pair("Auto-start", lib.Yellow("disabled"))
+	lib.Info(lib.Gray("  Enable with: chauf autostart enable"))
 }
 
 func stopRuntimeServices(root string, cfg workspace.Config) error {
@@ -889,6 +913,7 @@ func RunStatus(args []string) error {
 
 	fmt.Println()
 	printRuntime(cfg)
+	printAutostartSummary(cfg.Runtime.Engine)
 	fmt.Println()
 	if *projectPath != "" {
 		return statusRuntimeProject(root, cfg, *projectPath, *detail)
