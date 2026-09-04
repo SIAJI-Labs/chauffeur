@@ -59,12 +59,87 @@ func RunPodmanDB(args []string) error {
 // RunPodmanLegacy preserves the original command name for existing scripts.
 // Database state and container names are intentionally shared with podman-db.
 func RunPodmanLegacy(args []string) error {
+	return runPodmanCompatibility(args)
+}
+
+func runPodmanCompatibility(args []string) error {
+	if len(args) > 0 && isGenericPodmanCommand(args[0]) {
+		return RunPodmanGeneric(args)
+	}
 	lib.Warn("chauf podman is deprecated; use chauf podman-db")
 	return RunPodmanDB(args)
 }
 
-// RunPodman is retained for internal callers compiled against the old API.
-func RunPodman(args []string) error { return RunPodmanDB(args) }
+// RunPodman dispatches generic operations and temporarily preserves legacy
+// database subcommands for existing scripts.
+func RunPodman(args []string) error { return runPodmanCompatibility(args) }
+
+// RunPodmanGeneric exposes a deliberately small, Chauffeur-scoped view of
+// Podman. Database lifecycle remains under podman-db; these commands are for
+// inspecting the runtime containers owned by Chauffeur.
+func RunPodmanGeneric(args []string) error {
+	if len(args) == 0 || args[0] == "help" || args[0] == "--help" || args[0] == "-h" {
+		return genericPodmanHelp()
+	}
+
+	name := ""
+	if len(args) > 1 {
+		name = args[1]
+	}
+	if (args[0] == "inspect" || args[0] == "logs" || args[0] == "exec") && !isChauffeurContainer(name) {
+		return fmt.Errorf("container %q is not a Chauffeur container", name)
+	}
+
+	var podmanArgs []string
+	switch args[0] {
+	case "ps", "list":
+		podmanArgs = []string{"ps", "-a", "--filter", "name=chauf-"}
+		if len(args) > 1 {
+			podmanArgs = append(podmanArgs, args[1:]...)
+		}
+	case "inspect":
+		podmanArgs = append([]string{"container", "inspect"}, args[1:]...)
+	case "logs":
+		podmanArgs = append([]string{"logs"}, args[1:]...)
+	case "exec":
+		podmanArgs = append([]string{"exec"}, args[1:]...)
+	default:
+		return fmt.Errorf("unknown Podman command %q — use: ps, inspect, logs, exec", args[0])
+	}
+
+	cmd := exec.Command("podman", podmanArgs...)
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("podman %s: %w", strings.Join(podmanArgs, " "), err)
+	}
+	return nil
+}
+
+func isGenericPodmanCommand(command string) bool {
+	switch command {
+	case "ps", "list", "inspect", "logs", "exec":
+		return true
+	default:
+		return false
+	}
+}
+
+func isChauffeurContainer(name string) bool {
+	return strings.HasPrefix(name, "chauf-")
+}
+
+func genericPodmanHelp() error {
+	fmt.Println()
+	fmt.Printf("  %s\n", lib.Bold("chauf podman — inspect Chauffeur containers"))
+	fmt.Println()
+	fmt.Println("    chauf podman ps")
+	fmt.Println("    chauf podman inspect <chauf-container>")
+	fmt.Println("    chauf podman logs <chauf-container> [--follow]")
+	fmt.Println("    chauf podman exec <chauf-container> <command> [args...]")
+	fmt.Println()
+	fmt.Printf("  %s\n", lib.Gray("Use chauf podman-db for database/cache lifecycle operations."))
+	return nil
+}
 
 // ── chauf podman-db help ───────────────────────────────────────────────────────
 

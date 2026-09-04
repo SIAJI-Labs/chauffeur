@@ -54,6 +54,22 @@ func startRuntimeServices(root string, cfg workspace.Config) error {
 	if err != nil {
 		return err
 	}
+	if podmanRuntime, ok := rt.(chauftruntime.Podman); ok {
+		if err := podmanRuntime.EnsureReady(ctx); err != nil {
+			return err
+		}
+		// Auto-start must reconcile the declared workspace before issuing
+		// container start operations. A login can occur after containers were
+		// removed or after a runtime switch, so Start alone cannot assume that
+		// every PHP-FPM/nginx container still exists.
+		inventory, scopeErr := buildRuntimeWorkspaceScope(root, cfg)
+		if scopeErr != nil {
+			return fmt.Errorf("prepare Podman workspace for start: %w", scopeErr)
+		}
+		if err := podmanRuntime.EnsureWorkspace(ctx, inventory); err != nil {
+			return fmt.Errorf("reconcile Podman workspace before start: %w", err)
+		}
+	}
 	// Start is a service operation. It must not revalidate project mounts,
 	// certificates, images, or proxy targets; those belong to link/apply.
 	serviceScopes, err := runtimeServiceScopes(root)

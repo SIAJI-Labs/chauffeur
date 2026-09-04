@@ -419,26 +419,85 @@ func (p *PHPInstaller) BuildImagick() error {
 
 	phpize := filepath.Join(p.InstallDir(), "bin", "phpize")
 	phpConfig := filepath.Join(p.InstallDir(), "bin", "php-config")
+	buildEnv := imagickBuildEnv()
 
 	if fi, err := os.Stat(phpize); err != nil || fi.IsDir() {
 		return fmt.Errorf("phpize not found at %s", phpize)
 	}
 
-	if err := RunCmd(srcDir, p.opts.Verbose, phpize); err != nil {
+	if err := RunCmdWithEnv(srcDir, p.opts.Verbose, buildEnv, phpize); err != nil {
 		return fmt.Errorf("phpize: %w", err)
 	}
-	if err := RunCmd(srcDir, p.opts.Verbose, "./configure", "--with-php-config="+phpConfig); err != nil {
+	if err := RunCmdWithEnv(srcDir, p.opts.Verbose, buildEnv, "./configure", "--with-php-config="+phpConfig); err != nil {
 		return fmt.Errorf("configure imagick: %w", err)
 	}
-	if err := RunCmd(srcDir, p.opts.Verbose, "make", "-j"+NumCPUs()); err != nil {
+	if err := RunCmdWithEnv(srcDir, p.opts.Verbose, buildEnv, "make", "-j"+NumCPUs()); err != nil {
 		return fmt.Errorf("make imagick: %w", err)
 	}
-	if err := RunCmd(srcDir, p.opts.Verbose, "make", "install"); err != nil {
+	if err := RunCmdWithEnv(srcDir, p.opts.Verbose, buildEnv, "make", "install"); err != nil {
 		return fmt.Errorf("install imagick: %w", err)
 	}
 
 	iniPath := filepath.Join(p.InstallDir(), "etc", "conf.d", "imagick.ini")
-	return os.WriteFile(iniPath, []byte("extension=imagick\n"), 0644)
+	if err := os.WriteFile(iniPath, []byte("extension=imagick\n"), 0644); err != nil {
+		return err
+	}
+	if err := validateImagick(p.BinPath(), iniPath); err != nil {
+		// A broken optional extension must not poison every PHP invocation.
+		_ = os.Remove(iniPath)
+		return fmt.Errorf("imagick was installed but cannot be loaded: %w; imagick was disabled", err)
+	}
+	return nil
+}
+
+// imagickBuildEnv embeds ImageMagick library directories in imagick.so so
+// the extension remains loadable outside the build shell's environment.
+func imagickBuildEnv() []string {
+	out, err := exec.Command("pkg-config", "--libs-only-L", "MagickWand").Output()
+	if err != nil {
+		return nil
+	}
+	dirs := imagickLibraryDirs(string(out))
+	if len(dirs) == 0 {
+		return nil
+	}
+	flags := make([]string, 0, len(dirs))
+	for _, dir := range dirs {
+		flags = append(flags, "-Wl,-rpath,"+dir)
+	}
+	if existing := strings.TrimSpace(os.Getenv("LDFLAGS")); existing != "" {
+		flags = append([]string{existing}, flags...)
+	}
+	return []string{"LDFLAGS=" + strings.Join(flags, " ")}
+}
+
+func imagickLibraryDirs(pkgConfigOutput string) []string {
+	seen := map[string]bool{}
+	var dirs []string
+	for _, token := range strings.Fields(pkgConfigOutput) {
+		if !strings.HasPrefix(token, "-L") || len(token) == 2 {
+			continue
+		}
+		dir := strings.TrimPrefix(token, "-L")
+		if !seen[dir] {
+			seen[dir] = true
+			dirs = append(dirs, dir)
+		}
+	}
+	return dirs
+}
+
+func validateImagick(phpBin, iniPath string) error {
+	cmd := exec.Command(phpBin, "-c", filepath.Dir(filepath.Dir(iniPath)), "-r", "if (!extension_loaded('imagick')) { exit(1); }")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		message := strings.TrimSpace(string(output))
+		if message == "" {
+			message = err.Error()
+		}
+		return fmt.Errorf("%s", message)
+	}
+	return nil
 }
 
 // InstalledVersion returns the installed PHP version string, or "" if not present.

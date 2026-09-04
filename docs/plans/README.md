@@ -9,6 +9,7 @@ This directory contains implementation plans for the Chauffeur overhaul. The pla
 ## Capability plans
 
 - [2026-08-30-native-podman-runtime-parity-investigation.md](./2026-08-30-native-podman-runtime-parity-investigation.md) — confirmed native/Podman command, lifecycle output, reverse-proxy, and auto-start parity issues with fixes and acceptance criteria.
+- [2026-09-04-runtime-issues-investigation.md](./2026-09-04-runtime-issues-investigation.md) — validate Podman command naming, runtime-aware auto-start, database connectivity, and native imagick warnings.
 - [2026-08-19-podman-runtime-overhaul.md](./2026-08-19-podman-runtime-overhaul.md) — migrate native nginx/PHP runtime to rootless Podman.
 - [2026-08-19-podman-service-management.md](./2026-08-19-podman-service-management.md) — generalize database containers into managed service presets.
 - [2026-08-19-link-wizard-tui.md](./2026-08-19-link-wizard-tui.md) — interactive PHP/Node/database/service setup flow.

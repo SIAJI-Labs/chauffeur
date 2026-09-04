@@ -145,3 +145,23 @@ func TestContainerSelectModelView_ShowsCursorWithinViewport(t *testing.T) {
 		t.Fatalf("expected rendered view to respect window height, got %d lines in view:\n%s", lineCount, view)
 	}
 }
+
+func TestGenericPodmanCommands(t *testing.T) {
+	for _, command := range []string{"ps", "list", "inspect", "logs", "exec"} {
+		if !isGenericPodmanCommand(command) {
+			t.Errorf("isGenericPodmanCommand(%q) = false", command)
+		}
+	}
+	if isGenericPodmanCommand("create") {
+		t.Error("database command must not be treated as generic Podman")
+	}
+}
+
+func TestGenericPodmanOnlyAcceptsChauffeurContainers(t *testing.T) {
+	if !isChauffeurContainer("chauf-postgres") {
+		t.Fatal("expected Chauffeur-prefixed container to be accepted")
+	}
+	if isChauffeurContainer("unrelated-container") {
+		t.Fatal("expected unrelated container to be rejected")
+	}
+}

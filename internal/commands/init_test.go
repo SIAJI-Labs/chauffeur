@@ -67,7 +67,7 @@ func TestRunInit_PodmanShimsRouteLoopbackDatabaseToHost(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !strings.Contains(string(content), "DB_HOST=host.containers.internal") {
+		if !strings.Contains(string(content), "DB_HOST_OVERRIDE='host.containers.internal'") {
 			t.Errorf("%s does not include Podman database host override", shim)
 		}
 	}

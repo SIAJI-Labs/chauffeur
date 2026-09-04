@@ -38,6 +38,22 @@ func TestBuildWorkspaceScopeResolvesSharedAndDedicatedResources(t *testing.T) {
 	}
 }
 
+func TestLoopbackDatabaseConfigIncludesPortWithoutChangingProjectEnv(t *testing.T) {
+	project := t.TempDir()
+	env := []byte("DB_HOST=localhost\nDB_PORT=16379\n")
+	if err := os.WriteFile(filepath.Join(project, ".env"), env, 0644); err != nil {
+		t.Fatal(err)
+	}
+	host, port := loopbackDatabaseConfig(project)
+	if host != "host.containers.internal" || port != 16379 {
+		t.Fatalf("loopbackDatabaseConfig() = (%q, %d), want host gateway and port", host, port)
+	}
+	content, err := os.ReadFile(filepath.Join(project, ".env"))
+	if err != nil || string(content) != string(env) {
+		t.Fatalf("project env changed: %q, err=%v", content, err)
+	}
+}
+
 func TestBuildWorkspaceScopeUsesProjectDocumentRoot(t *testing.T) {
 	scope, err := BuildWorkspaceScope("/workspace", "/workspace/nginx/container.conf", "/workspace/nginx/certs", 18080, 18443, []ProjectSpec{
 		{Slug: "laravel", Path: "/home/laravel", DocumentRoot: "/home/laravel/public", Version: "8.3", Domains: []string{"laravel.test"}},

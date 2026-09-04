@@ -1,6 +1,7 @@
 package system
 
 import (
+	"os"
 	"strings"
 	"testing"
 )
@@ -17,6 +18,16 @@ func TestPodmanUnitsUseContainerLifecycleAndDependencyOrder(t *testing.T) {
 	fpmContent := PodmanFPMUnitContent("chauf-php83-fpm")
 	if !strings.Contains(fpmContent, "podman start chauf-php83-fpm") {
 		t.Fatalf("FPM unit does not start the Podman container: %s", fpmContent)
+	}
+}
+
+func TestChaufExecutableFallsBackToRunningInstallation(t *testing.T) {
+	path := ChaufExecutable(t.TempDir())
+	if path == "" {
+		t.Fatal("ChaufExecutable returned an empty path")
+	}
+	if info, err := os.Stat(path); err != nil || info.IsDir() || info.Mode().Perm()&0111 == 0 {
+		t.Fatalf("ChaufExecutable() = %q, want an executable path", path)
 	}
 }
 

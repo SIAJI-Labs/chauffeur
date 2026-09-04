@@ -13,6 +13,7 @@ type NginxRoute struct {
 	Upstream     string
 	ProxyPort    int
 	DatabaseHost string
+	DatabasePort int
 	SSL          bool
 	CertName     string
 }
@@ -84,32 +85,37 @@ func BuildWorkspaceScope(workspace, configPath, certificateDir string, httpPort,
 				documentRoot = filepath.Join(mountPath, relative)
 			}
 		}
-		databaseHost := ""
-		if host, ok := loopbackDatabaseHost(project.Path); ok {
-			databaseHost = host
-		}
-		routes = append(routes, NginxRoute{ServerName: strings.Join(project.Domains, " "), DocumentRoot: documentRoot, Upstream: name, DatabaseHost: databaseHost, SSL: project.SSL, CertName: project.CertName})
+		databaseHost, databasePort := loopbackDatabaseConfig(project.Path)
+		routes = append(routes, NginxRoute{ServerName: strings.Join(project.Domains, " "), DocumentRoot: documentRoot, Upstream: name, DatabaseHost: databaseHost, DatabasePort: databasePort, SSL: project.SSL, CertName: project.CertName})
 	}
 	return WorkspaceScope{Workspace: workspace, ConfigPath: configPath, CertificateDir: certificateDir, HTTPPort: httpPort, HTTPSPort: httpsPort, Roots: roots, PHPContainers: containers, Routes: routes}, nil
 }
 
 func loopbackDatabaseHost(projectPath string) (string, bool) {
+	host, _ := loopbackDatabaseConfig(projectPath)
+	return host, host != ""
+}
+
+func loopbackDatabaseConfig(projectPath string) (string, int) {
 	data, err := os.ReadFile(filepath.Join(projectPath, ".env"))
 	if err != nil {
-		return "", false
+		return "", 0
 	}
+	host := ""
+	port := 0
 	for _, line := range strings.Split(string(data), "\n") {
 		line = strings.TrimSpace(line)
-		if !strings.HasPrefix(line, "DB_HOST=") {
-			continue
+		switch {
+		case strings.HasPrefix(line, "DB_HOST="):
+			host = strings.Trim(strings.TrimPrefix(line, "DB_HOST="), `"'`)
+		case strings.HasPrefix(line, "DB_PORT="):
+			fmt.Sscanf(strings.Trim(strings.TrimPrefix(line, "DB_PORT="), `"'`), "%d", &port)
 		}
-		host := strings.Trim(strings.TrimPrefix(line, "DB_HOST="), `"'`)
-		if host == "127.0.0.1" || host == "localhost" {
-			return "host.containers.internal", true
-		}
-		break
 	}
-	return "", false
+	if host != "localhost" && host != "127.0.0.1" {
+		return "", 0
+	}
+	return ContainerDatabaseHost(host), port
 }
 
 // RenderNginxPHPConfig returns the minimal container-local route used by the
@@ -151,7 +157,7 @@ func RenderNginxPHPConfigForRoutesWithHTTPS(routes []NginxRoute, httpPort, https
 		renderServer := func(listen, ssl string) {
 			if route.ProxyPort != 0 {
 				fmt.Fprintf(&b, `server {
-  %s
+				%s
     server_name %s;
 %s
     location / {
@@ -187,7 +193,7 @@ func RenderNginxPHPConfigForRoutesWithHTTPS(routes []NginxRoute, httpPort, https
     }
  }
 
-`, listen, route.ServerName, route.DocumentRoot, ssl, fastcgiDatabaseParam(route.DatabaseHost), route.DocumentRoot, route.Upstream)
+			`, listen, route.ServerName, route.DocumentRoot, ssl, fastcgiDatabaseParam(route.DatabaseHost, route.DatabasePort), route.DocumentRoot, route.Upstream)
 		}
 		if route.SSL {
 			fmt.Fprintf(&b, `server {
@@ -205,11 +211,15 @@ func RenderNginxPHPConfigForRoutesWithHTTPS(routes []NginxRoute, httpPort, https
 	return b.String(), nil
 }
 
-func fastcgiDatabaseParam(host string) string {
+func fastcgiDatabaseParam(host string, port int) string {
 	if host == "" {
 		return ""
 	}
-	return "        fastcgi_param DB_HOST " + host + ";"
+	result := "        fastcgi_param DB_HOST " + host + ";"
+	if port > 0 {
+		result += fmt.Sprintf("\n        fastcgi_param DB_PORT %d;", port)
+	}
+	return result
 }
 
 func legacyNginxPHPConfig(documentRoot, serverName, upstream string, listenPort int) (string, error) {

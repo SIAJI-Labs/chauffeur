@@ -16,6 +16,20 @@ func TestPodmanPreflightRejectsRootfulRuntime(t *testing.T) {
 	}
 }
 
+func TestPodmanEnsureReadyStartsMachineAfterUnavailableInfo(t *testing.T) {
+	runner := &sequenceRunner{results: []CommandResult{
+		{ExitCode: 1, Stderr: "machine is stopped"},
+		{ExitCode: 0, Stdout: "started"},
+		{ExitCode: 0, Stdout: "true"},
+	}}
+	if err := (Podman{Runner: runner}).EnsureReady(context.Background()); err != nil {
+		t.Fatalf("EnsureReady() error = %v", err)
+	}
+	if runner.calls != 3 {
+		t.Fatalf("EnsureReady() calls = %d, want machine start and readiness check", runner.calls)
+	}
+}
+
 func TestExecRunnerReturnsExitStatusForCommandFailure(t *testing.T) {
 	result, err := (ExecRunner{}).Run(context.Background(), "version", "--invalid-chauffeur-test-flag")
 	if err != nil || result.ExitCode == 0 {

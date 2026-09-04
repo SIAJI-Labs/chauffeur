@@ -171,6 +171,48 @@ func (p Podman) Preflight(ctx context.Context) error {
 	return nil
 }
 
+// EnsureReady verifies Podman and starts a Podman Machine when the host uses
+// one (for example macOS). On daemonless Linux, the info check is sufficient.
+func (p Podman) EnsureReady(ctx context.Context) error {
+	if ready, rootless, _ := p.podmanInfo(ctx); ready {
+		return requireRootless(rootless)
+	}
+	if result, err := p.run(ctx, "machine", "start"); err != nil || result.ExitCode != 0 {
+		return fmt.Errorf("Podman is not ready; start Podman or its machine before starting Chauffeur")
+	}
+	deadline := time.NewTimer(5 * time.Second)
+	defer deadline.Stop()
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		if ready, rootless, _ := p.podmanInfo(ctx); ready {
+			return requireRootless(rootless)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-deadline.C:
+			return fmt.Errorf("Podman machine started but Podman did not become ready within 5 seconds")
+		case <-ticker.C:
+		}
+	}
+}
+
+func (p Podman) podmanInfo(ctx context.Context) (ready, rootless bool, err error) {
+	result, err := p.run(ctx, "info", "--format", "{{.Host.Security.Rootless}}")
+	if err != nil || result.ExitCode != 0 {
+		return false, false, err
+	}
+	return true, !strings.EqualFold(strings.TrimSpace(result.Stdout), "false"), nil
+}
+
+func requireRootless(rootless bool) error {
+	if !rootless {
+		return fmt.Errorf("rootless Podman is unavailable; use rootless mode or switch to the native runtime")
+	}
+	return nil
+}
+
 func (p Podman) Ensure(ctx context.Context, version string) error {
 	if _, err := NormalizeVersion(version); err != nil {
 		return err
@@ -234,6 +276,9 @@ func (p Podman) RemoveImage(ctx context.Context, image string, force bool) error
 func (p Podman) EnsureWorkspace(ctx context.Context, workspace WorkspaceScope) error {
 	if workspace.Workspace == "" || workspace.ConfigPath == "" {
 		return fmt.Errorf("Podman workspace scope is missing workspace or nginx config path")
+	}
+	if err := p.EnsureReady(ctx); err != nil {
+		return err
 	}
 	if err := p.Preflight(ctx); err != nil {
 		return err
@@ -712,6 +757,9 @@ func (p Podman) waitContainerRunning(ctx context.Context, name string) error {
 }
 
 func (p Podman) Start(ctx context.Context, scope Scope) error {
+	if err := p.EnsureReady(ctx); err != nil {
+		return err
+	}
 	return p.StartContainer(ctx, scopeContainerName(scope))
 }
 
@@ -724,6 +772,9 @@ func (p Podman) StartContainer(ctx context.Context, name string) error {
 		return err
 	}
 	if result.ExitCode != 0 {
+		if detail := strings.TrimSpace(result.Stderr); detail != "" {
+			return fmt.Errorf("start container %s failed with status %d: %s", name, result.ExitCode, detail)
+		}
 		return fmt.Errorf("start container %s failed with status %d", name, result.ExitCode)
 	}
 	return nil
@@ -743,6 +794,9 @@ func (p Podman) StopContainer(ctx context.Context, name string) error {
 		return err
 	}
 	if result.ExitCode != 0 {
+		if detail := strings.TrimSpace(result.Stderr); detail != "" {
+			return fmt.Errorf("stop container %s failed with status %d: %s", name, result.ExitCode, detail)
+		}
 		return fmt.Errorf("stop container %s failed with status %d", name, result.ExitCode)
 	}
 	return nil
@@ -769,6 +823,9 @@ func (p Podman) RestartContainer(ctx context.Context, name string) error {
 		return err
 	}
 	if result.ExitCode != 0 {
+		if detail := strings.TrimSpace(result.Stderr); detail != "" {
+			return fmt.Errorf("restart container %s failed with status %d: %s", name, result.ExitCode, detail)
+		}
 		return fmt.Errorf("restart container %s failed with status %d", name, result.ExitCode)
 	}
 	return nil

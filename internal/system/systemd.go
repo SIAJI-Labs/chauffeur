@@ -86,9 +86,26 @@ func PodmanNginxUnitContentForRoot(root string, fpmUnits []string) string {
 	for _, unit := range fpmUnits {
 		fmt.Fprintf(&b, "\nAfter=%s\nRequires=%s", unit, unit)
 	}
-	chauf := filepath.Join(root, "bin", "chauf")
+	chauf := ChaufExecutable(root)
 	b.WriteString("\n\n[Service]\nType=oneshot\nRemainAfterExit=yes\nExecStart=" + chauf + " start\nExecStop=" + chauf + " stop\n\n[Install]\nWantedBy=default.target\n")
 	return b.String()
+}
+
+// ChaufExecutable returns an executable path suitable for a user systemd
+// unit. The workspace does not normally contain the Chauffeur binary, so use
+// the running installation when the workspace-local path is absent.
+func ChaufExecutable(root string) string {
+	candidate := filepath.Join(root, "bin", "chauf")
+	if info, err := os.Stat(candidate); err == nil && info.Mode().Perm()&0111 != 0 {
+		return candidate
+	}
+	if executable, err := os.Executable(); err == nil {
+		if resolved, resolveErr := filepath.EvalSymlinks(executable); resolveErr == nil {
+			return resolved
+		}
+		return executable
+	}
+	return "chauf"
 }
 
 func PodmanFPMUnitContent(container string) string {
@@ -167,6 +184,26 @@ func IsUnitActive(unit string) bool {
 func IsUnitEnabled(unit string) bool {
 	out, err := exec.Command("systemctl", "--user", "is-enabled", unit).Output()
 	return err == nil && strings.TrimSpace(string(out)) == "enabled"
+}
+
+// ListChauffeurUnits discovers current and stale Chauffeur units without
+// relying on installed PHP versions or registered projects.
+func ListChauffeurUnits() ([]string, error) {
+	out, err := exec.Command("systemctl", "--user", "list-unit-files", "--no-legend", "--plain").Output()
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{}
+	var units []string
+	for _, line := range strings.Split(string(out), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 0 || !strings.HasPrefix(fields[0], "chauffeur-") || !strings.HasSuffix(fields[0], ".service") || strings.HasSuffix(fields[0], "@.service") || seen[fields[0]] {
+			continue
+		}
+		seen[fields[0]] = true
+		units = append(units, fields[0])
+	}
+	return units, nil
 }
 
 // IsLingeringEnabled returns true if systemd lingering is active for the

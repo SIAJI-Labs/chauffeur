@@ -177,18 +177,7 @@ func podmanDatabaseEnv(projectRoot string) []string {
 	if err != nil {
 		return nil
 	}
-	for _, line := range strings.Split(string(data), "\n") {
-		line = strings.TrimSpace(line)
-		if !strings.HasPrefix(line, "DB_HOST=") {
-			continue
-		}
-		host := strings.Trim(strings.TrimPrefix(line, "DB_HOST="), `"'`)
-		if host == "127.0.0.1" || host == "localhost" {
-			return []string{"DB_HOST=host.containers.internal"}
-		}
-		break
-	}
-	return nil
+	return runtime.ContainerDatabaseEnv(data)
 }
 
 func mustWorkingDirectory() string {

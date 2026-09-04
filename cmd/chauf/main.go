@@ -125,7 +125,7 @@ func main() {
 	case "podman-db":
 		err = commands.RunPodmanDB(args[1:])
 	case "podman":
-		err = commands.RunPodmanLegacy(args[1:])
+		err = commands.RunPodman(args[1:])
 
 	// ── Web UI ───────────────────────────────────────────────────────────────
 
@@ -290,6 +290,10 @@ func printCommands() {
 		{
 			"Podman",
 			[]entry{
+				{"podman ps", "List Chauffeur-managed runtime containers"},
+				{"podman inspect", "Inspect a Chauffeur-managed container"},
+				{"podman logs", "Show a Chauffeur container's logs"},
+				{"podman exec", "Run a command in a Chauffeur container"},
 				{"podman-db create", "Create a database container (mysql|postgres|maria|mongo|redis)"},
 				{"podman-db start", "Start a database container (or 'all')"},
 				{"podman-db stop", "Stop a database container (or 'all')"},

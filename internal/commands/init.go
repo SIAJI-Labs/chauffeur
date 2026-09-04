@@ -565,9 +565,25 @@ const mimeTypesContent = `types {
 
 // ── shim scripts ───────────────────────────────────────────────────────────────
 
+const podmanDatabaseHostShell = `
+chauf_database_env_override() {
+    local host=""
+    local port=""
+    if [[ -f "$PROJECT_ROOT/.env" ]]; then
+        host=$(grep '^DB_HOST=' "$PROJECT_ROOT/.env" 2>/dev/null | head -1 | sed 's/^DB_HOST=//' | tr -d '"' | tr -d "'" | tr -d ' ')
+        port=$(grep '^DB_PORT=' "$PROJECT_ROOT/.env" 2>/dev/null | head -1 | sed 's/^DB_PORT=//' | tr -d '"' | tr -d "'" | tr -d ' ')
+    fi
+    if [[ "$host" == "127.0.0.1" || "$host" == "localhost" ]]; then
+        DB_HOST_OVERRIDE='host.containers.internal'
+        DB_PORT_OVERRIDE="$port"
+    fi
+}
+`
+
 const phpShimContent = `#!/usr/bin/env bash
 # Chauffeur PHP shim — routes to the correct PHP binary based on active version.
 # shim-version: 4
+` + podmanDatabaseHostShell + `
 
 CHAUF_HOME="${CHAUFFEUR_HOME:-$HOME/.chauffeur}"
 CONFIG="$CHAUF_HOME/config/chauffeur.yaml"
@@ -613,12 +629,8 @@ fi
 RUNTIME=$(grep 'engine:' "$CONFIG" 2>/dev/null | head -1 | sed 's/.*engine:[[:space:]]*//' | tr -d '"')
 if [[ "$RUNTIME" == "podman" ]]; then
     DB_HOST_OVERRIDE=""
-    if [[ -f "$PROJECT_ROOT/.env" ]]; then
-        DB_HOST=$(grep '^DB_HOST=' "$PROJECT_ROOT/.env" 2>/dev/null | head -1 | sed 's/^DB_HOST=//' | tr -d '"' | tr -d "'" | tr -d ' ')
-        if [[ "$DB_HOST" == "127.0.0.1" || "$DB_HOST" == "localhost" ]]; then
-            DB_HOST_OVERRIDE="DB_HOST=host.containers.internal"
-        fi
-    fi
+    DB_PORT_OVERRIDE=""
+    chauf_database_env_override
     CONTAINER="chauf-php${PHP_VER//./}-fpm"
     if [[ "$PROJECT_DEDICATED" == "true" ]]; then
         CONTAINER="chauf-cfpm$(basename "$(dirname "$cfg")")"
@@ -628,6 +640,7 @@ if [[ "$RUNTIME" == "podman" ]]; then
     if [[ -z "$PROJECT_WORKDIR" ]]; then
         RUN_ARGS=(run --rm --userns keep-id --user "$HOST_USER" --volume "$PWD:/workspace:Z" --workdir /workspace)
         if [[ -n "$DB_HOST_OVERRIDE" ]]; then RUN_ARGS+=(--env "$DB_HOST_OVERRIDE"); fi
+        if [[ -n "$DB_PORT_OVERRIDE" ]]; then RUN_ARGS+=(--env "DB_PORT=$DB_PORT_OVERRIDE"); fi
         if [[ -t 0 && -t 1 ]]; then
             RUN_ARGS+=(--interactive --tty)
         fi
@@ -642,6 +655,7 @@ if [[ "$RUNTIME" == "podman" ]]; then
         EXEC_ARGS+=(--workdir "$PROJECT_WORKDIR")
     fi
     if [[ -n "$DB_HOST_OVERRIDE" ]]; then EXEC_ARGS+=(--env "$DB_HOST_OVERRIDE"); fi
+    if [[ -n "$DB_PORT_OVERRIDE" ]]; then EXEC_ARGS+=(--env "DB_PORT=$DB_PORT_OVERRIDE"); fi
     exec podman "${EXEC_ARGS[@]}" "$CONTAINER" php "$@"
 fi
 
@@ -657,6 +671,7 @@ exec "$PHP_BIN" "$@"
 
 const composerShimContent = `#!/usr/bin/env bash
 # Chauffeur Composer shim — routes Composer through the selected runtime.
+` + podmanDatabaseHostShell + `
 
 CHAUF_HOME="${CHAUFFEUR_HOME:-$HOME/.chauffeur}"
 CONFIG="$CHAUF_HOME/config/chauffeur.yaml"
@@ -693,12 +708,8 @@ if [[ "$RUNTIME" == "podman" ]]; then
         exit 1
     fi
     DB_HOST_OVERRIDE=""
-    if [[ -f "$PROJECT_ROOT/.env" ]]; then
-        DB_HOST=$(grep '^DB_HOST=' "$PROJECT_ROOT/.env" 2>/dev/null | head -1 | sed 's/^DB_HOST=//' | tr -d '"' | tr -d "'" | tr -d ' ')
-        if [[ "$DB_HOST" == "127.0.0.1" || "$DB_HOST" == "localhost" ]]; then
-            DB_HOST_OVERRIDE="DB_HOST=host.containers.internal"
-        fi
-    fi
+    DB_PORT_OVERRIDE=""
+    chauf_database_env_override
     CONTAINER="chauf-php${PHP_VER//./}-fpm"
     if [[ "$PROJECT_DEDICATED" == "true" ]]; then
         CONTAINER="chauf-cfpm$(basename "$(dirname "$cfg")")"
@@ -708,6 +719,7 @@ if [[ "$RUNTIME" == "podman" ]]; then
     if [[ -z "$PROJECT_WORKDIR" ]]; then
         RUN_ARGS=(run --rm --userns keep-id --user "$HOST_USER" --volume "$PWD:/workspace:Z" --workdir /workspace)
         if [[ -n "$DB_HOST_OVERRIDE" ]]; then RUN_ARGS+=(--env "$DB_HOST_OVERRIDE"); fi
+        if [[ -n "$DB_PORT_OVERRIDE" ]]; then RUN_ARGS+=(--env "DB_PORT=$DB_PORT_OVERRIDE"); fi
         if [[ -t 0 && -t 1 ]]; then
             RUN_ARGS+=(--interactive --tty)
         fi
@@ -722,6 +734,7 @@ if [[ "$RUNTIME" == "podman" ]]; then
         EXEC_ARGS+=(--workdir "$PROJECT_WORKDIR")
     fi
     if [[ -n "$DB_HOST_OVERRIDE" ]]; then EXEC_ARGS+=(--env "$DB_HOST_OVERRIDE"); fi
+    if [[ -n "$DB_PORT_OVERRIDE" ]]; then EXEC_ARGS+=(--env "DB_PORT=$DB_PORT_OVERRIDE"); fi
     exec podman "${EXEC_ARGS[@]}" "$CONTAINER" composer "$@"
 fi
 

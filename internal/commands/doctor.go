@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/siegg/chauffeur/internal/installers"
 	"github.com/siegg/chauffeur/internal/lib"
 	"github.com/siegg/chauffeur/internal/projects"
 	chauftruntime "github.com/siegg/chauffeur/internal/runtime"
@@ -180,7 +181,8 @@ func doctorRuntimeOwnership(root string, cfg workspace.Config) []checkResult {
 
 func doctorPHPRuntime(cfg workspace.Config) []checkResult {
 	if cfg.Runtime.Engine != string(chauftruntime.EnginePodman) {
-		return doctorPHPDeps()
+		results := doctorPHPDeps()
+		return append(results, doctorNativeImagick(workspace.Root())...)
 	}
 	results := []checkResult{}
 	rt := chauftruntime.Podman{Runner: chauftruntime.ExecRunner{}}
@@ -198,6 +200,35 @@ func doctorPHPRuntime(cfg workspace.Config) []checkResult {
 			continue
 		}
 		results = append(results, checkResult{name: "PHP " + version, ok: parity.State == chauftruntime.ParityVerified, status: parity.Evidence, fix: "chauf install php " + version + " --build"})
+	}
+	return results
+}
+
+func doctorNativeImagick(root string) []checkResult {
+	var results []checkResult
+	for _, version := range installers.ListInstalledPHP(root) {
+		etcDir := filepath.Join(root, "php", version, "etc")
+		iniPath := filepath.Join(etcDir, "conf.d", "imagick.ini")
+		if _, err := os.Stat(iniPath); err != nil {
+			continue
+		}
+		phpBin := filepath.Join(root, "php", version, "bin", "php")
+		cmd := exec.Command(phpBin, "-c", etcDir, "-r", "if (!extension_loaded('imagick')) { exit(1); }")
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			status := strings.TrimSpace(string(output))
+			if status == "" {
+				status = "module could not be loaded"
+			}
+			results = append(results, checkResult{
+				name:   "PHP " + version + " imagick",
+				warn:   true,
+				status: status,
+				fix:    "chauf install php " + version + " --force",
+			})
+			continue
+		}
+		results = append(results, checkResult{name: "PHP " + version + " imagick", ok: true, status: "loadable"})
 	}
 	return results
 }

@@ -84,6 +84,10 @@ chauf update nginx|php VERSION|composer|all|list|check|rollback
 ## Podman journey
 
 ```bash
+chauf podman ps
+chauf podman inspect CONTAINER
+chauf podman logs CONTAINER [--follow]
+chauf podman exec CONTAINER COMMAND [ARGS...]
 chauf podman-db create [ENGINE] [--name NAME] [--user USER] [--pass PASS] [--port PORT]
 chauf podman-db start [NAME|ENGINE|all]
 chauf podman-db stop [NAME|ENGINE|all] [--time SECONDS]
@@ -94,6 +98,10 @@ chauf podman-db console [NAME]
 chauf podman-db backup
 chauf podman-db restore
 ```
+
+`chauf podman` is scoped to Chauffeur-prefixed runtime containers. The legacy
+database subcommands remain temporarily available there with a deprecation
+warning; new database workflows must use `chauf podman-db`.
 
 Supported engines are MySQL 8, MySQL 5.7, PostgreSQL, MariaDB, MongoDB, and Redis. Config and persistent data are intended to stay within the Chauffeur workspace.
 
