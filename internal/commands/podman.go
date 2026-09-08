@@ -177,9 +177,10 @@ func runPodmanCreate(args []string) error {
 	flags := flag.NewFlagSet("podman create", flag.ContinueOnError)
 	flags.SetOutput(os.Stdout)
 	lib.SetFlagUsage(flags, "chauf podman-db create — create a database container",
-		"chauf podman-db create [mysql|postgres|maria|mongo|redis] [--name <container-name>] [--user <user>] [--pass <pass>] [--port <port>] [--volume <path>]")
+		"chauf podman-db create [mysql|postgres|maria|mongo|redis] [--auth[=true|false]] [--name <container-name>] [--user <user>] [--pass <pass>] [--port <port>] [--volume <path>]")
 
 	nameFlag := flags.String("name", "", "Container name (default: chauf-<engine>)")
+	authFlag := flags.Bool("auth", false, "Enable Redis authentication (Redis only; supports --auth=false)")
 	userFlag := flags.String("user", "", "Database username (auto-generated if not set)")
 	passFlag := flags.String("pass", "", "Database password (auto-generated if not set)")
 	portFlag := flags.Int("port", 0, "Host port to expose (default varies by engine)")
@@ -258,9 +259,17 @@ func runPodmanCreate(args []string) error {
 		// Update volume path default to use container name
 		cfg.VolumePath = filepath.Join(podman.Root(), "volumes", cfg.ContainerName)
 
-		// Step 2: username and password
-		promptField("Username", &cfg.Username, "chauf", false)
-		promptField("Password", &cfg.Password, cfg.Password, false)
+		// Step 2: optional Redis authentication, or required database credentials
+		if engine == podman.EngineRedis {
+			cfg.AuthEnabled = promptBool("Enable authentication", false)
+			if cfg.AuthEnabled {
+				promptField("Username", &cfg.Username, "chauf", true)
+				promptField("Password", &cfg.Password, podman.GeneratePassword(), true)
+			}
+		} else {
+			promptField("Username", &cfg.Username, "chauf", false)
+			promptField("Password", &cfg.Password, cfg.Password, false)
+		}
 
 		// Step 3: port — loop until available
 		for {
@@ -310,6 +319,21 @@ func runPodmanCreate(args []string) error {
 		}
 		if flagSet["volume"] {
 			cfg.VolumePath = *volumeFlag
+		}
+		if flagSet["auth"] {
+			if engine != podman.EngineRedis {
+				return fmt.Errorf("--auth is only supported for redis")
+			}
+			cfg.AuthEnabled = *authFlag
+		}
+		if engine == podman.EngineRedis {
+			if cfg.AuthEnabled {
+				if !flagSet["user"] || !flagSet["pass"] || cfg.Username == "" || cfg.Password == "" {
+					return fmt.Errorf("Redis authentication requires --user and --pass")
+				}
+			} else {
+				cfg.Username, cfg.Password = "", ""
+			}
 		}
 	}
 
@@ -401,8 +425,12 @@ func runPodmanCreate(args []string) error {
 	lib.Pair("Engine", string(cfg.Engine))
 	lib.Pair("Image", cfg.Image)
 	lib.Pair("Container", cfg.ContainerName)
-	lib.Pair("Username", cfg.Username)
-	lib.Pair("Password", cfg.Password)
+	if cfg.AuthEnabled {
+		lib.Pair("Username", cfg.Username)
+		lib.Pair("Password", cfg.Password)
+	} else if cfg.Engine == podman.EngineRedis {
+		lib.Pair("Authentication", "disabled")
+	}
 	lib.Pair("Port", fmt.Sprintf("%d", cfg.Port))
 	lib.Pair("Volume", cfg.VolumePath)
 	fmt.Println()
@@ -1066,6 +1094,9 @@ func runPodmanConsole(args []string) error {
 		execArgs = []string{"exec", "-it", cfg.ContainerName, "mongosh", "-u", cfg.Username, "-p", cfg.Password}
 	case podman.EngineRedis:
 		execArgs = []string{"exec", "-it", cfg.ContainerName, "redis-cli"}
+		if cfg.AuthEnabled {
+			execArgs = append(execArgs, "--user", cfg.Username, "--pass", cfg.Password)
+		}
 	default:
 		execArgs = []string{"exec", "-it", cfg.ContainerName, "/bin/sh"}
 	}
@@ -1420,6 +1451,34 @@ func promptFieldInt(label string, value *int, defaultVal int, required bool) {
 			continue
 		}
 		return
+	}
+}
+
+// promptBool asks an interactive yes/no question and returns defaultVal when
+// the user submits an empty answer.
+func promptBool(label string, defaultVal bool) bool {
+	if !tui.Interactive() {
+		return defaultVal
+	}
+	defaultText := "y/N"
+	if defaultVal {
+		defaultText = "Y/n"
+	}
+	for {
+		fmt.Printf("  %s %s: ", lib.Bold(label+"?"), lib.Gray("["+defaultText+"]"))
+		scanner := bufio.NewScanner(os.Stdin)
+		scanner.Scan()
+		input := strings.ToLower(strings.TrimSpace(scanner.Text()))
+		switch input {
+		case "":
+			return defaultVal
+		case "y", "yes":
+			return true
+		case "n", "no":
+			return false
+		default:
+			lib.Warn("Please answer yes or no")
+		}
 	}
 }
 
