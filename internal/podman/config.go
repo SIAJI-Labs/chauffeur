@@ -75,6 +75,7 @@ type DatabaseConfig struct {
 	Engine        EngineType `json:"engine"`
 	Image         string     `json:"image"`
 	ContainerName string     `json:"container_name"`
+	AuthEnabled   bool       `json:"auth_enabled"`
 	Username      string     `json:"username"`
 	Password      string     `json:"password"`
 	Port          int        `json:"port"`
@@ -96,12 +97,18 @@ func DefaultConfig(engine EngineType) *DatabaseConfig {
 
 	username := "chauf"
 	password := GeneratePassword()
+	authEnabled := engine != EngineRedis
+	if engine == EngineRedis {
+		username = ""
+		password = ""
+	}
 
 	return &DatabaseConfig{
 		Name:          string(engine),
 		Engine:        engine,
 		Image:         defaults.Image,
 		ContainerName: "chauf-" + string(engine),
+		AuthEnabled:   authEnabled,
 		Username:      username,
 		Password:      password,
 		Port:          defaults.Port,
@@ -206,6 +213,7 @@ func marshalConfig(cfg *DatabaseConfig) string {
 	line("engine: " + string(cfg.Engine))
 	line("image: " + cfg.Image)
 	line("container_name: " + cfg.ContainerName)
+	line(fmt.Sprintf("auth_enabled: %t", cfg.AuthEnabled))
 	line("username: " + cfg.Username)
 	line("password: " + cfg.Password)
 	line(fmt.Sprintf("port: %d", cfg.Port))
@@ -269,6 +277,8 @@ func unmarshalConfig(data string) (*DatabaseConfig, error) {
 			cfg.Image = val
 		case "container_name":
 			cfg.ContainerName = val
+		case "auth_enabled":
+			cfg.AuthEnabled = strings.EqualFold(val, "true")
 		case "username":
 			cfg.Username = val
 		case "password":

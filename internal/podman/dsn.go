@@ -2,6 +2,7 @@ package podman
 
 import (
 	"fmt"
+	"net/url"
 )
 
 // DSN returns the connection string for the given database config.
@@ -17,6 +18,10 @@ func DSN(cfg *DatabaseConfig) string {
 		return fmt.Sprintf("mongodb://%s:%s@localhost:%d/app",
 			cfg.Username, cfg.Password, cfg.Port)
 	case EngineRedis:
+		if cfg.AuthEnabled {
+			return fmt.Sprintf("redis://%s:%s@localhost:%d",
+				url.QueryEscape(cfg.Username), url.QueryEscape(cfg.Password), cfg.Port)
+		}
 		return fmt.Sprintf("redis://localhost:%d", cfg.Port)
 	default:
 		return ""
@@ -36,6 +41,9 @@ func DSNLabel(cfg *DatabaseConfig) string {
 		return fmt.Sprintf("MongoDB %s:%s@localhost:%d/app",
 			cfg.Username, cfg.Password, cfg.Port)
 	case EngineRedis:
+		if cfg.AuthEnabled {
+			return fmt.Sprintf("Redis %s@localhost:%d (authenticated)", cfg.Username, cfg.Port)
+		}
 		return fmt.Sprintf("Redis localhost:%d", cfg.Port)
 	default:
 		return ""

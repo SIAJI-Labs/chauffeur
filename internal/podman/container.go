@@ -114,7 +114,8 @@ func (c *Container) env() []string {
 			"MONGO_INITDB_ROOT_PASSWORD=" + c.config.Password,
 		}
 	case EngineRedis:
-		// Redis doesn't need credentials by default
+		// Redis authentication is configured after startup using ACLs. Keeping
+		// it out of the container environment avoids exposing credentials there.
 	}
 
 	// Add any custom env vars from config
@@ -210,6 +211,9 @@ func (c *Container) Create(ctx context.Context) error {
 
 	// Add image
 	args = append(args, c.image())
+	if c.config.Engine == EngineRedis && c.config.AuthEnabled {
+		args = append(args, "redis-server")
+	}
 
 	c.log(fmt.Sprintf("  → Starting container..."))
 	_, err = c.client.Run(ctx, args...)
@@ -223,6 +227,14 @@ func (c *Container) Create(ctx context.Context) error {
 	}
 
 	c.log("  ✓ Container created successfully")
+	if c.config.Engine == EngineRedis && c.config.AuthEnabled {
+		if err := c.configureRedisAuth(ctx); err != nil {
+			c.log(fmt.Sprintf("  ✗ Failed to configure Redis authentication: %v", err))
+			_, _ = c.client.Run(ctx, "rm", "-f", c.containerName())
+			_ = Delete(c.containerName())
+			return fmt.Errorf("configure Redis authentication: %w", err)
+		}
+	}
 
 	// Grant privileges to the user so they can create databases
 	// If this fails, we rollback by removing the container and config
@@ -382,6 +394,30 @@ func (c *Container) waitForMaria(ctx context.Context) error {
 func (c *Container) execCmd(ctx context.Context, name string, args ...string) (string, error) {
 	cmdArgs := append([]string{"exec", c.containerName(), name}, args...)
 	return c.client.Run(ctx, cmdArgs...)
+}
+
+func (c *Container) redisCLIArgs(args ...string) []string {
+	result := []string{"redis-cli"}
+	if c.config.AuthEnabled {
+		result = append(result, "--user", c.config.Username, "--pass", c.config.Password)
+	}
+	return append(result, args...)
+}
+
+func (c *Container) configureRedisAuth(ctx context.Context) error {
+	if c.config.Username == "" || c.config.Password == "" {
+		return fmt.Errorf("Redis username and password are required when authentication is enabled")
+	}
+	aclArgs := []string{"redis-cli", "ACL", "SETUSER", c.config.Username, "on", "resetkeys", "resetpass", ">" + c.config.Password, "~*", "+@all"}
+	if _, err := c.ExecOutput(ctx, aclArgs...); err != nil {
+		return fmt.Errorf("create Redis user: %w", err)
+	}
+	if c.config.Username != "default" {
+		if _, err := c.ExecOutput(ctx, "redis-cli", "ACL", "SETUSER", "default", "off"); err != nil {
+			return fmt.Errorf("disable default Redis user: %w", err)
+		}
+	}
+	return nil
 }
 
 // Start starts a stopped container.
@@ -1055,14 +1091,14 @@ func (c *Container) mongorestore(ctx context.Context, dump []byte) error {
 // redisDump triggers BGSAVE and returns the dump file.
 func (c *Container) redisDump(ctx context.Context) ([]byte, error) {
 	// Trigger BGSAVE
-	_, err := c.ExecOutput(ctx, "redis-cli", "BGSAVE")
+	_, err := c.ExecOutput(ctx, c.redisCLIArgs("BGSAVE")...)
 	if err != nil {
 		return nil, fmt.Errorf("redis bgsave: %w", err)
 	}
 
 	// Wait for save to complete
 	for i := 0; i < 30; i++ {
-		output, _ := c.ExecOutput(ctx, "redis-cli", "LASTSAVE")
+		output, _ := c.ExecOutput(ctx, c.redisCLIArgs("LASTSAVE")...)
 		if err == nil && output != "" {
 			time.Sleep(1 * time.Second)
 		}
@@ -1216,7 +1252,7 @@ func (c *Container) listMongoDatabases(ctx context.Context) ([]string, error) {
 
 func (c *Container) listRedisKeys(ctx context.Context) ([]string, error) {
 	// Redis doesn't have "databases" but we can list keyspaces (db0, db1, etc.)
-	output, err := c.ExecOutput(ctx, "redis-cli", "INFO", "keyspace")
+	output, err := c.ExecOutput(ctx, c.redisCLIArgs("INFO", "keyspace")...)
 	if err != nil {
 		return nil, fmt.Errorf("list keys: %w", err)
 	}
