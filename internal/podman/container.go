@@ -283,7 +283,23 @@ func (c *Container) grantPrivileges(ctx context.Context) error {
 		c.log("  ✓ Privileges granted (fallback)")
 		return nil
 	case EnginePostgres:
-		c.log("  ✓ PostgreSQL user has superuser privileges by default")
+		if len(c.config.Extensions) == 0 {
+			c.log("  ✓ PostgreSQL user has superuser privileges by default")
+			return nil
+		}
+		if err := c.waitForPostgres(ctx); err != nil {
+			return err
+		}
+		for _, extension := range c.config.Extensions {
+			if !IsValidExtension(EnginePostgres, extension) {
+				return fmt.Errorf("unsupported PostgreSQL extension: %s", extension)
+			}
+			_, err := c.ExecOutput(ctx, "psql", "--username="+c.config.Username, "--dbname=app", "-c", "CREATE EXTENSION IF NOT EXISTS "+extension+";")
+			if err != nil {
+				return fmt.Errorf("enable PostgreSQL extension %s: %w", extension, err)
+			}
+			c.log(fmt.Sprintf("  ✓ PostgreSQL extension %s enabled", extension))
+		}
 		return nil
 	case EngineMaria:
 		if err := c.waitForMaria(ctx); err != nil {
@@ -328,6 +344,80 @@ func (c *Container) grantPrivileges(ctx context.Context) error {
 		return nil
 	}
 	return nil
+}
+
+// EnableExtension enables a supported PostgreSQL extension in the app database.
+// It is idempotent and is intended for containers created before extension
+// support was added.
+func (c *Container) EnableExtension(ctx context.Context, extension string) error {
+	if !IsValidExtension(c.config.Engine, extension) {
+		return fmt.Errorf("unsupported PostgreSQL extension: %s", extension)
+	}
+	if err := c.waitForPostgres(ctx); err != nil {
+		return err
+	}
+	if _, err := c.ExecOutput(ctx, "psql", "--username="+c.config.Username, "--dbname=app", "-c", "CREATE EXTENSION IF NOT EXISTS "+extension+";"); err != nil {
+		return fmt.Errorf("enable PostgreSQL extension %s: %w", extension, err)
+	}
+	return nil
+}
+
+// DisableExtension removes a supported PostgreSQL extension from the app database.
+func (c *Container) DisableExtension(ctx context.Context, extension string) error {
+	if !IsValidExtension(c.config.Engine, extension) {
+		return fmt.Errorf("unsupported PostgreSQL extension: %s", extension)
+	}
+	if err := c.waitForPostgres(ctx); err != nil {
+		return err
+	}
+	if _, err := c.ExecOutput(ctx, "psql", "--username="+c.config.Username, "--dbname=app", "-c", "DROP EXTENSION IF EXISTS "+extension+";"); err != nil {
+		return fmt.Errorf("disable PostgreSQL extension %s: %w", extension, err)
+	}
+	return nil
+}
+
+// RestoreDatabase replaces the app PostgreSQL database with a pg_dump archive.
+// It is used during image migrations so the database is restored into a clean
+// database rather than merged into a newly initialized one.
+func (c *Container) RestoreDatabase(ctx context.Context, dump []byte) error {
+	if c.config.Engine != EnginePostgres {
+		return fmt.Errorf("database restore is currently supported only for PostgreSQL")
+	}
+	if _, err := c.ExecOutput(ctx, "psql", "--username="+c.config.Username, "--dbname=postgres", "-c", "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'app' AND pid <> pg_backend_pid();"); err != nil {
+		return fmt.Errorf("terminate app connections: %w", err)
+	}
+	if _, err := c.ExecOutput(ctx, "psql", "--username="+c.config.Username, "--dbname=postgres", "-c", "DROP DATABASE IF EXISTS app;"); err != nil {
+		return fmt.Errorf("drop app database: %w", err)
+	}
+	if _, err := c.ExecOutput(ctx, "psql", "--username="+c.config.Username, "--dbname=postgres", "-c", "CREATE DATABASE app;"); err != nil {
+		return fmt.Errorf("create app database: %w", err)
+	}
+	return c.pgrestore(ctx, "app", dump)
+}
+
+// ExtensionEnabled reports whether an extension is installed in the app database.
+func (c *Container) ExtensionEnabled(ctx context.Context, extension string) (bool, error) {
+	if !IsValidExtension(c.config.Engine, extension) {
+		return false, fmt.Errorf("unsupported PostgreSQL extension: %s", extension)
+	}
+	output, err := c.ExecOutput(ctx, "psql", "--username="+c.config.Username, "--dbname=app", "--tuples-only", "--no-align", "-c", "SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = '"+extension+"');")
+	if err != nil {
+		return false, fmt.Errorf("check PostgreSQL extension %s: %w", extension, err)
+	}
+	return strings.EqualFold(strings.TrimSpace(output), "t"), nil
+}
+
+func (c *Container) waitForPostgres(ctx context.Context) error {
+	const maxWait = 60
+	c.log(fmt.Sprintf("  → Waiting for PostgreSQL to be ready (max %ds)...", maxWait))
+	for i := 0; i < maxWait; i++ {
+		if _, err := c.ExecOutput(ctx, "pg_isready", "--username="+c.config.Username, "--dbname=app"); err == nil {
+			c.log("  ✓ PostgreSQL is ready")
+			return nil
+		}
+		time.Sleep(time.Second)
+	}
+	return fmt.Errorf("PostgreSQL failed to start within %d seconds", maxWait)
 }
 
 // waitForMySQL waits for MySQL to be ready to accept connections.
@@ -997,12 +1087,29 @@ func (c *Container) mysqldump(ctx context.Context) ([]byte, error) {
 func (c *Container) pgdumpall(ctx context.Context) ([]byte, error) {
 	output, err := c.ExecOutput(ctx,
 		"bash", "-c",
-		"PGPASSWORD="+c.config.Password+" pg_dumpall --username="+c.config.Username,
+		"PGPASSWORD="+c.config.Password+" pg_dumpall --clean --if-exists --username="+c.config.Username,
 	)
 	if err != nil {
 		return []byte(output), err
 	}
 	return []byte(output), nil
+}
+
+// RestoreCluster restores a complete PostgreSQL cluster dump. The dump is
+// expected to contain --clean/--if-exists directives so all user databases are
+// replaced before their data is loaded.
+func (c *Container) RestoreCluster(ctx context.Context, dump []byte) error {
+	if c.config.Engine != EnginePostgres {
+		return fmt.Errorf("cluster restore is currently supported only for PostgreSQL")
+	}
+	if _, err := c.ExecOutput(ctx, "psql", "--username="+c.config.Username, "--dbname=postgres", "-c", "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname NOT IN ('template0', 'template1', 'postgres') AND pid <> pg_backend_pid();"); err != nil {
+		return fmt.Errorf("terminate database connections: %w", err)
+	}
+	args := []string{"exec", "-i", c.containerName(), "bash", "-c", "PGPASSWORD=" + c.config.Password + " psql --username=" + c.config.Username + " --dbname=postgres"}
+	if _, err := c.client.RunWithStdin(ctx, args, dump); err != nil {
+		return fmt.Errorf("restore cluster dump: %w", err)
+	}
+	return nil
 }
 
 // mongodump runs mongodump inside the container.

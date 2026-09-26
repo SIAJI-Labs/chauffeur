@@ -67,3 +67,29 @@ func TestRedisDSNIncludesCredentialsOnlyWhenEnabled(t *testing.T) {
 		t.Fatalf("authenticated DSN() = %q, want %q", got, want)
 	}
 }
+
+func TestPostgresVectorUsesPgvectorImage(t *testing.T) {
+	if !IsValidExtension(EnginePostgres, "vector") {
+		t.Fatal("vector should be supported for PostgreSQL")
+	}
+	if IsValidExtension(EngineMySQL8, "vector") {
+		t.Fatal("vector should not be supported for MySQL")
+	}
+	if got, want := ImageForExtensions(EnginePostgres, []string{"vector"}), "docker.io/pgvector/pgvector:pg16"; got != want {
+		t.Fatalf("ImageForExtensions() = %q, want %q", got, want)
+	}
+}
+
+func TestPostgresExtensionsRoundTrip(t *testing.T) {
+	cfg := DefaultConfig(EnginePostgres)
+	cfg.Extensions = []string{"vector"}
+	cfg.Image = ImageForExtensions(cfg.Engine, cfg.Extensions)
+
+	decoded, err := unmarshalConfig(marshalConfig(cfg))
+	if err != nil {
+		t.Fatalf("unmarshalConfig() error = %v", err)
+	}
+	if len(decoded.Extensions) != 1 || decoded.Extensions[0] != "vector" {
+		t.Fatalf("decoded extensions = %#v, want [vector]", decoded.Extensions)
+	}
+}
