@@ -13,7 +13,7 @@ Chauffeur V2 includes integrated Podman support for managing database containers
 | MySQL 5.7 | 3306 | `docker.io/library/mysql:5.7` | `MYSQL_ROOT_PASSWORD` |
 | MySQL 8 | 3306 | `docker.io/library/mysql:8.0` | `MYSQL_ROOT_PASSWORD` |
 | MariaDB 11 | 3306 | `docker.io/library/mariadb:11` | `MARIADB_ROOT_PASSWORD` |
-| PostgreSQL 16 | 5432 | `docker.io/library/postgres:16` | `POSTGRES_PASSWORD` |
+| PostgreSQL 16 | 5432 | `docker.io/library/postgres:16` (or `docker.io/pgvector/pgvector:pg16` with `vector`) | `POSTGRES_PASSWORD` |
 | MongoDB 7 | 27017 | `docker.io/library/mongo:7` | `MONGO_INITDB_ROOT_USERNAME/PASSWORD` |
 | Redis 7 | 6379 | `docker.io/library/redis:7-alpine` | (none, unauthenticated) |
 
@@ -63,7 +63,7 @@ created_at: "2025-01-01T00:00:00Z"
 Interactive creation of a database container.
 
 ```bash
-chauf podman create [mysql57|mysql8|postgres|maria|mongo|redis] [--verbose]
+chauf podman create [mysql57|mysql8|postgres|maria|mongo|redis] [--extensions vector] [--verbose]
 ```
 
 **Flow**:
@@ -82,6 +82,11 @@ chauf podman create [mysql57|mysql8|postgres|maria|mongo|redis] [--verbose]
 
 **Flags**:
 - `--verbose`: Show detailed progress during creation
+
+For PostgreSQL, `--extensions vector` selects the pgvector PostgreSQL 16 image
+and runs `CREATE EXTENSION IF NOT EXISTS vector` in the default `app` database.
+The extension is persisted in the container configuration and is safe to apply
+again when the container is recreated.
 
 ---
 
@@ -173,6 +178,28 @@ For MySQL/MariaDB: `mysql -u <user> -p`
 For PostgreSQL: `psql -U <user>`
 For MongoDB: `mongosh`
 For Redis: `redis-cli`
+
+### `chauf podman enable-extension`
+
+Enable an extension on an existing PostgreSQL container.
+
+```bash
+chauf podman-db enable-extension [<container> [<extension>]] [--yes]
+
+With no arguments, Chauffeur interactively selects the container, shows the
+available extension and whether it is installed, then offers enable/disable.
+
+Before changing the extension, Chauffeur asks whether to back up the complete
+PostgreSQL cluster. If accepted, the backup is stored under
+`~/.chauffeur/podman/extension-backups/`, the operation is performed, and the
+databases and roles are restored automatically. The backup is retained if
+restoration fails.
+```
+
+When the existing container uses the stock PostgreSQL image, Chauffeur
+recreates the container with the pgvector image while retaining the existing
+named volume (`chauf-<container>`) and its data. Use `--yes` to skip the
+confirmation prompt.
 
 ---
 

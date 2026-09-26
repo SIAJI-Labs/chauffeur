@@ -41,6 +41,8 @@ func RunPodmanDB(args []string) error {
 		return runPodmanRemove(args[1:])
 	case "console":
 		return runPodmanConsole(args[1:])
+	case "enable-extension":
+		return runPodmanEnableExtension(args[1:])
 	case "import":
 		return runPodmanImport(args[1:])
 	case "backup":
@@ -147,7 +149,7 @@ func runPodmanHelp(args []string) error {
 	flags := flag.NewFlagSet("podman help", flag.ContinueOnError)
 	flags.SetOutput(os.Stdout)
 	lib.SetFlagUsage(flags, "chauf podman-db — manage shared database containers via Podman",
-		"chauf podman-db <create|start|stop|status|list|remove|console|backup|restore> [args]")
+		"chauf podman-db <create|start|stop|status|list|remove|console|enable-extension|backup|restore> [args]")
 
 	fmt.Println()
 	fmt.Printf("  %s\n", lib.Bold("Podman database containers"))
@@ -163,6 +165,7 @@ func runPodmanHelp(args []string) error {
 	fmt.Printf("    %-16s  %s\n", "list", lib.Gray("List all managed containers"))
 	fmt.Printf("    %-16s  %s\n", "remove", lib.Gray("Remove a container"))
 	fmt.Printf("    %-16s  %s\n", "console", lib.Gray("Attach to container for CLI access"))
+	fmt.Printf("    %-16s  %s\n", "enable-extension", lib.Gray("Enable a PostgreSQL extension"))
 	fmt.Printf("    %-16s  %s\n", "backup", lib.Gray("Backup a container to file"))
 	fmt.Printf("    %-16s  %s\n", "restore", lib.Gray("Restore a container from backup"))
 	fmt.Println()
@@ -171,13 +174,269 @@ func runPodmanHelp(args []string) error {
 	return nil
 }
 
+// runPodmanEnableExtension manages extensions on an existing PostgreSQL
+// container. With no positional arguments it presents the complete interactive
+// flow: container, extension/status, then enable or disable.
+func runPodmanEnableExtension(args []string) error {
+	flags := flag.NewFlagSet("podman enable-extension", flag.ContinueOnError)
+	flags.SetOutput(os.Stdout)
+	lib.SetFlagUsage(flags, "chauf podman-db enable-extension — manage a PostgreSQL extension",
+		"chauf podman-db enable-extension [<container> [<extension>]] [--yes]")
+	yesFlag := flags.Bool("yes", false, "Skip confirmation before recreating the container")
+	// Accept flags after positional arguments as documented by the command.
+	var flagArgs, positionalArgs []string
+	for _, arg := range args {
+		if strings.HasPrefix(arg, "-") {
+			flagArgs = append(flagArgs, arg)
+		} else {
+			positionalArgs = append(positionalArgs, arg)
+		}
+	}
+	if err := flags.Parse(append(flagArgs, positionalArgs...)); err != nil {
+		return err
+	}
+	if flags.NArg() > 2 {
+		flags.Usage()
+		return flag.ErrHelp
+	}
+
+	client := podman.NewPodmanClient()
+	ctx := context.Background()
+	if err := client.Available(ctx); err != nil {
+		return err
+	}
+
+	containerName := ""
+	if flags.NArg() > 0 {
+		containerName = flags.Arg(0)
+	} else {
+		engines, err := podman.ListEngines()
+		if err != nil {
+			return fmt.Errorf("list containers: %w", err)
+		}
+		if len(engines) == 0 {
+			lib.Info("No containers configured.")
+			return nil
+		}
+		containerName = interactiveSelectSingle(engines, "Select container:")
+		if containerName == "" {
+			return nil
+		}
+	}
+
+	cfg, err := podman.Load(containerName)
+	if err != nil {
+		return fmt.Errorf("load container config: %w", err)
+	}
+	if cfg.Engine != podman.EnginePostgres {
+		return fmt.Errorf("extensions are currently supported only for PostgreSQL (selected %s)", cfg.Engine)
+	}
+
+	extension := ""
+	if flags.NArg() > 1 {
+		extension = strings.ToLower(strings.TrimSpace(flags.Arg(1)))
+	} else {
+		extension = interactiveSelectSingle([]string{podman.ExtensionVector}, "Select extension:")
+		if extension == "" {
+			return nil
+		}
+	}
+	if !podman.IsValidExtension(cfg.Engine, extension) {
+		return fmt.Errorf("unsupported extension %q for engine %s", extension, cfg.Engine)
+	}
+
+	installed := containsExtension(cfg.Extensions, extension)
+	container := podman.NewContainer(client, cfg)
+	if running, runErr := container.IsRunning(ctx); runErr == nil && running {
+		installed, err = container.ExtensionEnabled(ctx, extension)
+		if err != nil {
+			return err
+		}
+	}
+	status := "not installed"
+	if installed {
+		status = "installed"
+	}
+	lib.Info(fmt.Sprintf("Extension %s on %s: %s", extension, cfg.ContainerName, status))
+
+	enable := true
+	if flags.NArg() < 2 {
+		action := interactiveSelectSingle([]string{"Enable " + extension, "Disable " + extension}, "Select action:")
+		if action == "" {
+			return nil
+		}
+		enable = strings.HasPrefix(action, "Enable ")
+	}
+
+	backupPath := ""
+	if tui.Confirm("Back up the app database before changing the extension?") {
+		backupPath, err = backupExtensionDatabase(ctx, client, cfg)
+		if err != nil {
+			return err
+		}
+		lib.Info(fmt.Sprintf("Backup saved to %s", backupPath))
+	}
+	if err := applyPostgresExtension(ctx, client, cfg, extension, enable, *yesFlag); err != nil {
+		return err
+	}
+	if backupPath != "" {
+		container := podman.NewContainer(client, cfg)
+		backupData, readErr := os.ReadFile(backupPath)
+		if readErr != nil {
+			return fmt.Errorf("read extension backup %s: %w", backupPath, readErr)
+		}
+		if err := container.RestoreCluster(ctx, backupData); err != nil {
+			return fmt.Errorf("restore extension backup (preserved at %s): %w", backupPath, err)
+		}
+		// The dump may contain CREATE EXTENSION. Drop it again when the chosen
+		// final state is disabled.
+		if !enable {
+			if err := container.DisableExtension(ctx, extension); err != nil {
+				return fmt.Errorf("remove extension after restore (backup preserved at %s): %w", backupPath, err)
+			}
+		}
+		lib.Info("App database restored from backup.")
+	}
+	return nil
+}
+
+func backupExtensionDatabase(ctx context.Context, client *podman.PodmanClient, cfg *podman.DatabaseConfig) (string, error) {
+	container := podman.NewContainer(client, cfg)
+	running, err := container.IsRunning(ctx)
+	if err != nil {
+		return "", fmt.Errorf("check container state: %w", err)
+	}
+	if !running {
+		if err := container.Start(ctx); err != nil {
+			return "", fmt.Errorf("start container for backup: %w", err)
+		}
+		defer func() { _ = container.Stop(ctx, 10*time.Second) }()
+	}
+	// A container replacement can affect every database in the PostgreSQL
+	// cluster, so preserve the complete cluster rather than only app.
+	backupData, err := container.Backup(ctx, "")
+	if err != nil {
+		return "", fmt.Errorf("backup app database: %w", err)
+	}
+	backupDir := workspace.Path("podman", "extension-backups")
+	if err := os.MkdirAll(backupDir, 0755); err != nil {
+		return "", fmt.Errorf("create extension backup directory: %w", err)
+	}
+	backupPath := filepath.Join(backupDir, fmt.Sprintf("%s-cluster-%s.tar.gz", cfg.ContainerName, time.Now().UTC().Format("20060102-150405")))
+	if err := os.WriteFile(backupPath, backupData, 0644); err != nil {
+		return "", fmt.Errorf("write extension backup: %w", err)
+	}
+	return backupPath, nil
+}
+
+func applyPostgresExtension(ctx context.Context, client *podman.PodmanClient, cfg *podman.DatabaseConfig, extension string, enable, skipConfirm bool) error {
+	container := podman.NewContainer(client, cfg)
+
+	// pgvector is not present in docker.io/library/postgres:16. Enabling it
+	// requires replacing only the container; the named volume is retained.
+	needsRecreate := enable && !strings.Contains(cfg.Image, "pgvector")
+	if needsRecreate {
+		lib.Warn(fmt.Sprintf("This replaces container %s but keeps its named data volume %s.", cfg.ContainerName, cfg.ContainerName))
+		lib.Warn("Back up important data before continuing.")
+		if !skipConfirm && !interactiveConfirm("Recreate the container with pgvector?", nil) {
+			lib.Info("Cancelled.")
+			return nil
+		}
+	}
+
+	if needsRecreate {
+		cfg.Extensions = appendUniqueExtension(cfg.Extensions, extension)
+		cfg.Image = podman.ImageForExtensions(cfg.Engine, cfg.Extensions)
+		if err := container.Remove(ctx, true); err != nil {
+			return fmt.Errorf("remove existing container: %w", err)
+		}
+		if err := podman.Save(cfg); err != nil {
+			return fmt.Errorf("save updated config: %w", err)
+		}
+		if err := container.Create(ctx); err != nil {
+			return fmt.Errorf("recreate container with extension: %w", err)
+		}
+	} else if enable {
+		wasRunning, err := container.IsRunning(ctx)
+		if err != nil {
+			return fmt.Errorf("check container state: %w", err)
+		}
+		if !wasRunning {
+			if err := container.Start(ctx); err != nil {
+				return fmt.Errorf("start container: %w", err)
+			}
+			defer func() { _ = container.Stop(ctx, 10*time.Second) }()
+		}
+		if err := container.EnableExtension(ctx, extension); err != nil {
+			return err
+		}
+		cfg.Extensions = appendUniqueExtension(cfg.Extensions, extension)
+		if err := podman.Save(cfg); err != nil {
+			return fmt.Errorf("save updated config: %w", err)
+		}
+	} else {
+		if strings.Contains(cfg.Image, "pgvector") {
+			wasRunning, err := container.IsRunning(ctx)
+			if err != nil {
+				return fmt.Errorf("check container state: %w", err)
+			}
+			if !wasRunning {
+				if err := container.Start(ctx); err != nil {
+					return fmt.Errorf("start container: %w", err)
+				}
+				defer func() { _ = container.Stop(ctx, 10*time.Second) }()
+			}
+			if err := container.DisableExtension(ctx, extension); err != nil {
+				return err
+			}
+		}
+		cfg.Extensions = removeExtension(cfg.Extensions, extension)
+		if err := podman.Save(cfg); err != nil {
+			return fmt.Errorf("save updated config: %w", err)
+		}
+	}
+
+	verb := "disabled"
+	if enable {
+		verb = "enabled"
+	}
+	lib.Success(fmt.Sprintf("PostgreSQL extension %s %s on %s", extension, verb, cfg.ContainerName))
+	return nil
+}
+
+func appendUniqueExtension(values []string, extension string) []string {
+	if containsExtension(values, extension) {
+		return values
+	}
+	return append(values, extension)
+}
+
+func removeExtension(values []string, extension string) []string {
+	result := values[:0]
+	for _, value := range values {
+		if !strings.EqualFold(value, extension) {
+			result = append(result, value)
+		}
+	}
+	return result
+}
+
+func containsExtension(values []string, wanted string) bool {
+	for _, value := range values {
+		if strings.EqualFold(value, wanted) {
+			return true
+		}
+	}
+	return false
+}
+
 // ── chauf podman create ───────────────────────────────────────────────────────
 
 func runPodmanCreate(args []string) error {
 	flags := flag.NewFlagSet("podman create", flag.ContinueOnError)
 	flags.SetOutput(os.Stdout)
 	lib.SetFlagUsage(flags, "chauf podman-db create — create a database container",
-		"chauf podman-db create [mysql|postgres|maria|mongo|redis] [--auth[=true|false]] [--name <container-name>] [--user <user>] [--pass <pass>] [--port <port>] [--volume <path>]")
+		"chauf podman-db create [mysql|postgres|maria|mongo|redis] [--extensions vector] [--auth[=true|false]] [--name <container-name>] [--user <user>] [--pass <pass>] [--port <port>] [--volume <path>]")
 
 	nameFlag := flags.String("name", "", "Container name (default: chauf-<engine>)")
 	authFlag := flags.Bool("auth", false, "Enable Redis authentication (Redis only; supports --auth=false)")
@@ -185,6 +444,7 @@ func runPodmanCreate(args []string) error {
 	passFlag := flags.String("pass", "", "Database password (auto-generated if not set)")
 	portFlag := flags.Int("port", 0, "Host port to expose (default varies by engine)")
 	volumeFlag := flags.String("volume", "", "Volume path for data persistence")
+	extensionsFlag := flags.String("extensions", "", "Comma-separated PostgreSQL extensions (supported: vector)")
 	yesFlag := flags.Bool("yes", false, "Skip confirmation if container exists")
 
 	// Reorder args: move all flags (with their values) before positional args
@@ -252,6 +512,19 @@ func runPodmanCreate(args []string) error {
 		}
 		engine = podman.EngineType(engineStr)
 		*cfg = *podman.DefaultConfig(engine)
+		if flagSet["extensions"] {
+			for _, extension := range strings.Split(*extensionsFlag, ",") {
+				extension = strings.TrimSpace(strings.ToLower(extension))
+				if extension == "" {
+					continue
+				}
+				if !podman.IsValidExtension(engine, extension) {
+					return fmt.Errorf("unsupported extension %q for engine %s", extension, engine)
+				}
+				cfg.Extensions = append(cfg.Extensions, extension)
+			}
+			cfg.Image = podman.ImageForExtensions(engine, cfg.Extensions)
+		}
 
 		// Step 1: container name
 		promptField("Container name", &cfg.ContainerName, cfg.ContainerName, false)
@@ -900,34 +1173,9 @@ func runPodmanRemove(args []string) error {
 
 	// Interactive mode if no target
 	if target == "" {
-		fmt.Println()
-		fmt.Printf("  %s\n", lib.Bold("Select container to remove:"))
-		fmt.Println()
-		for i, e := range engines {
-			c, _ := podman.Load(e)
-			status := lib.Gray("unknown")
-			if c != nil {
-				container := podman.NewContainer(client, c)
-				running, _ := container.IsRunning(ctx)
-				if running {
-					status = lib.Red("running")
-				} else {
-					status = lib.Gray("stopped")
-				}
-			}
-			fmt.Printf("    %d) %-20s  %s (%s)\n", i+1, c.ContainerName, string(c.Engine), status)
-		}
-		fmt.Println()
-		fmt.Print("  " + lib.Bold("Choice") + " " + lib.Gray("[1-"+fmt.Sprintf("%d", len(engines))+" or container name]: "))
-		input, _ := reader.ReadString('\n')
-		input = strings.TrimSpace(input)
-		input = strings.ReplaceAll(input, "\r", "")
-
-		var idx int
-		if _, err := fmt.Sscanf(input, "%d", &idx); err == nil && idx >= 1 && idx <= len(engines) {
-			target = engines[idx-1]
-		} else {
-			target = strings.ToLower(input)
+		target = interactiveSelectSingle(engines, "Select container to remove:")
+		if target == "" {
+			return nil
 		}
 	}
 
@@ -1345,52 +1593,8 @@ func interactiveSelectEngine() string {
 	if !tui.Interactive() {
 		return ""
 	}
-	engines := []struct {
-		key  string
-		name string
-		desc string
-	}{
-		{"1", "mysql8", "MySQL 8.0 — port 3306"},
-		{"2", "mysql57", "MySQL 5.7 — port 3307"},
-		{"3", "postgres", "PostgreSQL 16 — port 5432"},
-		{"4", "maria", "MariaDB 11 — port 3306"},
-		{"5", "mongo", "MongoDB 7 — port 27017"},
-		{"6", "redis", "Redis 7 (Alpine) — port 6379"},
-	}
-
-	fmt.Println()
-	fmt.Printf("  %s\n", lib.Bold("Create a database container"))
-	fmt.Println()
-	fmt.Printf("  %s\n", lib.Gray("Select engine:"))
-	fmt.Println()
-	for _, e := range engines {
-		fmt.Printf("    %s  %-10s  %s\n", lib.Gray(e.key+")"), e.name, lib.Gray(e.desc))
-	}
-	fmt.Println()
-
-	for {
-		fmt.Print("  " + lib.Bold("Choice") + " " + lib.Gray("[1-6]") + ": ")
-		scanner := bufio.NewScanner(os.Stdin)
-		scanner.Scan()
-		input := strings.TrimSpace(scanner.Text())
-
-		if input == "" {
-			continue
-		}
-
-		for _, e := range engines {
-			if input == e.key {
-				return e.name
-			}
-		}
-
-		// Try by name
-		if podman.IsValidEngine(input) {
-			return input
-		}
-
-		lib.Warn(fmt.Sprintf("Invalid choice %q — enter 1-%d or an engine name", input, len(engines)))
-	}
+	engines := []string{"mysql8", "mysql57", "postgres", "maria", "mongo", "redis"}
+	return interactiveSelectSingle(engines, "Select database engine:")
 }
 
 // promptField shows a prompt with a default value and lets user override.

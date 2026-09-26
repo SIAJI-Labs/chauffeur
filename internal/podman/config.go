@@ -22,6 +22,27 @@ const (
 	EngineRedis    EngineType = "redis"
 )
 
+// PostgreSQL extensions supported by Chauffeur.
+const ExtensionVector = "vector"
+
+// IsValidExtension reports whether an extension can be provisioned by Chauffeur.
+func IsValidExtension(engine EngineType, extension string) bool {
+	return engine == EnginePostgres && strings.EqualFold(extension, ExtensionVector)
+}
+
+// ImageForExtensions returns the image required to provide the requested
+// PostgreSQL extensions. The stock PostgreSQL image does not contain pgvector.
+func ImageForExtensions(engine EngineType, extensions []string) string {
+	if engine == EnginePostgres {
+		for _, extension := range extensions {
+			if strings.EqualFold(extension, ExtensionVector) {
+				return "docker.io/pgvector/pgvector:pg16"
+			}
+		}
+	}
+	return engineDefaults[engine].Image
+}
+
 // IsValidEngine checks if the given string is a valid engine type.
 func IsValidEngine(s string) bool {
 	switch EngineType(s) {
@@ -81,6 +102,7 @@ type DatabaseConfig struct {
 	Port          int        `json:"port"`
 	VolumePath    string     `json:"volume_path"`
 	Env           []EnvVar   `json:"env"`
+	Extensions    []string   `json:"extensions"`
 	CreatedAt     string     `json:"created_at"`
 }
 
@@ -218,6 +240,12 @@ func marshalConfig(cfg *DatabaseConfig) string {
 	line("password: " + cfg.Password)
 	line(fmt.Sprintf("port: %d", cfg.Port))
 	line("volume_path: " + cfg.VolumePath)
+	if len(cfg.Extensions) > 0 {
+		line("extensions:")
+		for _, extension := range cfg.Extensions {
+			line("  - " + extension)
+		}
+	}
 	if len(cfg.Env) > 0 {
 		line("env:")
 		for _, e := range cfg.Env {
@@ -232,6 +260,7 @@ func marshalConfig(cfg *DatabaseConfig) string {
 func unmarshalConfig(data string) (*DatabaseConfig, error) {
 	cfg := &DatabaseConfig{}
 	inEnv := false
+	inExtensions := false
 
 	for _, raw := range strings.Split(data, "\n") {
 		trimmed := strings.TrimSpace(raw)
@@ -240,6 +269,10 @@ func unmarshalConfig(data string) (*DatabaseConfig, error) {
 		}
 
 		isIndented := strings.HasPrefix(raw, " ") || strings.HasPrefix(raw, "\t")
+		if inExtensions && isIndented && strings.HasPrefix(trimmed, "-") {
+			cfg.Extensions = append(cfg.Extensions, strings.TrimSpace(strings.TrimPrefix(trimmed, "-")))
+			continue
+		}
 
 		// Env list items
 		if inEnv && isIndented && strings.HasPrefix(trimmed, "- key:") {
@@ -258,6 +291,7 @@ func unmarshalConfig(data string) (*DatabaseConfig, error) {
 		// Non-indented line resets section tracking
 		if !isIndented {
 			inEnv = false
+			inExtensions = false
 		}
 
 		// Key-value
@@ -290,6 +324,10 @@ func unmarshalConfig(data string) (*DatabaseConfig, error) {
 		case "env":
 			if val == "" {
 				inEnv = true
+			}
+		case "extensions":
+			if val == "" {
+				inExtensions = true
 			}
 		case "created_at":
 			cfg.CreatedAt = val
